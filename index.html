@@ -1,0 +1,1941 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dugout">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Dugout</title>
+</head><body>
+<meta name="theme-color" content="#060809">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Condensed:wght@600;700;800&family=Share+Tech+Mono&display=swap">
+<style>/* Layout: fixed left sidebar (drawer on phone) + scoreboard-style main board; LED digits for money, condensed sports type for labels */
+:root {
+  --acc-base: #ffb000;
+  --bg: #0a0c0f; --panel: #11151a; --panel2: #171c23; --ink: #e9eef3; --muted: #8b96a3; --line: #242b34;
+  --acc: var(--acc-base); --acc-ink: #0a0c0f; --pos: #3ddc84; --neg: #ff5d5d;
+  --side: #060809; --side-ink: #a9b3be; --cell: #0c0f13; --overlay: rgba(0,0,0,.6);
+  --glow: 0 0 12px color-mix(in srgb, var(--acc) 45%, transparent);
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --led: "Share Tech Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+  --bg: #e2e5e9; --panel: #ffffff; --panel2: #f2f4f6; --ink: #13171c; --muted: #59626e; --line: #d2d7dd;
+  --acc: color-mix(in srgb, var(--acc-base) 62%, #000); --acc-ink: #fff; --pos: #157a3f; --neg: #c42727;
+  --side: #13171c; --side-ink: #b6c0ca; --cell: #f2f4f6; --overlay: rgba(10,14,20,.45); --glow: none; color-scheme: light; } }
+:root[data-theme="light"] {
+  --bg: #e2e5e9; --panel: #ffffff; --panel2: #f2f4f6; --ink: #13171c; --muted: #59626e; --line: #d2d7dd;
+  --acc: color-mix(in srgb, var(--acc-base) 62%, #000); --acc-ink: #fff; --pos: #157a3f; --neg: #c42727;
+  --side: #13171c; --side-ink: #b6c0ca; --cell: #f2f4f6; --overlay: rgba(10,14,20,.45); --glow: none; color-scheme: light; }
+
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.45; -webkit-text-size-adjust: 100%; }
+* { box-sizing: border-box; }
+a { color: var(--acc); }
+h1, h2, h3 { font-family: var(--display); text-transform: uppercase; letter-spacing: .03em; margin: 0; text-wrap: balance; }
+h1 { font-size: 2rem; font-weight: 800; line-height: 1; }
+h2 { font-size: 1.05rem; font-weight: 700; color: var(--muted); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+h2 a { margin-left: auto; font-size: .85rem; text-transform: none; letter-spacing: 0; font-family: var(--body); font-weight: 600; }
+.num, .led { font-family: var(--led); font-variant-numeric: tabular-nums; }
+.pos { color: var(--pos); } .neg { color: var(--neg); } .muted { color: var(--muted); }
+small { font-size: .82rem; }
+
+/* shell */
+.app { display: grid; grid-template-columns: 228px minmax(0, 1fr); min-height: 100%; }
+.side { background: var(--side); color: var(--side-ink); padding: 18px 12px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto; }
+.brand { font-family: var(--display); font-weight: 800; font-size: 1.7rem; letter-spacing: .06em; color: #fff; padding: 0 10px 12px; display: flex; align-items: center; gap: 8px; }
+.brand i { width: 12px; height: 12px; border-radius: 50%; background: var(--acc-base); box-shadow: 0 0 10px var(--acc-base); }
+.side nav { display: flex; flex-direction: column; gap: 2px; }
+.side nav a { color: var(--side-ink); text-decoration: none; font-family: var(--display); font-weight: 600; font-size: 1.08rem; letter-spacing: .04em; text-transform: uppercase; padding: 7px 10px; border-radius: 6px; display: flex; gap: 10px; align-items: center; }
+.side nav a:hover { background: rgba(255,255,255,.06); color: #fff; }
+.side nav a.on { background: var(--acc-base); color: #0a0c0f; }
+.side nav .sep { height: 1px; background: rgba(255,255,255,.08); margin: 8px 6px; }
+.side .foot { margin-top: auto; padding: 12px 8px 0; display: flex; flex-direction: column; gap: 8px; font-size: .8rem; }
+#sync-status[data-ok="0"] { color: #ff8080; } #sync-status[data-ok="1"] { color: #6fe3a3; }
+.side .foot button { background: transparent; border: 1px solid rgba(255,255,255,.15); color: var(--side-ink); }
+.main { min-width: 0; }
+.topbar { display: none; }
+.view { max-width: 1240px; margin: 0 auto; padding-inline: 24px; padding-block: 22px 60px; display: flex; flex-direction: column; gap: 18px; }
+.scrim { display: none; }
+
+@media (max-width: 860px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .side { position: fixed; z-index: 40; left: 0; top: 0; bottom: 0; width: 250px; transform: translateX(-105%); transition: transform .2s; padding-top: calc(18px + env(safe-area-inset-top, 0px)); }
+  .app.menu .side { transform: none; }
+  .app.menu .scrim { display: block; position: fixed; inset: 0; background: var(--overlay); z-index: 39; }
+  .topbar { display: flex; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30; background: var(--side); color: #fff; align-items: center; gap: 10px; padding: 10px 16px; }
+  .topbar b { font-family: var(--display); font-size: 1.35rem; letter-spacing: .06em; flex: 1; }
+  .topbar button { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.2); }
+  .view { padding-inline: 16px; padding-block: 16px 60px; }
+}
+@media (prefers-reduced-motion: reduce) { .side { transition: none; } }
+
+/* controls */
+button, .btn { font: 600 .95rem var(--body); cursor: pointer; border-radius: 7px; border: 1px solid var(--line); background: var(--panel2); color: var(--ink); padding: 8px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; justify-content: center; white-space: nowrap; }
+button:hover, .btn:hover { border-color: var(--acc); }
+.btn.pri { background: var(--acc); border-color: var(--acc); color: var(--acc-ink); }
+.btn.danger { color: var(--neg); }
+.btn.sm { padding: 5px 10px; font-size: .85rem; }
+.btn.ghost { background: transparent; }
+:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+input, select, textarea { font: 400 1rem var(--body); color: var(--ink); background: var(--cell); border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; width: 100%; min-width: 0; }
+textarea { min-height: 70px; resize: vertical; }
+input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--acc); }
+label.f { display: flex; flex-direction: column; gap: 4px; font: 600 .78rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); min-width: 0; }
+label.chk { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
+.fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 12px; }
+.fgrid .wide { grid-column: 1 / -1; }
+fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+legend { font: 700 .95rem var(--display); text-transform: uppercase; letter-spacing: .06em; padding: 0 6px; color: var(--acc); }
+
+/* page */
+.page-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.page-head .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.spacer { flex: 1; }
+
+/* scoreboard tiles */
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 2px; background: var(--line); border: 2px solid var(--line); border-radius: 12px; overflow: hidden; }
+.tile { background: var(--cell); padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tile .lbl { font: 600 .78rem var(--display); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.tile .led { font-size: clamp(1.4rem, 3.4vw, 2.1rem); color: var(--acc); text-shadow: var(--glow); line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 520px) { .board { grid-template-columns: 1fr 1fr; } .board .tile:last-child:nth-child(odd) { grid-column: 1 / -1; } }
+.tile .led.pos { color: var(--pos); } .tile .led.neg { color: var(--neg); }
+.tile small { color: var(--muted); }
+
+/* pills */
+.pill { display: inline-flex; align-items: center; font: 700 .68rem var(--display); letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; border: 1px solid currentColor; white-space: nowrap; }
+.st-in_stock { color: var(--pos); } .st-listed { color: var(--acc); } .st-grading { color: #8fb8ff; } .st-sold { color: var(--muted); } .st-written_off { color: var(--neg); }
+.badge { font: 700 .66rem var(--display); letter-spacing: .06em; padding: 1px 5px; border-radius: 3px; background: rgba(0,0,0,.55); color: #fff; }
+.code { font-family: var(--led); font-size: .8rem; color: var(--muted); }
+
+/* inventory */
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.toolbar input[type=search] { flex: 1 1 220px; }
+.toolbar select, .toolbar .small { width: auto; flex: 0 1 auto; }
+.toolbar .small { width: 92px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: transparent; }
+.seg button.on { background: var(--acc); color: var(--acc-ink); }
+.summary { color: var(--muted); font-size: .9rem; }
+.cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; }
+.ctile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; text-decoration: none; color: var(--ink); display: flex; flex-direction: column; min-width: 0; }
+.ctile:hover { border-color: var(--acc); }
+.art { aspect-ratio: 5 / 7; max-width: 100%; background: var(--panel2); position: relative; overflow: hidden; }
+.art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.art.gen { background: linear-gradient(155deg, hsl(var(--h) 65% 42%), hsl(calc(var(--h) + 40) 55% 18%)); color: #fff; display: flex; flex-direction: column; justify-content: flex-end; padding: 10px; }
+.art.gen::before { content: ""; position: absolute; inset: 7px; border: 2px solid rgba(255,255,255,.55); border-radius: 4px; }
+.art.gen > span { font: 800 2.4rem var(--display); line-height: 1; position: relative; }
+.art.gen > small { font: 600 .72rem var(--display); letter-spacing: .08em; text-transform: uppercase; opacity: .85; position: relative; }
+.art .badges { position: absolute; top: 8px; left: 8px; display: flex; gap: 3px; flex-wrap: wrap; z-index: 1; }
+.ct-body { padding: 9px 10px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ct-body b { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ct-body small { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ct-top { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
+.ct-money { display: flex; justify-content: space-between; margin-top: 4px; font-size: .9rem; }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+table.t { border-collapse: collapse; width: 100%; font-size: .9rem; }
+.t th { font: 700 .74rem var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); background: var(--panel2); white-space: nowrap; position: sticky; top: 0; }
+.t td { padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.t tr:last-child td { border-bottom: 0; }
+.t td.r, .t th.r { text-align: right; }
+.t tbody tr.link { cursor: pointer; }
+.t tbody tr.link:hover td { background: var(--panel2); }
+.t tfoot td { font-weight: 700; border-top: 2px solid var(--line); border-bottom: 0; }
+
+/* card detail */
+.detail { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 760px) { .detail { grid-template-columns: minmax(0, 1fr); } }
+.photo-col { display: flex; flex-direction: column; gap: 10px; }
+.photo-col .art { width: min(100%, 280px); border-radius: 10px; border: 1px solid var(--line); cursor: zoom-in; }
+.qrbox { background: #fff; padding: 10px; border-radius: 8px; width: 132px; }
+.qrbox svg { display: block; width: 100%; height: auto; }
+.kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 16px; }
+.kv div { display: flex; flex-direction: column; min-width: 0; }
+.kv span { font: 600 .72rem var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.kv b { font-weight: 600; overflow-wrap: anywhere; }
+.list { display: flex; flex-direction: column; }
+.list .li { display: flex; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.list .li:last-child { border-bottom: 0; }
+.list .li .grow { flex: 1; min-width: 0; }
+.list .li .grow b, .list .li .grow small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.empty { color: var(--muted); padding: 18px; text-align: center; border: 1px dashed var(--line); border-radius: 10px; }
+
+/* receipts */
+.rgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.rtile { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--panel); cursor: pointer; display: flex; flex-direction: column; text-align: left; padding: 0; color: var(--ink); font-weight: 400; }
+.rtile .thumb { aspect-ratio: 4 / 5; max-width: 100%; background: var(--panel2); display: flex; align-items: center; justify-content: center; overflow: hidden; width: 100%; }
+.rtile .thumb img { width: 100%; height: 100%; object-fit: cover; }
+.rtile .pdf { font: 800 1.6rem var(--display); color: var(--neg); }
+.rtile .meta { padding: 7px 9px; display: flex; flex-direction: column; font-size: .82rem; gap: 1px; width: 100%; }
+
+/* modal */
+.modal { position: fixed; inset: 0; z-index: 60; background: var(--overlay); display: flex; align-items: flex-start; justify-content: center; padding: 4vh 16px; overflow-y: auto; }
+.sheet { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; width: min(760px, 100%); padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.sheet.narrow { width: min(480px, 100%); }
+.sheet-head { display: flex; align-items: center; gap: 10px; }
+.sheet-head h2 { color: var(--ink); font-size: 1.4rem; }
+.sheet-head .x { margin-left: auto; }
+.sheet-foot { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; position: sticky; bottom: -18px; background: var(--panel); padding: 12px 0 2px; border-top: 1px solid var(--line); }
+.warn { border: 1px solid var(--acc); background: color-mix(in srgb, var(--acc) 12%, transparent); border-radius: 8px; padding: 10px 12px; font-size: .92rem; }
+.calc { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 2px; background: var(--line); border-radius: 8px; overflow: hidden; }
+.calc div { background: var(--cell); padding: 8px 10px; display: flex; flex-direction: column; }
+.calc span { font: 600 .7rem var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.calc b { font-family: var(--led); font-size: 1.1rem; }
+.viewer { position: fixed; inset: 0; z-index: 70; background: #000; display: flex; flex-direction: column; }
+.viewer .vbar { display: flex; gap: 8px; padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px; align-items: center; color: #fff; flex-wrap: wrap; }
+.viewer .vbar b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viewer .vbar button, .viewer .vbar a { background: #1b1f25; color: #fff; border-color: #333; }
+.viewer .vbody { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center; touch-action: pinch-zoom pan-x pan-y; }
+.viewer .vbody img { max-width: 100%; transition: none; }
+.viewer .vbody.zoom img { max-width: none; width: 220%; }
+.viewer iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+.pick-list { max-height: 240px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; }
+.pick-list label { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); align-items: center; font-size: .92rem; }
+.pick-list label:last-child { border-bottom: 0; }
+
+/* toast */
+#toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 90; display: flex; flex-direction: column; gap: 8px; align-items: center; width: min(520px, calc(100% - 32px)); pointer-events: none; }
+.toast { background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 9px; font-weight: 600; display: flex; gap: 12px; align-items: center; pointer-events: auto; box-shadow: 0 6px 20px rgba(0,0,0,.35); }
+.toast button { background: transparent; color: var(--bg); border-color: currentColor; padding: 3px 9px; }
+
+/* charts */
+.chart { width: 100%; height: auto; display: block; }
+.chart text { fill: var(--muted); font: 11px var(--led); }
+.legend { display: flex; gap: 14px; font-size: .82rem; color: var(--muted); flex-wrap: wrap; }
+.legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px; }
+.bar-cell { display: flex; align-items: center; gap: 8px; min-width: 140px; }
+.bar-cell .bar { height: 8px; border-radius: 4px; background: var(--pos); }
+.bar-cell .bar.neg { background: var(--neg); }
+
+/* niche finder */
+.hunt { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.hcard { background: var(--cell); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; align-items: flex-start; justify-content: flex-start; white-space: normal; text-align: left; color: var(--ink); }
+.hcard .k { font: 600 .74rem var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.hcard .v { font: 800 1.35rem var(--display); line-height: 1.1; overflow-wrap: anywhere; }
+.hcard .m { font-family: var(--led); font-size: .95rem; color: var(--acc); text-shadow: var(--glow); }
+.hcard small { color: var(--muted); }
+details.crit { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+details.crit summary { cursor: pointer; padding: 11px 14px; font: 700 1.05rem var(--display); text-transform: uppercase; letter-spacing: .04em; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+details.crit summary small { font-family: var(--body); text-transform: none; letter-spacing: 0; color: var(--muted); font-weight: 400; }
+details.crit .tablewrap { border: 0; border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; }
+
+/* scan */
+.scanbox { position: relative; width: min(520px, 100%); aspect-ratio: 1; max-width: 100%; background: #000; border-radius: 12px; overflow: hidden; }
+.scanbox video { width: 100%; height: 100%; object-fit: cover; }
+.scanbox .frame { position: absolute; inset: 18%; border: 3px solid var(--acc-base); border-radius: 12px; box-shadow: 0 0 0 999px rgba(0,0,0,.35); }
+
+/* labels (Avery 5160 / 30 per sheet) */
+.sheet-preview { overflow-x: auto; background: var(--panel2); border-radius: 10px; padding: 12px; }
+.psheet { width: 8.5in; height: 11in; background: #fff; color: #000; padding: .5in .1875in 0; display: grid; grid-template-columns: repeat(3, 2.625in); grid-template-rows: repeat(10, 1in); column-gap: .125in; box-sizing: border-box; }
+.sheet-preview .psheet + .psheet { margin-top: 12px; }
+#print-root { display: none; }
+.lab { display: flex; align-items: center; gap: .08in; padding: .06in .1in; overflow: hidden; font-family: Arial, sans-serif; }
+.lab .q { width: .82in; height: .82in; flex: none; }
+.lab .q svg { width: 100%; height: 100%; display: block; }
+.lab .tx { min-width: 0; line-height: 1.15; }
+.lab .tx b { font-size: 10pt; display: block; font-family: "Courier New", monospace; }
+.lab .tx span { font-size: 8pt; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media print {
+  @page { size: letter; margin: 0; }
+  html, body { background: #fff !important; height: auto; }
+  :root { padding: 0 !important; }
+  .app, #toast, .modal, .viewer { display: none !important; }
+  #print-root { display: block; }
+  #print-root .psheet { break-after: page; page-break-after: always; }
+  #print-root .psheet:last-child { break-after: auto; page-break-after: auto; }
+}
+</style>
+<div id="app"></div>
+<div id="modal-root"></div>
+<div id="toast" aria-live="polite"></div>
+<div id="print-root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>/* Dugout data layer: IndexedDB on this device, with an in-memory cache. */
+const STORES = ['cards', 'txns', 'pickups', 'receipts', 'files', 'locations', 'expenses', 'snaps', 'meta'];
+const SYNC_STORES = ['cards', 'txns', 'pickups', 'receipts', 'locations', 'expenses', 'snaps'];
+const DB = { db: null };
+const S = { cards: [], txns: [], pickups: [], receipts: [], locations: [], expenses: [], snaps: [], settings: null };
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const nowISO = () => new Date().toISOString();
+const today = () => new Date().toLocaleDateString('en-CA');
+
+function idbOpen() {
+  return new Promise(res => {
+    let r;
+    try { r = indexedDB.open('dugout', 1); } catch (e) { return res(); }
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      STORES.forEach(s => { if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' }); });
+    };
+    r.onsuccess = () => { DB.db = r.result; res(); };
+    r.onerror = () => res();
+  });
+}
+function idbReq(store, mode, fn) {
+  if (!DB.db) return Promise.resolve(null);
+  return new Promise((res, rej) => {
+    let t;
+    try { t = DB.db.transaction(store, mode); } catch (e) { return rej(e); }
+    const st = t.objectStore(store);
+    let out = null;
+    const q = fn(st);
+    if (q) q.onsuccess = () => { out = q.result; };
+    t.oncomplete = () => res(out);
+    t.onerror = () => rej(t.error);
+    t.onabort = () => rej(t.error);
+  });
+}
+const idb = {
+  all: s => idbReq(s, 'readonly', st => st.getAll()).then(r => r || []),
+  get: (s, id) => idbReq(s, 'readonly', st => st.get(id)),
+  put: (s, v) => idbReq(s, 'readwrite', st => st.put(v)),
+  del: (s, id) => idbReq(s, 'readwrite', st => st.delete(id)),
+  putMany: (s, arr) => idbReq(s, 'readwrite', st => { arr.forEach(v => st.put(v)); }),
+  keys: s => idbReq(s, 'readonly', st => st.getAllKeys()).then(r => r || []),
+};
+
+async function loadAll() {
+  await idbOpen();
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  for (const s of SYNC_STORES) S[s] = await idb.all(s);
+  const set = await idb.get('meta', 'settings');
+  S.settings = Object.assign(structuredClone(DEFAULT_SETTINGS), set || {});
+}
+
+let onChange = () => {};
+async function save(store, obj, opts = {}) {
+  if (!opts.keepStamp) obj.updatedAt = nowISO();
+  const arr = S[store];
+  const i = arr.findIndex(x => x.id === obj.id);
+  if (i >= 0) arr[i] = obj; else arr.push(obj);
+  try { await idb.put(store, obj); } catch (e) { toast('Could not save on this device: ' + e.message); }
+  if (!opts.quiet) onChange(store);
+  return obj;
+}
+async function hardDelete(store, id) {
+  S[store] = S[store].filter(x => x.id !== id);
+  try { await idb.del(store, id); } catch (e) {}
+}
+async function saveSettings() {
+  S.settings.updatedAt = nowISO();
+  try { await idb.put('meta', S.settings); } catch (e) {}
+  onChange('settings');
+}
+async function getMeta(id) { try { return await idb.get('meta', id); } catch (e) { return null; } }
+async function setMeta(id, v) { try { await idb.put('meta', Object.assign({ id }, v)); } catch (e) {} }
+
+/* ---- files (photos, receipts) ---- */
+const memFiles = new Map();
+const urlCache = new Map();
+async function fileSave(blob, name, id) {
+  id = id || 'f_' + uid();
+  const rec = { id, blob, name: name || '', type: blob.type, size: blob.size, createdAt: nowISO() };
+  if (DB.db) { try { await idb.put('files', rec); } catch (e) { memFiles.set(id, rec); } } else memFiles.set(id, rec);
+  return id;
+}
+async function fileGet(id) {
+  if (!id) return null;
+  if (memFiles.has(id)) return memFiles.get(id);
+  try { return await idb.get('files', id); } catch (e) { return null; }
+}
+async function fileURL(id) {
+  if (urlCache.has(id)) return urlCache.get(id);
+  const r = await fileGet(id);
+  if (!r) return null;
+  const u = URL.createObjectURL(r.blob);
+  urlCache.set(id, u);
+  return u;
+}
+async function fileDel(id) {
+  memFiles.delete(id);
+  if (urlCache.has(id)) { URL.revokeObjectURL(urlCache.get(id)); urlCache.delete(id); }
+  try { await idb.del('files', id); } catch (e) {}
+}
+async function fileIds() { const k = DB.db ? await idb.keys('files') : []; return new Set([...k, ...memFiles.keys()]); }
+function referencedFileIds() {
+  const ids = new Set();
+  S.cards.forEach(c => { if (!c.purged) { c.front && ids.add(c.front); c.back && ids.add(c.back); } });
+  S.receipts.forEach(r => { if (!r.purged && r.fileId) ids.add(r.fileId); });
+  S.expenses.forEach(x => { if (!x.purged && x.fileId) ids.add(x.fileId); });
+  S.pickups.forEach(p => { if (!p.purged && p.photo) ids.add(p.photo); });
+  return ids;
+}
+
+async function compressImage(file, max = 1600, q = 0.85) {
+  if (!file.type || !file.type.startsWith('image/') || file.type === 'image/gif') return file;
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+    cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+    const out = await new Promise(r => cv.toBlob(r, 'image/jpeg', q));
+    return out && out.size < file.size ? out : file;
+  } catch (e) { return file; }
+}
+
+/* ---- merge (used by sync and backup restore) ---- */
+async function mergeData(data) {
+  let changed = 0;
+  for (const s of SYNC_STORES) {
+    const incoming = (data.stores && data.stores[s]) || [];
+    const map = new Map(S[s].map(x => [x.id, x]));
+    const toPut = [];
+    for (const r of incoming) {
+      const cur = map.get(r.id);
+      if (!cur || (r.updatedAt || '') > (cur.updatedAt || '')) { map.set(r.id, r); toPut.push(r); }
+    }
+    if (toPut.length) { S[s] = [...map.values()]; changed += toPut.length; try { await idb.putMany(s, toPut); } catch (e) {} }
+  }
+  const rs = data.stores && data.stores.settings && data.stores.settings[0];
+  if (rs && (rs.updatedAt || '') > (S.settings.updatedAt || '')) {
+    S.settings = Object.assign(structuredClone(DEFAULT_SETTINGS), rs);
+    try { await idb.put('meta', S.settings); } catch (e) {}
+    changed++;
+  }
+  changed += await fixDuplicateCodes();
+  return changed;
+}
+async function fixDuplicateCodes() {
+  const seen = new Map(); let n = 0;
+  const cards = [...S.cards].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+  for (const c of cards) {
+    if (c.purged || !c.code) continue;
+    if (seen.has(c.code)) { c.code = nextCode(); await save('cards', c, { quiet: true }); n++; }
+    seen.set(c.code, c.id);
+  }
+  return n;
+}
+function exportData() {
+  const stores = {};
+  SYNC_STORES.forEach(s => { stores[s] = S[s]; });
+  stores.settings = [S.settings];
+  return { app: 'dugout', version: 1, exportedAt: nowISO(), stores };
+}
+
+/* ---- blob/base64 ---- */
+function blobToB64(blob) {
+  return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.onerror = rej; fr.readAsDataURL(blob); });
+}
+function b64ToBlob(b64, type) {
+  const bin = atob(b64); const u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return new Blob([u], { type: type || 'application/octet-stream' });
+}
+function utf8ToB64(str) { return blobToB64(new Blob([str], { type: 'application/json' })); }
+
+/* Dugout sync: keeps iPhone and PC in step through a private GitHub repo you own.
+   data.json holds the records; files/<id> holds photos and receipts. */
+const Sync = { busy: false, timer: null, status: '', ok: null };
+
+function syncCfg() { try { return JSON.parse(localStorage.getItem('dugout.sync') || 'null'); } catch (e) { return null; } }
+function setSyncCfg(c) { try { c ? localStorage.setItem('dugout.sync', JSON.stringify(c)) : localStorage.removeItem('dugout.sync'); } catch (e) {} }
+
+async function gh(path, opt = {}) {
+  const c = syncCfg();
+  const enc = path.split('/').map(encodeURIComponent).join('/');
+  const ref = opt.method && opt.method !== 'GET' ? '' : '?ref=' + encodeURIComponent(c.branch || 'main');
+  const headers = {
+    Authorization: 'Bearer ' + c.token,
+    Accept: opt.raw ? 'application/vnd.github.raw' : 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+  if (opt.body) headers['Content-Type'] = 'application/json';
+  return fetch(`https://api.github.com/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/${enc}${ref}`, {
+    method: opt.method || 'GET', headers, body: opt.body ? JSON.stringify(opt.body) : undefined, cache: 'no-store',
+  });
+}
+
+function setSyncStatus(msg, ok) { Sync.status = msg; Sync.ok = ok; const el = document.getElementById('sync-status'); if (el) { el.textContent = msg; el.dataset.ok = ok === true ? '1' : ok === false ? '0' : ''; } }
+
+function scheduleSync() {
+  if (!syncCfg()) return;
+  clearTimeout(Sync.timer);
+  Sync.timer = setTimeout(() => syncNow(), 8000);
+}
+
+async function syncNow(manual) {
+  const c = syncCfg();
+  if (!c) { if (manual) toast('Set up sync in Settings first'); return; }
+  if (Sync.busy) return;
+  if (!navigator.onLine) { setSyncStatus('Offline · will sync later', null); return; }
+  Sync.busy = true; setSyncStatus('Syncing…', null);
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      // 1. pull
+      let sha = null;
+      const head = await gh('data.json');
+      if (head.status === 200) {
+        sha = (await head.json()).sha;
+        const raw = await gh('data.json', { raw: true });
+        if (!raw.ok) throw new Error('could not read data.json (' + raw.status + ')');
+        const remote = await raw.json();
+        const changed = await mergeData(remote);
+        await pullFiles(remote.files || []);
+        if (changed) onChange('sync');
+      } else if (head.status === 401 || head.status === 403) {
+        throw new Error('GitHub rejected the token. Check it has Contents read/write on this repo.');
+      } else if (head.status === 404) {
+        const repoCheck = await fetch(`https://api.github.com/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}`, { headers: { Authorization: 'Bearer ' + c.token } });
+        if (repoCheck.status === 404) throw new Error('Repo not found. Create it on GitHub first (private).');
+      } else throw new Error('GitHub answered ' + head.status);
+      // 2. push files we haven't uploaded yet
+      await pushFiles();
+      // 3. push records
+      const payload = exportData();
+      payload.files = await fileIndex();
+      const body = { message: 'Dugout sync ' + new Date().toLocaleString(), content: await utf8ToB64(JSON.stringify(payload)), branch: c.branch || 'main' };
+      if (sha) body.sha = sha;
+      const put = await gh('data.json', { method: 'PUT', body });
+      if (put.ok) break;
+      if ((put.status === 409 || put.status === 422) && attempt === 0) continue; // someone else synced in between: pull again
+      throw new Error('upload failed (' + put.status + ')');
+    }
+    await setMeta('sync', { last: nowISO() });
+    setSyncStatus('Synced ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), true);
+  } catch (e) {
+    setSyncStatus('Sync failed: ' + e.message, false);
+    if (manual) toast('Sync failed: ' + e.message);
+  } finally { Sync.busy = false; }
+}
+
+async function syncedSet() { const m = await getMeta('syncedFiles'); return new Set((m && m.ids) || []); }
+async function fileIndex() {
+  const out = [];
+  for (const id of referencedFileIds()) { const f = await fileGet(id); if (f) out.push({ id, type: f.type, name: f.name }); }
+  return out;
+}
+async function pushFiles() {
+  const done = await syncedSet();
+  const have = await fileIds();
+  let n = 0;
+  for (const id of referencedFileIds()) {
+    if (done.has(id) || !have.has(id)) continue;
+    const f = await fileGet(id);
+    if (!f) continue;
+    setSyncStatus('Uploading photos… ' + (++n), null);
+    const r = await gh('files/' + id, { method: 'PUT', body: { message: 'file ' + id, content: await blobToB64(f.blob), branch: syncCfg().branch || 'main' } });
+    if (r.ok || r.status === 422) done.add(id); // 422 = already there
+    else throw new Error('photo upload failed (' + r.status + ')');
+  }
+  await setMeta('syncedFiles', { ids: [...done] });
+}
+async function pullFiles(index) {
+  const have = await fileIds();
+  const types = new Map(index.map(f => [f.id, f]));
+  const done = await syncedSet();
+  let n = 0;
+  for (const id of referencedFileIds()) {
+    if (have.has(id)) continue;
+    setSyncStatus('Downloading photos… ' + (++n), null);
+    const r = await gh('files/' + id, { raw: true });
+    if (!r.ok) continue;
+    const blob = await r.blob();
+    const meta = types.get(id) || {};
+    await fileSave(new Blob([blob], { type: meta.type || blob.type }), meta.name, id);
+    done.add(id);
+  }
+  await setMeta('syncedFiles', { ids: [...done] });
+}
+
+/* ---- backup zip (works with or without sync) ---- */
+async function downloadBackup() {
+  if (!window.JSZip) return toast('Backup tool did not load. Check your connection.');
+  const zip = new JSZip();
+  const data = exportData();
+  data.files = await fileIndex();
+  zip.file('data.json', JSON.stringify(data));
+  for (const f of data.files) { const r = await fileGet(f.id); if (r) zip.file('files/' + f.id, r.blob); }
+  const blob = await zip.generateAsync({ type: 'blob' });
+  download(blob, `dugout-backup-${today()}.zip`);
+  await setMeta('backup', { last: nowISO() });
+  S.lastBackup = nowISO();
+  toast('Backup downloaded');
+}
+async function restoreBackup(file) {
+  if (!window.JSZip) return toast('Backup tool did not load.');
+  try {
+    const zip = await JSZip.loadAsync(file);
+    const data = JSON.parse(await zip.file('data.json').async('string'));
+    const changed = await mergeData(data);
+    for (const f of data.files || []) {
+      const e = zip.file('files/' + f.id);
+      if (e) await fileSave(new Blob([await e.async('blob')], { type: f.type }), f.name, f.id);
+    }
+    onChange('restore');
+    toast(`Restored. ${changed} records added or updated.`);
+  } catch (e) { toast('That file is not a Dugout backup: ' + e.message); }
+}
+
+/* Dugout core: constants, helpers, shell, router, home, inventory, card page */
+const PLATFORMS = ['eBay', 'Whatnot', 'Facebook Marketplace', 'Card show', 'Local card shop', 'COMC', 'Fanatics Collect', 'MySlabs', 'Mercari', 'Instagram', 'Trade', 'Other'];
+const SPORTS = ['Basketball', 'Football', 'Baseball', 'Hockey', 'Soccer', 'Other'];
+const GRADERS = ['PSA', 'BGS', 'SGC', 'CGC', 'TAG', 'Other'];
+const CONDITIONS = ['Mint', 'Near Mint-Mint', 'Near Mint', 'Excellent-Mint', 'Excellent', 'Very Good', 'Good', 'Poor'];
+const STATUS = { in_stock: 'In stock', listed: 'Listed', grading: 'At grading', sold: 'Sold', written_off: 'Written off' };
+const ACTIVE = ['in_stock', 'listed', 'grading'];
+const ACCENTS = { Amber: '#ffb000', Red: '#ff4b3e', Blue: '#3fa2ff', Green: '#2fd27a', Purple: '#b47cff' };
+const EXPENSE_CATS = ['Supplies (sleeves, top loaders)', 'Shipping supplies', 'Card show table / entry', 'Storage', 'Software / subscriptions', 'Other'];
+const DEFAULT_SETTINGS = {
+  id: 'settings', prefix: 'AJ-', digits: 4, accent: '#ffb000', view: 'grid', savedFilters: [],
+  fees: { 'eBay': { pct: 13.25, flat: 0.40 }, 'Whatnot': { pct: 10.9, flat: 0.30 }, 'Mercari': { pct: 10, flat: 0.50 }, 'COMC': { pct: 5, flat: 0 }, 'MySlabs': { pct: 5.5, flat: 0 } },
+};
+
+/* ---------- helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = v => { const n = parseFloat(String(v ?? '').replace(/[$,]/g, '')); return isFinite(n) ? n : 0; };
+const r2 = n => Math.round(n * 100) / 100;
+function money(n, sign) { n = +n || 0; const s = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); return (n < 0 ? '-' : sign && n > 0 ? '+' : '') + '$' + s; }
+function money0(n, sign) { n = +n || 0; const s = Math.round(Math.abs(n)).toLocaleString('en-US'); return (n < 0 ? '-' : sign && n > 0 ? '+' : '') + '$' + s; }
+const pct = n => isFinite(n) && n !== null ? (n > 0 ? '+' : '') + Math.round(n * 100) + '%' : '—';
+const cls = n => n > 0.004 ? 'pos' : n < -0.004 ? 'neg' : '';
+const fmtDate = d => d ? new Date(d.slice(0, 10) + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+const daysBetween = (a, b) => Math.max(0, Math.round((new Date(b + 'T12:00') - new Date(a + 'T12:00')) / 864e5));
+const opts = (list, sel, blank) => (blank !== undefined ? `<option value="">${esc(blank)}</option>` : '') + list.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}"${String(v) === String(sel ?? '') ? ' selected' : ''}>${esc(l)}</option>`; }).join('');
+const uniq = arr => [...new Set(arr.filter(x => x !== undefined && x !== null && x !== ''))].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
+function hue(s) { let h = 0; for (const ch of String(s || '')) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; }
+function download(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); }
+function csv(rows) { return rows.map(r => r.map(v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(',')).join('\n'); }
+const appBase = () => location.href.split('#')[0];
+
+function toast(msg, action) {
+  const box = $('#toast'); const el = document.createElement('div'); el.className = 'toast';
+  el.innerHTML = `<span>${esc(msg)}</span>`;
+  if (action) { const b = document.createElement('button'); b.textContent = action.label; b.onclick = () => { action.run(); el.remove(); }; el.appendChild(b); }
+  box.appendChild(el); setTimeout(() => el.remove(), action ? 7000 : 3200);
+}
+
+/* ---------- model helpers ---------- */
+const live = c => c && !c.deletedAt && !c.purged;
+const cardById = id => S.cards.find(c => c.id === id);
+const byCode = code => S.cards.find(c => live(c) && String(c.code).toLowerCase() === String(code).toLowerCase());
+const boxByCode = code => S.locations.find(l => !l.purged && String(l.code).toLowerCase() === String(code).toLowerCase());
+const pickupById = id => S.pickups.find(p => p.id === id && !p.purged);
+const locById = id => S.locations.find(l => l.id === id && !l.purged);
+function unitCost(c) { const b = c.buy || {}; const q = Math.max(1, +b.qty || 1); return (num(b.price) + num(b.ship) + num(b.tax) + num(b.fees) + num(c.extraCost)) / q; }
+const inHand = c => live(c) && ACTIVE.includes(c.status) ? (+c.qty || 0) : 0;
+const cardName = c => `${c.player || 'Unnamed card'}${c.number ? ' #' + c.number : ''}`;
+const cardSet = c => [c.year, c.brand, c.set].filter(Boolean).join(' ');
+const cardFull = c => [cardSet(c), c.player, c.number ? '#' + c.number : '', c.parallel, c.serial ? '/' + String(c.serial).replace(/^.*\//, '') : ''].filter(Boolean).join(' ');
+const gradeText = c => c.graded ? `${c.gradeCo || ''} ${c.grade || ''}`.trim() : (c.condition || 'Raw');
+const liveTxns = () => S.txns.filter(t => !t.purged && live(cardById(t.cardId)) || (t.type === 'edit' && false));
+const profitTxns = () => S.txns.filter(t => !t.purged && ['sell', 'trade', 'writeoff'].includes(t.type) && live(cardById(t.cardId)));
+function totals() {
+  let value = 0, cost = 0, count = 0;
+  for (const c of S.cards) { const q = inHand(c); if (!q) continue; value += num(c.value) * q; cost += unitCost(c) * q; count += q; }
+  return { value, cost, count, unreal: value - cost };
+}
+const realized = (from, to) => profitTxns().filter(t => t.date >= from && t.date <= to).reduce((a, t) => a + num(t.profit), 0);
+function nextCode() {
+  const p = S.settings.prefix || ''; let max = 0;
+  S.cards.forEach(c => { if (c.code && c.code.startsWith(p)) { const n = parseInt(c.code.slice(p.length), 10); if (n > max) max = n; } });
+  return p + String(max + 1).padStart(S.settings.digits || 4, '0');
+}
+function nextBoxCode() { let max = 0; S.locations.forEach(l => { const n = parseInt(String(l.code).replace(/\D/g, ''), 10); if (n > max) max = n; }); return 'BOX-' + String(max + 1).padStart(2, '0'); }
+function feeFor(platform, gross) { const f = S.settings.fees[platform]; if (!f || !gross) return 0; return r2(gross * (num(f.pct) / 100) + num(f.flat)); }
+const compsURL = c => 'https://www.ebay.com/sch/i.html?_nkw=' + encodeURIComponent([c.year, c.brand, c.set, c.player, c.number ? '#' + c.number : '', c.parallel, c.graded ? (c.gradeCo || '') + ' ' + (c.grade || '') : ''].filter(Boolean).join(' ')) + '&LH_Sold=1&LH_Complete=1';
+async function logTxn(t) { t.id = t.id || 't_' + uid(); t.createdAt = t.createdAt || nowISO(); return save('txns', t, { quiet: true }); }
+
+let snapTimer;
+function snapshotSoon() { clearTimeout(snapTimer); snapTimer = setTimeout(async () => { const t = totals(); await save('snaps', { id: today(), date: today(), value: r2(t.value), cost: r2(t.cost) }, { quiet: true }); }, 1500); }
+
+/* ---------- shell ---------- */
+const NAV = [
+  ['dash', 'Home'], ['inv', 'Inventory'], ['pickups', 'Pickups'], ['sales', 'Sales'], ['receipts', 'Receipts'], ['finder', 'Niche Finder'], ['reports', 'Reports'], '-',
+  ['scan', 'Scan QR'], ['labels', 'QR labels'], ['storage', 'Storage boxes'], ['settings', 'Settings'],
+];
+function shell() {
+  $('#app').innerHTML = `
+  <div class="app" id="shell">
+    <aside class="side" id="side">
+      <div class="brand"><i></i>DUGOUT</div>
+      <nav>${NAV.map(n => n === '-' ? '<div class="sep"></div>' : `<a href="#/${n[0]}" data-nav="${n[0]}">${n[1]}</a>`).join('')}</nav>
+      <div class="foot">
+        <span id="sync-status">${esc(Sync.status || (syncCfg() ? 'Sync ready' : 'Saved on this device'))}</span>
+        <div class="row"><button class="btn sm" data-act="theme" type="button">Light / dark</button>${syncCfg() ? '<button class="btn sm" data-act="syncNow" type="button">Sync</button>' : ''}</div>
+      </div>
+    </aside>
+    <div class="scrim" data-act="menu"></div>
+    <div class="main">
+      <header class="topbar"><button class="btn sm" data-act="menu" type="button" aria-label="Menu">☰</button><b>DUGOUT</b><button class="btn sm" data-act="go" data-to="#/scan" type="button">Scan</button></header>
+      <div class="view" id="view"></div>
+    </div>
+  </div>`;
+}
+function applyTheme() {
+  let t = null; try { t = localStorage.getItem('dugout.theme'); } catch (e) {}
+  document.documentElement.dataset.theme = t || 'dark'; // scoreboard look starts dark; the toggle switches it
+  document.documentElement.style.setProperty('--acc-base', S.settings.accent || '#ffb000');
+}
+
+/* ---------- router ---------- */
+const V = {};
+let curView = '';
+async function route() {
+  stopScan();
+  $('#shell') && $('#shell').classList.remove('menu');
+  const h = decodeURIComponent(location.hash || '#/dash');
+  let m;
+  if ((m = h.match(/^#c\/(.+)$/))) { const c = byCode(m[1]); if (c) return location.replace('#/card/' + c.id); return renderView(notFound(`Card ${m[1]} isn't on this device.`)); }
+  if ((m = h.match(/^#b\/(.+)$/))) { const b = boxByCode(m[1]); if (b) return location.replace('#/box/' + b.id); return renderView(notFound(`Box ${m[1]} isn't on this device.`)); }
+  const [, name = 'dash', arg] = h.split('/');
+  curView = name;
+  $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === name || (name === 'card' && a.dataset.nav === 'inv') || (name === 'pickup' && a.dataset.nav === 'pickups') || (name === 'box' && a.dataset.nav === 'storage')));
+  const fn = V[name] || V.dash;
+  renderView(await fn(arg));
+  if (fn.after) fn.after(arg);
+  window.scrollTo(0, 0);
+}
+function renderView(html) { $('#view').innerHTML = html; hydrate($('#view')); }
+const notFound = msg => `<div class="panel"><h1>Not found</h1><p>${esc(msg)}</p><p class="muted">If you scanned with the iPhone Camera app, it opens Safari, which keeps separate data from the home-screen app. Use the Scan button inside Dugout, or turn on sync in Settings.</p><div class="row"><a class="btn pri" href="#/scan">Open scanner</a><a class="btn" href="#/dash">Home</a></div></div>`;
+async function rerender() { if (!$('#modal-root').children.length) await route(); }
+
+/* images + QR codes appear after render */
+async function hydrate(root) {
+  for (const img of $$('img[data-file]', root)) { const u = await fileURL(img.dataset.file); if (u) img.src = u; else img.closest('.art')?.classList.add('missing'); }
+  for (const el of $$('[data-qr]', root)) el.innerHTML = qrSVG(el.dataset.qr);
+}
+function qrSVG(text) {
+  if (!window.qrcode) return '<small class="muted">QR library offline</small>';
+  const q = qrcode(0, 'M'); q.addData(text); q.make();
+  return q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+}
+const cardQR = c => appBase() + '#c/' + encodeURIComponent(c.code);
+const boxQR = b => appBase() + '#b/' + encodeURIComponent(b.code);
+
+/* ---------- shared bits ---------- */
+const tile = (label, val, k = '', sub = '') => `<div class="tile"><span class="lbl">${esc(label)}</span><span class="led ${k}">${val}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
+const statusPill = c => `<span class="pill st-${c.status}">${STATUS[c.status] || c.status}</span>`;
+function badges(c) {
+  const b = [];
+  if (c.rookie) b.push('RC'); if (c.auto) b.push('AUTO'); if (c.patch) b.push('PATCH'); if (c.graded) b.push(esc(gradeText(c)));
+  if (c.serial) b.push('/' + esc(String(c.serial).replace(/^.*\//, '')));
+  return b.length ? `<div class="badges">${b.map(x => `<span class="badge">${x}</span>`).join('')}</div>` : '';
+}
+function art(c, side = 'front') {
+  const id = c[side];
+  if (id) return `<div class="art">${badges(c)}<img data-file="${esc(id)}" alt="${esc(cardName(c))}"></div>`;
+  const ini = String(c.player || '?').split(/\s+/).map(w => w[0]).join('').slice(0, 3).toUpperCase();
+  return `<div class="art gen" style="--h:${hue(c.team || c.player)}">${badges(c)}<span>${esc(ini)}</span><small>${esc([c.year, c.brand].filter(Boolean).join(' '))}</small></div>`;
+}
+
+/* ---------- home ---------- */
+V.dash = () => {
+  const t = totals(); const d = today(); const m0 = d.slice(0, 8) + '01';
+  const rm = realized(m0, d);
+  const monthName = new Date().toLocaleDateString('en-US', { month: 'short' });
+  const welcome = !S.cards.length ? `
+    <section class="panel"><h2>Welcome to Dugout</h2>
+      <p>Your inventory lives on this device. Add your first card, log a pickup, or load demo cards to see how everything works. Demo cards are marked and can be removed in one tap from Settings.</p>
+      <div class="row"><button class="btn pri" data-act="addCard" type="button">+ Add my first card</button><button class="btn" data-act="newPickup" type="button">Log a pickup</button><button class="btn" data-act="loadDemo" type="button">Load demo cards</button></div>
+    </section>` : '';
+  const demo = S.cards.some(c => c.demo && live(c)) ? `<div class="warn">You're looking at demo cards. Remove them in <a href="#/settings">Settings</a> when you're ready to start for real.</div>` : '';
+  return `
+  <div class="page-head"><h1>Home</h1><div class="actions">
+    <button class="btn pri" data-act="addCard" type="button">+ Add card</button>
+    <a class="btn" href="#/scan">Scan QR</a>
+    <button class="btn" data-act="newPickup" type="button">Log pickup</button></div></div>
+  ${demo}${welcome}
+  <section class="board" aria-label="Scoreboard">
+    ${tile('Inventory value', money0(t.value))}
+    ${tile('Cost basis', money0(t.cost))}
+    ${tile('Unrealized profit', money0(t.unreal, 1), cls(t.unreal), t.cost ? pct(t.unreal / t.cost) + ' on cost' : '')}
+    ${tile('Realized · ' + monthName, money0(rm, 1), cls(rm))}
+    ${tile('Cards in stock', t.count.toLocaleString())}
+  </section>
+  <div class="cols">
+    <section class="panel"><h2>Value over time</h2>${valueChart(S.snaps)}</section>
+    <section class="panel"><h2>Best niches so far <a href="#/finder">Open Niche Finder →</a></h2>${nicheTeaser()}</section>
+  </div>
+  <section class="panel"><h2>Recent activity</h2>${activity(8)}</section>`;
+};
+const TXN_LABEL = { buy: 'Bought', sell: 'Sold', trade: 'Traded away', grading_out: 'Sent to grading', grading_in: 'Back from grading', writeoff: 'Written off', edit: 'Edited', price: 'Price updated' };
+function activity(n, cardId) {
+  const list = S.txns.filter(t => !t.purged && (cardId ? t.cardId === cardId : t.type !== 'edit' && t.type !== 'price') && (cardId || live(cardById(t.cardId))))
+    .sort((a, b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt)).slice(0, n);
+  if (!list.length) return `<div class="empty">Nothing logged yet.</div>`;
+  return `<div class="list">${list.map(t => {
+    const c = cardById(t.cardId);
+    let right = '';
+    if (['sell', 'trade', 'writeoff'].includes(t.type)) right = `<span class="num ${cls(t.profit)}">${money(t.profit, 1)}</span>`;
+    else if (t.type === 'buy') right = `<span class="num">${money(t.amount)}</span>`;
+    else if (t.type === 'grading_out') right = t.amount ? `<span class="num">${money(t.amount)}</span>` : '';
+    let sub = [fmtDate(t.date), t.platform, t.qty > 1 ? 'qty ' + t.qty : '', t.note].filter(Boolean).join(' · ');
+    if (t.type === 'edit') sub = fmtDate(t.date) + ' · ' + (t.changes || []).map(x => `${x.f}: ${x.from || '—'} → ${x.to || '—'}`).join('; ');
+    if (t.type === 'price') sub = fmtDate(t.date) + ` · ${money(t.from)} → ${money(t.amount)}`;
+    return `<div class="li"><div class="grow"><b>${TXN_LABEL[t.type] || t.type}${!cardId && c ? ' · ' + esc(cardName(c)) : ''}</b><small>${esc(sub)}</small></div>${right}${!cardId && c ? `<a class="btn sm ghost" href="#/card/${c.id}">Open</a>` : ''}</div>`;
+  }).join('')}</div>`;
+}
+
+/* value-over-time line chart */
+function valueChart(snaps) {
+  const pts = [...snaps].filter(s => !s.purged).sort((a, b) => a.date.localeCompare(b.date));
+  if (pts.length < 2) return `<div class="empty">The chart fills in as you use Dugout. It saves your totals once a day.</div>`;
+  const W = 640, H = 220, L = 58, R = 12, T = 12, B = 26;
+  const xs = pts.map(p => +new Date(p.date)); const x0 = xs[0], x1 = xs[xs.length - 1] || x0 + 1;
+  const maxV = Math.max(...pts.map(p => Math.max(p.value, p.cost)), 1);
+  const step = niceStep(maxV / 4); const top = Math.ceil(maxV / step) * step;
+  const X = t => L + (W - L - R) * ((t - x0) / Math.max(1, x1 - x0)); const Y = v => T + (H - T - B) * (1 - v / top);
+  const line = k => pts.map((p, i) => `${i ? 'L' : 'M'}${X(xs[i]).toFixed(1)},${Y(p[k]).toFixed(1)}`).join('');
+  const area = line('value') + `L${X(x1).toFixed(1)},${Y(0)}L${X(x0).toFixed(1)},${Y(0)}Z`;
+  let grid = ''; for (let v = 0; v <= top + 1e-6; v += step) grid += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${money0(v)}</text>`;
+  const ticks = [0, Math.floor(pts.length / 2), pts.length - 1].map(i => `<text x="${X(xs[i])}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === pts.length - 1 ? 'end' : 'middle'}">${new Date(pts[i].date + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</text>`).join('');
+  const last = pts[pts.length - 1];
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Inventory value and cost over time">${grid}${ticks}
+    <path d="${area}" fill="var(--acc)" opacity=".12"/>
+    <path d="${line('cost')}" fill="none" stroke="var(--muted)" stroke-width="2" stroke-dasharray="5 4"/>
+    <path d="${line('value')}" fill="none" stroke="var(--acc)" stroke-width="2.5"/>
+    <circle cx="${X(x1)}" cy="${Y(last.value)}" r="4.5" fill="var(--acc)"/></svg>
+    <div class="legend"><span><i style="background:var(--acc)"></i>Value ${money0(last.value)}</span><span><i style="background:var(--muted)"></i>Cost ${money0(last.cost)}</span></div>`;
+}
+function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-9)))); const f = raw / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; }
+
+/* ---------- inventory ---------- */
+const F = { q: '', sport: '', status: 'active', brand: '', year: '', player: '', min: '', max: '', sort: 'new', box: '' };
+function filterCards(f = F) {
+  const q = f.q.trim().toLowerCase();
+  let list = S.cards.filter(live).filter(c => {
+    if (f.status === 'active' && !ACTIVE.includes(c.status)) return false;
+    if (f.status && f.status !== 'active' && f.status !== 'all' && c.status !== f.status) return false;
+    if (f.sport && c.sport !== f.sport) return false;
+    if (f.brand && c.brand !== f.brand) return false;
+    if (f.year && String(c.year) !== String(f.year)) return false;
+    if (f.player && !String(c.player || '').toLowerCase().includes(f.player.toLowerCase())) return false;
+    if (f.box && c.locationId !== f.box) return false;
+    if (f.min !== '' && num(c.value) < num(f.min)) return false;
+    if (f.max !== '' && num(c.value) > num(f.max)) return false;
+    if (q) { const hay = [c.code, c.player, c.team, c.brand, c.set, c.year, c.number, c.parallel, c.serial, c.notes, c.gradeCo, c.grade, c.sport].join(' ').toLowerCase(); if (!q.split(/\s+/).every(w => hay.includes(w))) return false; }
+    return true;
+  });
+  const prof = c => num(c.value) - unitCost(c);
+  const sorts = {
+    new: (a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''), old: (a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''),
+    value: (a, b) => num(b.value) - num(a.value), profit: (a, b) => prof(b) - prof(a),
+    roi: (a, b) => prof(b) / Math.max(unitCost(b), .01) - prof(a) / Math.max(unitCost(a), .01),
+    player: (a, b) => String(a.player).localeCompare(String(b.player)), stale: (a, b) => (a.priceUpdated || '').localeCompare(b.priceUpdated || ''),
+  };
+  return list.sort(sorts[f.sort] || sorts.new);
+}
+V.inv = () => {
+  const cards = S.cards.filter(live);
+  const sf = S.settings.savedFilters || [];
+  return `
+  <div class="page-head"><h1>Inventory</h1><div class="actions">
+    <button class="btn" data-act="priceCheck" type="button">Price check</button>
+    <button class="btn pri" data-act="addCard" type="button">+ Add card</button></div></div>
+  <section class="panel">
+    <div class="toolbar">
+      <input type="search" id="f-q" placeholder="Search player, ID, set, team…" value="${esc(F.q)}" aria-label="Search">
+      <button class="btn" data-act="go" data-to="#/scan" type="button" title="Scan a QR code to find a card">Scan</button>
+      <div class="seg" role="group" aria-label="View"><button type="button" data-act="view" data-v="grid" class="${S.settings.view === 'grid' ? 'on' : ''}">▦ Grid</button><button type="button" data-act="view" data-v="table" class="${S.settings.view === 'table' ? 'on' : ''}">☰ Table</button></div>
+    </div>
+    <div class="toolbar">
+      <select id="f-status" aria-label="Status">${opts([['active', 'Active (not sold)'], ['in_stock', 'In stock'], ['listed', 'Listed'], ['grading', 'At grading'], ['sold', 'Sold'], ['written_off', 'Written off'], ['all', 'All statuses']], F.status)}</select>
+      <select id="f-sport" aria-label="Sport">${opts(uniq(cards.map(c => c.sport)), F.sport, 'All sports')}</select>
+      <select id="f-brand" aria-label="Brand">${opts(uniq(cards.map(c => c.brand)), F.brand, 'All brands')}</select>
+      <select id="f-year" aria-label="Year">${opts(uniq(cards.map(c => c.year)).reverse(), F.year, 'All years')}</select>
+      <input id="f-player" list="dl-players" placeholder="Player" value="${esc(F.player)}" class="small" style="width:140px" aria-label="Player">
+      <input id="f-min" inputmode="decimal" placeholder="$ min" value="${esc(F.min)}" class="small" aria-label="Minimum value">
+      <input id="f-max" inputmode="decimal" placeholder="$ max" value="${esc(F.max)}" class="small" aria-label="Maximum value">
+      <select id="f-sort" aria-label="Sort">${opts([['new', 'Newest'], ['old', 'Oldest'], ['value', 'Value high→low'], ['profit', 'Profit high→low'], ['roi', 'ROI high→low'], ['player', 'Player A→Z'], ['stale', 'Price oldest']], F.sort)}</select>
+    </div>
+    <div class="toolbar">
+      <select id="f-saved" aria-label="Saved filters">${opts(sf.map((s, i) => [i, s.name]), '', sf.length ? 'Saved filters…' : 'No saved filters yet')}</select>
+      <button class="btn sm" data-act="saveFilter" type="button">Save this filter</button>
+      ${sf.length ? '<button class="btn sm ghost" data-act="delFilter" type="button">Delete selected</button>' : ''}
+      <button class="btn sm ghost" data-act="clearFilter" type="button">Clear</button>
+      <span class="spacer"></span><span class="summary" id="inv-sum"></span>
+    </div>
+    <datalist id="dl-players">${uniq(cards.map(c => c.player)).map(p => `<option value="${esc(p)}">`).join('')}</datalist>
+  </section>
+  <div id="inv-results"></div>`;
+};
+V.inv.after = () => { updateInv(); };
+function updateInv() {
+  const list = filterCards(); const box = $('#inv-results'); if (!box) return;
+  const qty = list.reduce((a, c) => a + (ACTIVE.includes(c.status) ? +c.qty || 0 : 0), 0);
+  const val = list.reduce((a, c) => a + (ACTIVE.includes(c.status) ? num(c.value) * (+c.qty || 0) : 0), 0);
+  $('#inv-sum').textContent = `${list.length} cards · ${qty} in hand · ${money0(val)} value`;
+  if (!list.length) { box.innerHTML = `<div class="empty">No cards match. ${S.cards.length ? 'Try clearing a filter.' : 'Add your first card to get started.'}</div>`; return; }
+  box.innerHTML = S.settings.view === 'table' ? invTable(list) : `<div class="cgrid">${list.map(cardTile).join('')}</div>`;
+  hydrate(box);
+}
+function cardTile(c) {
+  const v = num(c.value), p = v - unitCost(c);
+  return `<a class="ctile" href="#/card/${c.id}">${art(c)}<div class="ct-body"><div class="ct-top"><span class="code">${esc(c.code)}</span>${statusPill(c)}</div>
+    <b>${esc(cardName(c))}</b><small>${esc(cardSet(c))}${c.parallel ? ' · ' + esc(c.parallel) : ''}</small>
+    <div class="ct-money"><span class="num">${money(v)}${c.qty > 1 ? ` <small class="muted">×${c.qty}</small>` : ''}</span><span class="num ${cls(p)}">${money(p, 1)}</span></div></div></a>`;
+}
+function invTable(list) {
+  return `<div class="tablewrap"><table class="t"><thead><tr><th>ID</th><th>Player</th><th>Card</th><th>Parallel</th><th>Grade</th><th class="r">Qty</th><th class="r">Cost</th><th class="r">Value</th><th class="r">Profit</th><th class="r">ROI</th><th>Status</th><th>Box</th></tr></thead><tbody>
+  ${list.map(c => { const uc = unitCost(c), v = num(c.value), p = v - uc; const l = locById(c.locationId);
+    return `<tr class="link" data-act="go" data-to="#/card/${c.id}"><td class="code">${esc(c.code)}</td><td><b>${esc(c.player)}</b>${c.rookie ? ' <span class="pill">RC</span>' : ''}</td><td>${esc(cardSet(c))}${c.number ? ' #' + esc(c.number) : ''}</td><td>${esc(c.parallel || '')}${c.serial ? ' /' + esc(String(c.serial).replace(/^.*\//, '')) : ''}</td><td>${esc(gradeText(c))}</td><td class="r num">${c.qty}</td><td class="r num">${money(uc)}</td><td class="r num">${money(v)}</td><td class="r num ${cls(p)}">${money(p, 1)}</td><td class="r num ${cls(p)}">${pct(uc ? p / uc : null)}</td><td>${statusPill(c)}</td><td>${l ? esc(l.code) : ''}</td></tr>`; }).join('')}
+  </tbody></table></div>`;
+}
+
+/* ---------- card page ---------- */
+V.card = id => {
+  const c = cardById(id);
+  if (!c || c.purged) return notFound('That card was deleted.');
+  const uc = unitCost(c), v = num(c.value), p = v - uc, b = c.buy || {};
+  const pk = pickupById(b.pickupId), loc = locById(c.locationId);
+  const recs = S.receipts.filter(r => !r.purged && !r.deletedAt && ((r.cardIds || []).includes(c.id) || (pk && r.pickupId === pk.id)));
+  const hist = (c.priceHistory || []).slice(-12);
+  const sold = S.txns.filter(t => !t.purged && t.cardId === c.id && ['sell', 'trade', 'writeoff'].includes(t.type));
+  const realizedP = sold.reduce((a, t) => a + num(t.profit), 0);
+  const active = ACTIVE.includes(c.status) && c.qty > 0;
+  return `
+  ${c.deletedAt ? `<div class="warn">This card is in the trash. <button class="btn sm" data-act="restoreCard" data-id="${c.id}" type="button">Restore it</button></div>` : ''}
+  <div class="page-head"><div><span class="code">${esc(c.code)}</span> ${statusPill(c)}${c.demo ? ' <span class="pill muted">Demo</span>' : ''}<h1 style="margin-top:6px">${esc(cardName(c))}</h1><div class="muted">${esc(cardSet(c))}${c.parallel ? ' · ' + esc(c.parallel) : ''}${c.serial ? ' · ' + esc(c.serial) : ''}</div></div>
+    <div class="actions">${active ? `<button class="btn pri" data-act="sell" data-id="${c.id}" type="button">Mark as sold</button>` : ''}<button class="btn" data-act="editCard" data-id="${c.id}" type="button">Edit</button></div></div>
+  <section class="board">
+    ${tile('Cost per card', money(uc))}${tile('Current value', money(v), '', c.priceUpdated ? 'Updated ' + fmtDate(c.priceUpdated) : 'Not priced yet')}
+    ${active ? tile('Profit if sold now', money(p * (c.qty || 1), 1), cls(p), c.qty > 1 ? `${money(p, 1)} each × ${c.qty}` : '') : tile('Realized profit', money(realizedP, 1), cls(realizedP))}
+    ${tile('ROI', pct(uc ? p / uc : null), cls(p))}
+  </section>
+  <div class="detail">
+    <div class="photo-col">
+      <div data-act="viewPhoto" data-id="${c.id}" data-side="front">${art(c, 'front')}</div>
+      ${c.back ? `<div class="row"><button class="btn sm" data-act="viewPhoto" data-id="${c.id}" data-side="back" type="button">View back photo</button></div>` : ''}
+      <div class="row" style="align-items:flex-end"><div class="qrbox" data-qr="${esc(cardQR(c))}"></div><div style="display:flex;flex-direction:column;gap:6px"><span class="code">${esc(c.code)}</span><button class="btn sm" data-act="labelOne" data-id="${c.id}" type="button">Print label</button></div></div>
+      <div class="row">
+        ${active ? `<button class="btn sm" data-act="listed" data-id="${c.id}" type="button">${c.status === 'listed' ? 'Mark not listed' : 'Mark listed'}</button>` : ''}
+        ${c.status === 'grading' ? `<button class="btn sm" data-act="gradeIn" data-id="${c.id}" type="button">Back from grading</button>` : active ? `<button class="btn sm" data-act="gradeOut" data-id="${c.id}" type="button">Send to grading</button>` : ''}
+        ${active ? `<button class="btn sm" data-act="trade" data-id="${c.id}" type="button">Trade</button><button class="btn sm" data-act="writeoff" data-id="${c.id}" type="button">Write off</button>` : ''}
+        ${c.deletedAt ? '' : `<button class="btn sm danger" data-act="trashCard" data-id="${c.id}" type="button">Delete</button>`}
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <section class="panel"><h2>Card</h2><div class="kv">
+        ${kv('Player', c.player)}${kv('Card #', c.number)}${kv('Brand', c.brand)}${kv('Set / series', c.set)}${kv('Year', c.year)}${kv('Sport', c.sport)}${kv('Team', c.team)}${kv('Parallel', c.parallel || 'Base')}${kv('Serial #', c.serial)}
+        ${kv('Rookie', c.rookie ? 'Yes' : 'No')}${kv('Autograph', c.auto ? 'Yes' : 'No')}${kv('Patch / memo', c.patch ? 'Yes' : 'No')}
+        ${kv('Graded', c.graded ? 'Yes' : 'Raw')}${c.graded ? kv('Grading co.', c.gradeCo) + kv('Grade', c.grade) : kv('Condition', c.condition)}
+        ${kv('Quantity in hand', c.qty)}${kv('Storage', loc ? `<a href="#/box/${loc.id}">${esc(loc.code)} · ${esc(loc.name)}</a>` : '—', true)}
+      </div>${c.notes ? `<div><span class="muted" style="font:600 .72rem var(--display);letter-spacing:.08em;text-transform:uppercase">Notes</span><p style="margin:2px 0 0;white-space:pre-wrap">${esc(c.notes)}</p></div>` : ''}</section>
+      <section class="panel"><h2>Purchase</h2><div class="kv">
+        ${kv('Date', fmtDate(b.date))}${kv('Platform', b.platform)}${kv('Quantity bought', b.qty)}${kv('Price paid', money(b.price))}${kv('Shipping', money(b.ship))}${kv('Tax', money(b.tax))}${kv('Fees', money(b.fees))}${c.extraCost ? kv('Grading costs', money(c.extraCost)) : ''}${kv('Order #', b.order)}
+        ${pk ? kv('From pickup', `<a href="#/pickup/${pk.id}">${esc(pk.location || 'Pickup')} · ${fmtDate(pk.date)}</a>`, true) : ''}${kv('Total cost per card', `<span class="num">${money(uc)}</span>`, true)}
+      </div></section>
+      <section class="panel"><h2>Pricing <a href="${esc(compsURL(c))}" target="_blank" rel="noopener">eBay sold comps ↗</a></h2>
+        <form class="row" data-form="price" data-id="${c.id}"><input name="value" inputmode="decimal" placeholder="New value per card" style="max-width:180px" aria-label="New value"><button class="btn pri sm" type="submit">Update price</button>
+          ${c.listingUrl ? `<a class="btn sm" href="${esc(c.listingUrl)}" target="_blank" rel="noopener">Open listing ↗</a>` : ''}</form>
+        ${hist.length > 1 ? sparkline(hist) : ''}
+        ${hist.length ? `<div class="list">${hist.slice().reverse().slice(0, 5).map(h => `<div class="li"><span class="grow">${fmtDate(h.date)}</span><span class="num">${money(h.value)}</span></div>`).join('')}</div>` : ''}
+      </section>
+      <section class="panel"><h2>Receipts <button class="btn sm" data-act="addReceipt" data-card="${c.id}" type="button" style="margin-left:auto">+ Add receipt</button></h2>
+        ${recs.length ? `<div class="rgrid">${recs.map(receiptTile).join('')}</div>` : `<div class="empty">No receipts linked to this card yet.</div>`}</section>
+      <section class="panel"><h2>History</h2>${activity(50, c.id)}</section>
+    </div>
+  </div>`;
+};
+const kv = (k, v, raw) => `<div><span>${esc(k)}</span><b>${raw ? (v || '—') : esc(v === undefined || v === null || v === '' ? '—' : v)}</b></div>`;
+function sparkline(h) {
+  const W = 300, H = 60, vs = h.map(x => num(x.value)); const mn = Math.min(...vs), mx = Math.max(...vs); const span = mx - mn || 1;
+  const d = vs.map((v, i) => `${i ? 'L' : 'M'}${(4 + (W - 8) * i / (vs.length - 1)).toFixed(1)},${(6 + (H - 12) * (1 - (v - mn) / span)).toFixed(1)}`).join('');
+  const lx = W - 4, ly = 6 + (H - 12) * (1 - (vs[vs.length - 1] - mn) / span);
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" style="max-width:340px" aria-label="Price history"><path d="${d}" fill="none" stroke="var(--acc)" stroke-width="2"/><circle cx="${lx}" cy="${ly}" r="3.5" fill="var(--acc)"/></svg>`;
+}
+function receiptTile(r) {
+  const n = (r.cardIds || []).length;
+  return `<button class="rtile" type="button" data-act="viewReceipt" data-id="${r.id}"><div class="thumb">${r.fileType === 'application/pdf' ? '<span class="pdf">PDF</span>' : `<img data-file="${esc(r.fileId)}" alt="Receipt">`}</div>
+  <div class="meta"><b class="num">${r.amount ? money(r.amount) : '—'}</b><span>${fmtDate(r.date)}</span><span class="muted">${esc(r.note || (n ? n + ' card' + (n > 1 ? 's' : '') : 'Not linked'))}</span></div></button>`;
+}
+
+/* Dugout forms, modals and actions */
+function openModal(html, o = {}) {
+  const root = $('#modal-root');
+  root.innerHTML = `<div class="modal"><div class="sheet${o.narrow ? ' narrow' : ''}" role="dialog" aria-modal="true">${html}</div></div>`;
+  hydrate(root);
+  const f = root.querySelector('[autofocus]'); if (f) f.focus({ preventScroll: true });
+  return root.firstElementChild;
+}
+function closeModal(refresh = true) { $('#modal-root').innerHTML = ''; if (refresh) route(); }
+const mhead = t => `<div class="sheet-head"><h2>${esc(t)}</h2><button class="btn sm x" data-act="close" type="button">Close</button></div>`;
+const mfoot = (label, extra = '') => `<div class="sheet-foot">${extra}<button class="btn" data-act="close" type="button">Cancel</button><button class="btn pri" type="submit">${esc(label)}</button></div>`;
+const field = (label, inner, k = '') => `<label class="f ${k}">${esc(label)}${inner}</label>`;
+const inp = (name, val, attrs = '') => `<input name="${name}" value="${esc(val ?? '')}" ${attrs}>`;
+const money_inp = (name, val, attrs = '') => inp(name, val === undefined || val === null || val === 0 && !attrs.includes('keep0') ? '' : val, `inputmode="decimal" placeholder="0.00" ${attrs}`);
+const platformList = () => `<datalist id="dl-platforms">${uniq([...PLATFORMS, ...S.cards.map(c => c.buy && c.buy.platform), ...S.txns.map(t => t.platform)]).map(p => `<option value="${esc(p)}">`).join('')}</datalist>`;
+const dl = (id, vals) => `<datalist id="${id}">${uniq(vals).map(v => `<option value="${esc(v)}">`).join('')}</datalist>`;
+
+/* ---------- card form ---------- */
+const CARD_FIELDS = ['player', 'number', 'brand', 'set', 'year', 'sport', 'team', 'parallel', 'serial', 'condition', 'gradeCo', 'grade', 'notes', 'listingUrl', 'locationId'];
+function openCardForm(id, preset = {}) {
+  const c = id ? structuredClone(cardById(id)) : Object.assign({ buy: { date: today(), qty: 1 }, status: 'in_stock', sport: '' }, preset);
+  const b = c.buy || {}; const all = S.cards.filter(live);
+  const pickups = S.pickups.filter(p => !p.purged).sort((a, x) => x.date.localeCompare(a.date));
+  openModal(`<form data-form="card" data-id="${id || ''}">
+  ${mhead(id ? 'Edit ' + c.code : 'Add card')}
+  <div id="dup-warn"></div>
+  <fieldset><legend>Card</legend><div class="fgrid">
+    ${field('Player name', inp('player', c.player, 'required autofocus list="dl-pl" autocomplete="off"'))}
+    ${field('Card number', inp('number', c.number, 'autocomplete="off"'))}
+    ${field('Brand', inp('brand', c.brand, 'list="dl-br" placeholder="Panini, Topps…"'))}
+    ${field('Set / series', inp('set', c.set, 'list="dl-set" placeholder="Prizm, Chrome…"'))}
+    ${field('Year', inp('year', c.year, 'inputmode="numeric" placeholder="2024"'))}
+    ${field('Sport', `<select name="sport">${opts(SPORTS, c.sport, 'Choose…')}</select>`)}
+    ${field('Team', inp('team', c.team, 'list="dl-team"'))}
+    ${field('Parallel / variant', inp('parallel', c.parallel, 'list="dl-par" placeholder="Base, Silver…"'))}
+    ${field('Serial number', inp('serial', c.serial, 'placeholder="e.g. 12/99"'))}
+  </div>
+  <div class="row"><label class="chk"><input type="checkbox" name="rookie" ${c.rookie ? 'checked' : ''}> Rookie card</label><label class="chk"><input type="checkbox" name="auto" ${c.auto ? 'checked' : ''}> Autograph</label><label class="chk"><input type="checkbox" name="patch" ${c.patch ? 'checked' : ''}> Patch / memorabilia</label></div></fieldset>
+  <fieldset><legend>Grading</legend>
+    <div class="row"><label class="chk"><input type="radio" name="graded" value="raw" ${!c.graded ? 'checked' : ''}> Raw</label><label class="chk"><input type="radio" name="graded" value="graded" ${c.graded ? 'checked' : ''}> Graded</label></div>
+    <div class="fgrid" id="g-raw" ${c.graded ? 'hidden' : ''}>${field('Raw condition', `<select name="condition">${opts(CONDITIONS, c.condition, '—')}</select>`)}</div>
+    <div class="fgrid" id="g-yes" ${c.graded ? '' : 'hidden'}>${field('Grading company', `<select name="gradeCo">${opts(GRADERS, c.gradeCo, 'Choose…')}</select>`)}${field('Grade', inp('grade', c.grade, 'placeholder="10, 9.5…" inputmode="decimal"'))}</div>
+  </fieldset>
+  <fieldset><legend>Photos</legend><div class="fgrid">
+    ${field('Front photo', `<input type="file" name="front" accept="image/*">`)}${field('Back photo', `<input type="file" name="back" accept="image/*">`)}
+  </div>${c.front || c.back ? '<small class="muted">Choosing a new photo replaces the current one.</small>' : ''}</fieldset>
+  <fieldset><legend>Purchase</legend><div class="fgrid">
+    ${field('Date purchased', `<input type="date" name="b_date" value="${esc(b.date || today())}">`)}
+    ${field('Platform purchased', inp('b_platform', b.platform, 'list="dl-platforms" placeholder="eBay, card show…"'))}
+    ${field('Quantity bought', inp('b_qty', b.qty || 1, 'inputmode="numeric"'))}
+    ${field('Purchase price (total)', money_inp('b_price', b.price))}
+    ${field('Shipping paid', money_inp('b_ship', b.ship))}
+    ${field('Tax paid', money_inp('b_tax', b.tax))}
+    ${field('Fees paid', money_inp('b_fees', b.fees))}
+    ${field('Order number', inp('b_order', b.order))}
+    ${field('From a pickup', `<select name="b_pickup">${opts(pickups.map(p => [p.id, `${fmtDate(p.date)} · ${p.location || p.seller || 'Pickup'}`]), b.pickupId, 'None')}</select>`)}
+  </div><div class="calc" id="cost-calc"></div></fieldset>
+  <fieldset><legend>Value, listing and storage</legend><div class="fgrid">
+    ${field('Current value (per card)', money_inp('value', c.value))}
+    ${id ? field('Quantity in hand', inp('qty', c.qty, 'inputmode="numeric"')) : ''}
+    ${field('Status', `<select name="status">${opts([['in_stock', 'In stock'], ['listed', 'Listed for sale'], ...(id ? [['grading', 'At grading'], ['sold', 'Sold'], ['written_off', 'Written off']] : [])], c.status)}</select>`)}
+    ${field('Storage box', `<select name="locationId">${opts(S.locations.filter(l => !l.purged).map(l => [l.id, l.code + ' · ' + l.name]), c.locationId, 'None')}</select>`)}
+    ${field('Listing link', inp('listingUrl', c.listingUrl, 'type="url" placeholder="https://www.ebay.com/itm/…"'), 'wide')}
+    ${field('Notes', `<textarea name="notes">${esc(c.notes)}</textarea>`, 'wide')}
+  </div></fieldset>
+  ${platformList()}${dl('dl-pl', all.map(x => x.player))}${dl('dl-br', ['Panini', 'Topps', 'Upper Deck', 'Bowman', 'Leaf', 'Donruss', ...all.map(x => x.brand)])}${dl('dl-set', all.map(x => x.set))}${dl('dl-team', all.map(x => x.team))}${dl('dl-par', ['Base', 'Silver', 'Holo', 'Refractor', 'Gold', 'Green', 'Red', 'Blue', 'Purple', 'Orange', 'Black', ...all.map(x => x.parallel)])}
+  ${mfoot(id ? 'Save changes' : 'Add card')}
+  </form>`);
+  const f = $('#modal-root form');
+  const upd = () => {
+    const fd = new FormData(f); const q = Math.max(1, num(fd.get('b_qty')) || 1);
+    const tot = num(fd.get('b_price')) + num(fd.get('b_ship')) + num(fd.get('b_tax')) + num(fd.get('b_fees'));
+    const per = (tot + num(c.extraCost)) / q; const v = num(fd.get('value'));
+    $('#cost-calc').innerHTML = `<div><span>Total paid</span><b>${money(tot)}</b></div><div><span>Cost per card</span><b>${money(per)}</b></div>${v ? `<div><span>Profit if sold</span><b class="${cls(v - per)}">${money(v - per, 1)}</b></div>` : ''}`;
+    const g = fd.get('graded') === 'graded'; $('#g-raw').hidden = g; $('#g-yes').hidden = !g;
+    const key = dupKey(Object.fromEntries(fd)); const dup = key && S.cards.filter(x => live(x) && x.id !== id && dupKey(x) === key);
+    $('#dup-warn').innerHTML = dup && dup.length ? `<div class="warn"><b>Possible duplicate.</b> You already have ${dup.map(d => `<a href="#/card/${d.id}" data-act="close">${esc(d.code)}</a> (${STATUS[d.status]}, qty ${d.qty})`).join(', ')}. You can still save this as a separate card.</div>` : '';
+  };
+  f.addEventListener('input', upd); f.addEventListener('change', upd); upd();
+}
+const dupKey = c => c.player ? [c.player, c.year, c.brand, c.set, c.number, c.parallel || ''].map(x => String(x || '').trim().toLowerCase()).join('|') : '';
+
+async function submitCard(f) {
+  const id = f.dataset.id; const fd = new FormData(f);
+  const old = id ? cardById(id) : null;
+  const c = old ? structuredClone(old) : { id: 'c_' + uid(), code: nextCode(), createdAt: nowISO(), priceHistory: [] };
+  CARD_FIELDS.forEach(k => { c[k] = String(fd.get(k) ?? '').trim(); });
+  c.rookie = fd.get('rookie') === 'on'; c.auto = fd.get('auto') === 'on'; c.patch = fd.get('patch') === 'on';
+  c.graded = fd.get('graded') === 'graded';
+  if (!c.graded) { c.gradeCo = ''; c.grade = ''; } else c.condition = '';
+  c.buy = Object.assign(c.buy || {}, { date: fd.get('b_date') || today(), platform: String(fd.get('b_platform') || '').trim(), qty: Math.max(1, parseInt(fd.get('b_qty'), 10) || 1), price: num(fd.get('b_price')), ship: num(fd.get('b_ship')), tax: num(fd.get('b_tax')), fees: num(fd.get('b_fees')), order: String(fd.get('b_order') || '').trim(), pickupId: fd.get('b_pickup') || '' });
+  c.status = fd.get('status') || 'in_stock';
+  c.qty = old ? Math.max(0, parseInt(fd.get('qty'), 10) || 0) : c.buy.qty;
+  const newVal = fd.get('value') === '' ? (old ? old.value : 0) : num(fd.get('value'));
+  if (!old || num(old.value) !== newVal) { c.value = newVal; c.priceHistory = [...(c.priceHistory || []), { date: today(), value: newVal }]; c.priceUpdated = today(); }
+  for (const side of ['front', 'back']) {
+    const file = fd.get(side);
+    if (file && file.size) { if (c[side]) await fileDel(c[side]); c[side] = await fileSave(await compressImage(file), file.name); }
+  }
+  await save('cards', c, { quiet: true });
+  if (!old) await logTxn({ cardId: c.id, type: 'buy', date: c.buy.date, qty: c.buy.qty, amount: r2(c.buy.price + c.buy.ship + c.buy.tax + c.buy.fees), platform: c.buy.platform });
+  else {
+    const labels = { player: 'Player', number: 'Card #', brand: 'Brand', set: 'Set', year: 'Year', sport: 'Sport', team: 'Team', parallel: 'Parallel', serial: 'Serial', grade: 'Grade', gradeCo: 'Grader', condition: 'Condition', status: 'Status', qty: 'Qty', locationId: 'Box' };
+    const changes = Object.keys(labels).filter(k => String(old[k] ?? '') !== String(c[k] ?? '')).map(k => ({ f: labels[k], from: k === 'locationId' ? (locById(old[k]) || {}).code : String(old[k] ?? ''), to: k === 'locationId' ? (locById(c[k]) || {}).code : String(c[k] ?? '') }));
+    ['price', 'ship', 'tax', 'fees', 'qty', 'date', 'platform'].forEach(k => { if (String((old.buy || {})[k] ?? '') !== String(c.buy[k] ?? '')) changes.push({ f: 'Purchase ' + k, from: String((old.buy || {})[k] ?? ''), to: String(c.buy[k]) }); });
+    if (changes.length) await logTxn({ cardId: c.id, type: 'edit', date: today(), changes });
+  }
+  onChange('cards');
+  closeModal(false);
+  toast(old ? 'Saved' : `Added ${c.code}`);
+  if (!old) location.hash = '#/card/' + c.id; else route();
+}
+
+/* ---------- sell / trade / grading / write-off ---------- */
+function openSell(id) {
+  const c = cardById(id); const uc = unitCost(c);
+  openModal(`<form data-form="sell" data-id="${id}">${mhead('Mark as sold')}
+  <p class="muted" style="margin:0">${esc(c.code)} · ${esc(cardFull(c))} · cost ${money(uc)} each</p>
+  <div class="fgrid">
+    ${field('Quantity sold', inp('qty', 1, `inputmode="numeric" ${c.qty > 1 ? '' : 'readonly'}`))}
+    ${field('Sale date', `<input type="date" name="date" value="${today()}">`)}
+    ${field('Sale price (total)', money_inp('price', c.value || '', 'required autofocus'))}
+    ${field('Platform sold on', inp('platform', 'eBay', 'list="dl-platforms"'))}
+    ${field('Shipping cost (you paid)', money_inp('ship', ''))}
+    ${field('Platform fees', money_inp('fees', '', 'id="fee-in"'))}
+    ${field('Tracking number', inp('tracking', ''), 'wide')}
+    ${field('Listing link', inp('listing', c.listingUrl || '', 'type="url"'), 'wide')}
+    ${field('Sale receipt (optional)', `<input type="file" name="receipt" accept="image/*,application/pdf">`, 'wide')}
+  </div>
+  <div class="calc" id="sell-calc"></div><small class="muted" id="fee-note"></small>
+  ${platformList()}${mfoot('Mark as sold')}</form>`, { narrow: true });
+  const f = $('#modal-root form'); let feeTouched = false;
+  $('#fee-in').addEventListener('input', () => { feeTouched = true; });
+  const upd = () => {
+    const fd = new FormData(f); const q = Math.min(Math.max(1, parseInt(fd.get('qty'), 10) || 1), c.qty || 1);
+    const gross = num(fd.get('price')); const plat = String(fd.get('platform') || '');
+    if (!feeTouched) { const fee = feeFor(plat, gross); $('#fee-in').value = fee ? fee.toFixed(2) : ''; }
+    const fs = S.settings.fees[plat]; $('#fee-note').textContent = fs ? `Fees auto-filled at ${fs.pct}% + ${money(fs.flat)} for ${plat}. Change them in Settings.` : 'No fee rule for this platform. Enter fees if any.';
+    const net = gross - num(fd.get('ship')) - num($('#fee-in').value); const cost = uc * q;
+    $('#sell-calc').innerHTML = `<div><span>Net</span><b>${money(net)}</b></div><div><span>Cost</span><b>${money(cost)}</b></div><div><span>Profit</span><b class="${cls(net - cost)}">${money(net - cost, 1)}</b></div><div><span>ROI</span><b class="${cls(net - cost)}">${pct(cost ? (net - cost) / cost : null)}</b></div>`;
+  };
+  f.addEventListener('input', upd); upd();
+}
+async function submitSell(f) {
+  const c = cardById(f.dataset.id); const fd = new FormData(f);
+  const q = Math.min(Math.max(1, parseInt(fd.get('qty'), 10) || 1), c.qty || 1);
+  const gross = num(fd.get('price')), ship = num(fd.get('ship')), fees = num(fd.get('fees'));
+  const cost = r2(unitCost(c) * q), net = r2(gross - ship - fees);
+  const t = await logTxn({ cardId: c.id, type: 'sell', date: fd.get('date') || today(), qty: q, amount: gross, shipping: ship, fees, net, cost, profit: r2(net - cost), platform: String(fd.get('platform') || '').trim(), tracking: String(fd.get('tracking') || '').trim() });
+  c.qty = (c.qty || 0) - q; if (c.qty <= 0) { c.qty = 0; c.status = 'sold'; c.soldAt = t.date; }
+  if (fd.get('listing')) c.listingUrl = String(fd.get('listing')).trim();
+  await save('cards', c, { quiet: true });
+  const file = fd.get('receipt');
+  if (file && file.size) await saveReceipt(file, { date: t.date, amount: gross, note: 'Sale · ' + cardName(c), cardIds: [c.id], txnId: t.id });
+  onChange('txns'); closeModal(); toast(`Sold · ${money(t.profit, 1)} profit`);
+}
+function openSimple(kind, id) {
+  const c = cardById(id); const uc = unitCost(c);
+  const F2 = {
+    trade: ['Trade away', `${field('Date', `<input type="date" name="date" value="${today()}">`)}${field('Trade value received (total)', money_inp('value', c.value || '', 'required autofocus'))}${field('Quantity', inp('qty', 1, 'inputmode="numeric"'))}${field('Traded with / notes', inp('note', ''), 'wide')}<label class="chk wide"><input type="checkbox" name="addNew" checked> Add the card I got back</label>`, 'Log trade'],
+    writeoff: ['Write off', `${field('Date', `<input type="date" name="date" value="${today()}">`)}${field('Quantity', inp('qty', c.qty || 1, 'inputmode="numeric"'))}${field('Reason', inp('note', '', 'placeholder="Lost, damaged in shipping…" autofocus'), 'wide')}`, 'Write off'],
+    gradeOut: ['Send to grading', `${field('Date sent', `<input type="date" name="date" value="${today()}">`)}${field('Grading company', `<select name="co">${opts(GRADERS, c.gradeCo || 'PSA')}</select>`)}${field('Grading fee + shipping', money_inp('fee', '', 'autofocus'))}${field('Submission # / notes', inp('note', ''), 'wide')}`, 'Send'],
+    gradeIn: ['Back from grading', `${field('Date returned', `<input type="date" name="date" value="${today()}">`)}${field('Grading company', `<select name="co">${opts(GRADERS, c.gradeCo || 'PSA')}</select>`)}${field('Grade', inp('grade', '', 'required autofocus inputmode="decimal"'))}${field('New value per card', money_inp('value', c.value))}${field('Extra costs (return shipping)', money_inp('fee', ''))}`, 'Save grade'],
+  }[kind];
+  openModal(`<form data-form="simple" data-kind="${kind}" data-id="${id}">${mhead(F2[0])}<p class="muted" style="margin:0">${esc(c.code)} · ${esc(cardFull(c))} · cost ${money(uc)} each</p><div class="fgrid">${F2[1]}</div>${mfoot(F2[2])}</form>`, { narrow: true });
+}
+async function submitSimple(f) {
+  const c = cardById(f.dataset.id); const fd = new FormData(f); const kind = f.dataset.kind; const date = fd.get('date') || today();
+  const q = Math.min(Math.max(1, parseInt(fd.get('qty'), 10) || 1), c.qty || 1);
+  if (kind === 'trade' || kind === 'writeoff') {
+    const cost = r2(unitCost(c) * q); const val = kind === 'trade' ? num(fd.get('value')) : 0;
+    await logTxn({ cardId: c.id, type: kind, date, qty: q, amount: val, net: val, cost, profit: r2(val - cost), platform: kind === 'trade' ? 'Trade' : '', note: String(fd.get('note') || '') });
+    c.qty -= q; if (c.qty <= 0) { c.qty = 0; c.status = kind === 'trade' ? 'sold' : 'written_off'; c.soldAt = date; }
+    await save('cards', c, { quiet: true }); onChange('txns');
+    closeModal(false);
+    if (kind === 'trade' && fd.get('addNew') === 'on') { toast('Trade logged. Now add the card you received.'); openCardForm(null, { buy: { date, platform: 'Trade', qty: 1, price: val }, value: val }); }
+    else { route(); toast(kind === 'trade' ? 'Trade logged' : 'Written off'); }
+    return;
+  }
+  if (kind === 'gradeOut') {
+    const fee = num(fd.get('fee')); c.extraCost = r2(num(c.extraCost) + fee); c.status = 'grading'; c.gradeCo = fd.get('co');
+    await logTxn({ cardId: c.id, type: 'grading_out', date, amount: fee, platform: fd.get('co'), note: String(fd.get('note') || '') });
+  } else {
+    const fee = num(fd.get('fee')); c.extraCost = r2(num(c.extraCost) + fee);
+    c.graded = true; c.gradeCo = fd.get('co'); c.grade = String(fd.get('grade')).trim(); c.condition = ''; c.status = 'in_stock';
+    if (fd.get('value') !== '' && num(fd.get('value')) !== num(c.value)) { c.value = num(fd.get('value')); c.priceHistory = [...(c.priceHistory || []), { date, value: c.value }]; c.priceUpdated = date; }
+    await logTxn({ cardId: c.id, type: 'grading_in', date, amount: fee, platform: c.gradeCo, note: `${c.gradeCo} ${c.grade}` });
+  }
+  await save('cards', c, { quiet: true }); onChange('cards'); closeModal(); toast('Saved');
+}
+async function updatePrice(id, value) {
+  const c = cardById(id); const v = num(value); if (!String(value).trim()) return;
+  const from = num(c.value); c.value = v; c.priceUpdated = today();
+  c.priceHistory = [...(c.priceHistory || []), { date: today(), value: v }];
+  await save('cards', c, { quiet: true });
+  await logTxn({ cardId: id, type: 'price', date: today(), amount: v, from });
+  onChange('cards');
+}
+
+/* ---------- pickups ---------- */
+function openPickupForm() {
+  const row = () => `<tr><td><input name="player" placeholder="Player" list="dl-pl"></td><td><input name="year" placeholder="Year" inputmode="numeric" style="width:70px"></td><td><input name="brand" placeholder="Brand" list="dl-br"></td><td><input name="set" placeholder="Set" list="dl-set"></td><td><input name="number" placeholder="#" style="width:64px"></td><td><input name="parallel" placeholder="Parallel"></td><td><select name="sport">${opts(SPORTS, '', '—')}</select></td><td><input name="est" placeholder="Est. value" inputmode="decimal" style="width:90px"></td></tr>`;
+  const all = S.cards.filter(live);
+  openModal(`<form data-form="pickup">${mhead('Log a pickup')}
+  <div class="fgrid">
+    ${field('Pickup date', `<input type="date" name="date" value="${today()}">`)}
+    ${field('Location', inp('location', '', 'required autofocus placeholder="Round Rock card show" list="dl-loc"'))}
+    ${field('Type', inp('platform', 'Card show', 'list="dl-platforms"'))}
+    ${field('Bought from', inp('seller', '', 'placeholder="Seller name"'))}
+    ${field('Total paid', money_inp('total', '', 'required'))}
+    ${field('Split cost by', `<select name="split"><option value="value">Estimated value</option><option value="equal">Equal split</option></select>`)}
+    ${field('Notes', inp('notes', ''), 'wide')}
+    ${field('Receipt (optional)', `<input type="file" name="receipt" accept="image/*,application/pdf">`)}
+    ${field('Photo of the pile (optional)', `<input type="file" name="photo" accept="image/*">`)}
+  </div>
+  <fieldset><legend>Cards in this pickup</legend>
+    <div class="tablewrap"><table class="t" id="pk-rows"><thead><tr><th>Player</th><th>Year</th><th>Brand</th><th>Set</th><th>#</th><th>Parallel</th><th>Sport</th><th>Est. value</th></tr></thead><tbody>${row()}${row()}${row()}</tbody></table></div>
+    <div class="row"><button class="btn sm" type="button" data-act="pkRow">+ Add row</button><small class="muted">Empty rows are skipped. You can add photos and details to each card later.</small></div>
+  </fieldset>
+  ${platformList()}${dl('dl-pl', all.map(x => x.player))}${dl('dl-br', ['Panini', 'Topps', 'Upper Deck', 'Bowman', ...all.map(x => x.brand)])}${dl('dl-set', all.map(x => x.set))}${dl('dl-loc', S.pickups.map(p => p.location))}
+  ${mfoot('Save pickup')}</form>`);
+  A.pkRow = () => { $('#pk-rows tbody').insertAdjacentHTML('beforeend', row()); };
+}
+async function submitPickup(f) {
+  const fd = new FormData(f);
+  const rows = $$('#pk-rows tbody tr', f).map(tr => Object.fromEntries($$('input,select', tr).map(i => [i.name, i.value.trim()]))).filter(r => r.player);
+  if (!rows.length) return toast('Add at least one card with a player name');
+  const total = num(fd.get('total')); const split = fd.get('split');
+  const p = { id: 'p_' + uid(), date: fd.get('date') || today(), location: String(fd.get('location')).trim(), platform: String(fd.get('platform') || '').trim(), seller: String(fd.get('seller') || '').trim(), total, notes: String(fd.get('notes') || ''), createdAt: nowISO() };
+  const photo = fd.get('photo'); if (photo && photo.size) p.photo = await fileSave(await compressImage(photo), photo.name);
+  await save('pickups', p, { quiet: true });
+  const alloc = allocate(total, rows.map(r => num(r.est)), split);
+  const ids = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const c = { id: 'c_' + uid(), code: nextCode(), createdAt: nowISO(), player: r.player, year: r.year, brand: r.brand, set: r.set, number: r.number, parallel: r.parallel, sport: r.sport, status: 'in_stock', qty: 1, value: num(r.est), priceUpdated: r.est ? today() : '', priceHistory: r.est ? [{ date: today(), value: num(r.est) }] : [],
+      buy: { date: p.date, platform: p.platform || 'Card show', qty: 1, price: alloc[i], ship: 0, tax: 0, fees: 0, pickupId: p.id } };
+    await save('cards', c, { quiet: true }); ids.push(c.id);
+    await logTxn({ cardId: c.id, type: 'buy', date: p.date, qty: 1, amount: alloc[i], platform: c.buy.platform, note: 'Pickup: ' + p.location });
+  }
+  const rec = fd.get('receipt'); if (rec && rec.size) await saveReceipt(rec, { date: p.date, amount: total, note: 'Pickup · ' + p.location, cardIds: ids, pickupId: p.id });
+  onChange('pickups'); closeModal(false); location.hash = '#/pickup/' + p.id; toast(`Pickup saved · ${ids.length} cards added`);
+}
+function allocate(total, weights, mode) {
+  const n = weights.length; const sum = weights.reduce((a, b) => a + b, 0);
+  const raw = weights.map(w => mode === 'value' && sum > 0 ? total * w / sum : total / n);
+  const out = raw.map(r2); const diff = r2(total - out.reduce((a, b) => a + b, 0)); out[0] = r2(out[0] + diff); // pennies land on the first card
+  return out;
+}
+async function resplitPickup(pid, mode) {
+  const p = pickupById(pid); const cards = S.cards.filter(c => live(c) && c.buy && c.buy.pickupId === pid);
+  if (!cards.length) return;
+  const alloc = allocate(num(p.total), cards.map(c => num(c.value)), mode);
+  for (let i = 0; i < cards.length; i++) {
+    const c = cards[i]; const prevUnit = unitCost(c); c.buy.price = alloc[i]; await save('cards', c, { quiet: true });
+    // keep sold profit consistent with the new cost
+    for (const t of S.txns.filter(t => t.cardId === c.id && ['sell', 'trade', 'writeoff'].includes(t.type))) { t.cost = r2(unitCost(c) * (t.qty || 1)); t.profit = r2(num(t.net) - t.cost); await save('txns', t, { quiet: true }); }
+    void prevUnit;
+  }
+  onChange('pickups'); toast('Cost re-split across ' + cards.length + ' cards');
+}
+function openPickupEdit(pid) {
+  const p = pickupById(pid);
+  openModal(`<form data-form="pickupEdit" data-id="${pid}">${mhead('Edit pickup')}<div class="fgrid">
+    ${field('Date', `<input type="date" name="date" value="${esc(p.date)}">`)}${field('Location', inp('location', p.location, 'required'))}${field('Type', inp('platform', p.platform, 'list="dl-platforms"'))}${field('Bought from', inp('seller', p.seller))}${field('Total paid', money_inp('total', p.total))}${field('Notes', inp('notes', p.notes), 'wide')}
+  </div><small class="muted">Changed the total? Save, then use "Re-split cost" on the pickup page.</small>${platformList()}${mfoot('Save')}</form>`, { narrow: true });
+}
+async function submitPickupEdit(f) {
+  const p = pickupById(f.dataset.id); const fd = new FormData(f);
+  Object.assign(p, { date: fd.get('date'), location: String(fd.get('location')).trim(), platform: String(fd.get('platform') || ''), seller: String(fd.get('seller') || ''), total: num(fd.get('total')), notes: String(fd.get('notes') || '') });
+  await save('pickups', p); closeModal(); toast('Pickup saved');
+}
+
+/* ---------- receipts ---------- */
+async function saveReceipt(file, meta) {
+  const blob = await compressImage(file, 2200, 0.85);
+  const fileId = await fileSave(blob, file.name);
+  return save('receipts', Object.assign({ id: 'r_' + uid(), fileId, fileType: blob.type || file.type, name: file.name, createdAt: nowISO(), cardIds: [] }, meta), { quiet: true });
+}
+function cardPicker(selected = []) {
+  const cards = S.cards.filter(live).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  return `<input type="search" placeholder="Filter cards…" data-act-input="pickFilter" aria-label="Filter cards"><div class="pick-list">${cards.map(c => `<label data-hay="${esc((c.code + ' ' + cardFull(c)).toLowerCase())}"><input type="checkbox" name="cardIds" value="${c.id}" ${selected.includes(c.id) ? 'checked' : ''}> <span class="code">${esc(c.code)}</span> ${esc(cardName(c))} <small class="muted">${esc(cardSet(c))}</small></label>`).join('') || '<p class="muted">No cards yet.</p>'}</div>`;
+}
+function openReceiptForm(cardId, rid) {
+  const r = rid ? S.receipts.find(x => x.id === rid) : null;
+  const sel = r ? r.cardIds || [] : cardId ? [cardId] : [];
+  openModal(`<form data-form="receipt" data-id="${rid || ''}">${mhead(r ? 'Edit receipt' : 'Add receipts')}
+  ${r ? '' : `<div class="fgrid">${field('Take a photo', `<input type="file" name="snap" accept="image/*" capture="environment">`)}${field('Or choose files (photos or PDFs)', `<input type="file" name="files" accept="image/*,application/pdf" multiple>`)}</div>`}
+  <div class="fgrid">
+    ${field('Receipt date', `<input type="date" name="date" value="${esc(r ? r.date : today())}">`)}
+    ${field('Amount', money_inp('amount', r ? r.amount : ''))}
+    ${field('Pickup', `<select name="pickupId">${opts(S.pickups.filter(p => !p.purged).map(p => [p.id, fmtDate(p.date) + ' · ' + (p.location || 'Pickup')]), r ? r.pickupId : '', 'None')}</select>`)}
+    ${field('Note', inp('note', r ? r.note : '', 'placeholder="Seller, store, order #…"'), 'wide')}
+  </div>
+  <fieldset><legend>Linked cards</legend>${cardPicker(sel)}<small class="muted">One receipt can cover many cards, like a lot or a pickup.</small></fieldset>
+  ${mfoot(r ? 'Save' : 'Save receipts')}</form>`);
+}
+async function submitReceipt(f) {
+  const fd = new FormData(f); const rid = f.dataset.id;
+  const meta = { date: fd.get('date') || today(), amount: num(fd.get('amount')), note: String(fd.get('note') || '').trim(), pickupId: fd.get('pickupId') || '', cardIds: fd.getAll('cardIds') };
+  if (rid) { const r = S.receipts.find(x => x.id === rid); Object.assign(r, meta); await save('receipts', r); closeModal(); return toast('Receipt saved'); }
+  const files = [...fd.getAll('files'), fd.get('snap')].filter(x => x && x.size);
+  if (!files.length) return toast('Choose a photo or file first');
+  for (const file of files) await saveReceipt(file, Object.assign({}, meta));
+  onChange('receipts'); closeModal(); toast(files.length > 1 ? `${files.length} receipts saved` : 'Receipt saved');
+}
+async function openViewer(fileId, title, extra = '') {
+  const f = await fileGet(fileId); if (!f) return toast('File missing on this device. Sync to download it.');
+  const u = await fileURL(fileId); const pdf = f.type === 'application/pdf';
+  const el = document.createElement('div'); el.className = 'viewer'; el.setAttribute('role', 'dialog');
+  el.innerHTML = `<div class="vbar"><b>${esc(title)}</b>${pdf ? `<a class="btn sm" href="${u}" target="_blank" rel="noopener">Open full PDF</a>` : '<button class="btn sm" type="button" data-v="zoom">Zoom</button>'}${extra}<button class="btn sm" type="button" data-v="close">Close</button></div>
+  <div class="vbody">${pdf ? `<iframe src="${u}" title="${esc(title)}"></iframe>` : `<img src="${u}" alt="${esc(title)}">`}</div>`;
+  el.addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; if (b.dataset.v === 'close') el.remove(); if (b.dataset.v === 'zoom') el.querySelector('.vbody').classList.toggle('zoom'); });
+  document.body.appendChild(el);
+}
+
+/* ---------- expenses ---------- */
+function openExpenseForm() {
+  openModal(`<form data-form="expense">${mhead('Add supply expense')}<div class="fgrid">
+    ${field('Date', `<input type="date" name="date" value="${today()}">`)}${field('Amount', money_inp('amount', '', 'required autofocus'))}
+    ${field('Category', `<select name="cat">${opts(EXPENSE_CATS)}</select>`)}${field('Note', inp('note', '', 'placeholder="200 top loaders from Amazon"'), 'wide')}
+    ${field('Receipt (optional)', `<input type="file" name="receipt" accept="image/*,application/pdf">`, 'wide')}
+  </div>${mfoot('Save expense')}</form>`, { narrow: true });
+}
+async function submitExpense(f) {
+  const fd = new FormData(f); const x = { id: 'x_' + uid(), date: fd.get('date') || today(), amount: num(fd.get('amount')), cat: fd.get('cat'), note: String(fd.get('note') || ''), createdAt: nowISO() };
+  const file = fd.get('receipt'); if (file && file.size) { const r = await saveReceipt(file, { date: x.date, amount: x.amount, note: 'Expense · ' + (x.note || x.cat), expenseId: x.id }); x.fileId = r.fileId; x.receiptId = r.id; }
+  await save('expenses', x); closeModal(); toast('Expense saved');
+}
+
+/* ---------- boxes ---------- */
+function openBoxForm(id) {
+  const b = id ? locById(id) : null;
+  openModal(`<form data-form="box" data-id="${id || ''}">${mhead(b ? 'Edit ' + b.code : 'New storage box')}<div class="fgrid">
+  ${field('Box name', inp('name', b ? b.name : '', 'required autofocus placeholder="Basketball raw · shelf 2"'), 'wide')}${field('Notes', inp('notes', b ? b.notes : ''), 'wide')}</div>${mfoot('Save box')}</form>`, { narrow: true });
+}
+async function submitBox(f) {
+  const fd = new FormData(f); const id = f.dataset.id;
+  const b = id ? locById(id) : { id: 'l_' + uid(), code: nextBoxCode(), createdAt: nowISO() };
+  b.name = String(fd.get('name')).trim(); b.notes = String(fd.get('notes') || '');
+  await save('locations', b); closeModal(false); location.hash = '#/box/' + b.id;
+}
+
+/* ---------- price check queue ---------- */
+let PQ = { list: [], i: 0 };
+function openPriceCheck() {
+  PQ.list = filterCards(Object.assign({}, F, { status: 'active', sort: 'stale' })).map(c => c.id); PQ.i = 0;
+  if (!PQ.list.length) return toast('No active cards to price');
+  showPQ();
+}
+function showPQ() {
+  const c = cardById(PQ.list[PQ.i]); if (!c) return closeModal();
+  openModal(`<form data-form="pq">${mhead(`Price check ${PQ.i + 1} of ${PQ.list.length}`)}
+  <div class="row" style="align-items:flex-start;flex-wrap:nowrap"><div style="width:96px;flex:none">${art(c)}</div><div style="min-width:0"><span class="code">${esc(c.code)}</span><h3 style="font-size:1.3rem">${esc(cardName(c))}</h3><div class="muted">${esc(cardSet(c))} ${esc(c.parallel || '')} · ${esc(gradeText(c))}</div>
+  <div class="muted">Now ${money(c.value)} · last priced ${c.priceUpdated ? fmtDate(c.priceUpdated) : 'never'} · cost ${money(unitCost(c))}</div></div></div>
+  <a class="btn" href="${esc(compsURL(c))}" target="_blank" rel="noopener">Look up eBay sold comps ↗</a>
+  ${field('New value per card', money_inp('value', '', 'autofocus'))}
+  <div class="sheet-foot"><button class="btn" type="button" data-act="close">Done</button><button class="btn" type="button" data-act="pqSkip">Skip</button><button class="btn pri" type="submit">Save &amp; next</button></div></form>`, { narrow: true });
+}
+async function submitPQ(f) {
+  const v = new FormData(f).get('value'); if (String(v).trim()) await updatePrice(PQ.list[PQ.i], v);
+  PQ.i++; if (PQ.i >= PQ.list.length) { closeModal(); toast('Price check finished'); } else showPQ();
+}
+
+/* ---------- dispatch ---------- */
+const A = {
+  close: () => closeModal(),
+  go: el => { location.hash = el.dataset.to; },
+  menu: () => $('#shell').classList.toggle('menu'),
+  theme: () => { const cur = document.documentElement.dataset.theme || 'dark'; const nx = cur === 'light' ? 'dark' : 'light'; try { localStorage.setItem('dugout.theme', nx); } catch (e) {} applyTheme(); },
+  syncNow: () => syncNow(true),
+  addCard: () => openCardForm(),
+  editCard: el => openCardForm(el.dataset.id),
+  sell: el => openSell(el.dataset.id),
+  trade: el => openSimple('trade', el.dataset.id), writeoff: el => openSimple('writeoff', el.dataset.id),
+  gradeOut: el => openSimple('gradeOut', el.dataset.id), gradeIn: el => openSimple('gradeIn', el.dataset.id),
+  listed: async el => { const c = cardById(el.dataset.id); c.status = c.status === 'listed' ? 'in_stock' : 'listed'; await save('cards', c); toast(c.status === 'listed' ? 'Marked listed' : 'Marked in stock'); },
+  trashCard: async el => { const c = cardById(el.dataset.id); c.deletedAt = nowISO(); await save('cards', c, { quiet: true }); onChange('cards'); location.hash = '#/inv'; toast(`${c.code} moved to trash`, { label: 'Undo', run: async () => { delete c.deletedAt; await save('cards', c); } }); },
+  restoreCard: async el => { const c = cardById(el.dataset.id); delete c.deletedAt; await save('cards', c); toast('Restored'); },
+  purgeCard: async el => { const c = cardById(el.dataset.id); if (el.dataset.confirm !== '1') { el.dataset.confirm = '1'; el.textContent = 'Tap again to delete forever'; return; } await purgeCard(c); onChange('cards'); toast('Deleted forever'); },
+  emptyTrash: async el => { if (el.dataset.confirm !== '1') { el.dataset.confirm = '1'; el.textContent = 'Tap again to empty trash'; return; } for (const c of S.cards.filter(c => c.deletedAt && !c.purged)) await purgeCard(c); onChange('cards'); toast('Trash emptied'); },
+  viewPhoto: el => { const c = cardById(el.dataset.id); const id = c[el.dataset.side]; if (id) openViewer(id, cardName(c) + ' · ' + el.dataset.side); },
+  newPickup: () => openPickupForm(),
+  editPickup: el => openPickupEdit(el.dataset.id),
+  resplit: el => resplitPickup(el.dataset.id, el.dataset.mode),
+  addReceipt: el => openReceiptForm(el.dataset.card),
+  editReceipt: el => { document.querySelector('.viewer')?.remove(); openReceiptForm(null, el.dataset.id); },
+  viewReceipt: el => { const r = S.receipts.find(x => x.id === el.dataset.id); openViewer(r.fileId, `${fmtDate(r.date)} · ${r.amount ? money(r.amount) : ''} ${r.note || ''}`, `<button class="btn sm" type="button" data-act="editReceipt" data-id="${r.id}">Edit links</button><button class="btn sm" type="button" data-act="delReceipt" data-id="${r.id}">Delete</button>`); },
+  delReceipt: async el => { if (el.dataset.confirm !== '1') { el.dataset.confirm = '1'; el.textContent = 'Tap again to delete'; return; } const r = S.receipts.find(x => x.id === el.dataset.id); document.querySelector('.viewer')?.remove(); await fileDel(r.fileId); r.purged = true; r.cardIds = []; await save('receipts', r); toast('Receipt deleted'); },
+  addExpense: () => openExpenseForm(),
+  delExpense: async el => { const x = S.expenses.find(e => e.id === el.dataset.id); x.purged = true; await save('expenses', x); toast('Expense removed', { label: 'Undo', run: async () => { delete x.purged; await save('expenses', x); } }); },
+  addBox: () => openBoxForm(), editBox: el => openBoxForm(el.dataset.id),
+  view: async el => { S.settings.view = el.dataset.v; await saveSettings(); },
+  saveFilter: () => openModal(`<form data-form="filterName">${mhead('Save filter')}${field('Name', inp('name', '', 'required autofocus placeholder="Basketball rookies under $50"'))}${mfoot('Save')}</form>`, { narrow: true }),
+  delFilter: async () => { const i = $('#f-saved').value; if (i === '') return toast('Pick a saved filter first'); S.settings.savedFilters.splice(+i, 1); await saveSettings(); },
+  clearFilter: () => { Object.assign(F, { q: '', sport: '', status: 'active', brand: '', year: '', player: '', min: '', max: '', sort: 'new', box: '' }); route(); },
+  priceCheck: () => openPriceCheck(),
+  pqSkip: () => { PQ.i++; if (PQ.i >= PQ.list.length) closeModal(); else showPQ(); },
+  labelOne: el => { LB.sel = new Set([el.dataset.id]); LB.tab = 'cards'; location.hash = '#/labels'; },
+  loadDemo: () => loadDemo(),
+};
+const FORMS = {
+  card: submitCard, sell: submitSell, simple: submitSimple, pickup: submitPickup, pickupEdit: submitPickupEdit, receipt: submitReceipt, expense: submitExpense, box: submitBox, pq: submitPQ,
+  price: async f => { await updatePrice(f.dataset.id, new FormData(f).get('value')); toast('Price updated'); },
+  filterName: async f => { S.settings.savedFilters.push({ name: String(new FormData(f).get('name')).trim(), f: Object.assign({}, F) }); await saveSettings(); closeModal(); toast('Filter saved'); },
+};
+async function purgeCard(c) {
+  for (const k of ['front', 'back']) if (c[k]) await fileDel(c[k]);
+  const keep = { id: c.id, code: c.code, purged: true, createdAt: c.createdAt };
+  Object.keys(c).forEach(k => delete c[k]); Object.assign(c, keep);
+  await save('cards', c, { quiet: true });
+  for (const t of S.txns.filter(t => t.cardId === c.id)) { t.purged = true; await save('txns', t, { quiet: true }); }
+}
+
+function bindEvents() {
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-act]'); if (!el) return;
+    const fn = A[el.dataset.act]; if (!fn) return;
+    if (el.tagName !== 'A' || el.dataset.act === 'close') { if (el.tagName === 'A' && el.dataset.act === 'close') { $('#modal-root').innerHTML = ''; return; } e.preventDefault(); }
+    fn(el, e);
+  });
+  document.addEventListener('submit', async e => {
+    const f = e.target.closest('[data-form]'); if (!f) return; e.preventDefault();
+    const btn = f.querySelector('[type=submit]'); if (btn) btn.disabled = true;
+    try { await FORMS[f.dataset.form](f, e); } catch (err) { console.error(err); toast('Something went wrong: ' + err.message); } finally { if (btn) btn.disabled = false; }
+  });
+  let tq;
+  const onFilter = e => {
+    const t = e.target;
+    if (t.dataset && t.dataset.actInput === 'pickFilter') { const q = t.value.toLowerCase(); $$('.pick-list label', t.closest('form')).forEach(l => { l.hidden = q && !l.dataset.hay.includes(q); }); return; }
+    if (!t.id || !t.id.startsWith('f-')) return;
+    if (t.id === 'f-saved') { const s = S.settings.savedFilters[+t.value]; if (s) { Object.assign(F, s.f); route(); } return; }
+    F[t.id.slice(2)] = t.value;
+    clearTimeout(tq); tq = setTimeout(updateInv, t.type === 'search' || t.tagName === 'INPUT' ? 180 : 0);
+  };
+  document.addEventListener('input', e => { if (e.target.tagName !== 'SELECT') onFilter(e); });
+  document.addEventListener('change', e => { if (e.target.tagName === 'SELECT') onFilter(e); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { const v = document.querySelector('.viewer'); if (v) v.remove(); else if ($('#modal-root').children.length) closeModal(false); } });
+}
+
+/* Dugout screens: pickups, sales, receipts, reports, storage, labels, scan, settings, trash */
+
+/* ---------- pickups ---------- */
+function pickupStats(p) {
+  const cards = S.cards.filter(c => live(c) && c.buy && c.buy.pickupId === p.id);
+  const ids = new Set(cards.map(c => c.id));
+  const tx = profitTxns().filter(t => ids.has(t.cardId));
+  return { cards, sold: tx.reduce((a, t) => a + (t.qty || 1), 0), profit: tx.reduce((a, t) => a + num(t.profit), 0), revenue: tx.reduce((a, t) => a + num(t.net), 0), value: cards.reduce((a, c) => a + num(c.value) * inHand(c), 0) };
+}
+V.pickups = () => {
+  const list = S.pickups.filter(p => !p.purged).sort((a, b) => b.date.localeCompare(a.date));
+  return `<div class="page-head"><h1>Pickups</h1><div class="actions"><button class="btn pri" data-act="newPickup" type="button">+ Log pickup</button></div></div>
+  ${list.length ? `<div class="tablewrap"><table class="t"><thead><tr><th>Date</th><th>Location</th><th>From</th><th class="r">Cards</th><th class="r">Paid</th><th class="r">Sold</th><th class="r">Realized</th><th class="r">Still holding</th><th class="r">Return so far</th></tr></thead><tbody>
+  ${list.map(p => { const s = pickupStats(p); const back = s.revenue + s.value - num(p.total);
+    return `<tr class="link" data-act="go" data-to="#/pickup/${p.id}"><td>${fmtDate(p.date)}</td><td><b>${esc(p.location)}</b></td><td>${esc(p.seller || '')}</td><td class="r num">${s.cards.length}</td><td class="r num">${money(p.total)}</td><td class="r num">${s.sold}</td><td class="r num ${cls(s.profit)}">${money(s.profit, 1)}</td><td class="r num">${money(s.value)}</td><td class="r num ${cls(back)}">${money(back, 1)}</td></tr>`; }).join('')}
+  </tbody></table></div><small class="muted">Return so far = money back from sales + value of cards you still hold − what you paid.</small>` : `<div class="empty">No pickups yet. Log one when you buy a stack at a show, a shop or a meetup and Dugout splits the cost across the cards.</div>`}`;
+};
+V.pickup = id => {
+  const p = pickupById(id); if (!p) return notFound('Pickup not found.');
+  const s = pickupStats(p); const back = s.revenue + s.value - num(p.total);
+  const recs = S.receipts.filter(r => !r.purged && r.pickupId === p.id);
+  return `<div class="page-head"><div><span class="code">PICKUP</span><h1>${esc(p.location)}</h1><div class="muted">${fmtDate(p.date)}${p.seller ? ' · from ' + esc(p.seller) : ''}${p.platform ? ' · ' + esc(p.platform) : ''}</div></div>
+    <div class="actions"><button class="btn" data-act="editPickup" data-id="${p.id}" type="button">Edit</button><button class="btn" data-act="resplit" data-id="${p.id}" data-mode="value" type="button">Re-split cost by value</button><button class="btn" data-act="resplit" data-id="${p.id}" data-mode="equal" type="button">Re-split equally</button></div></div>
+  <section class="board">${tile('Total paid', money(p.total))}${tile('Cards', s.cards.length)}${tile('Sold so far', s.sold)}${tile('Realized profit', money(s.profit, 1), cls(s.profit))}${tile('Return so far', money(back, 1), cls(back))}</section>
+  ${p.notes ? `<p class="muted" style="margin:0">${esc(p.notes)}</p>` : ''}
+  ${p.photo ? `<div style="max-width:320px" data-act="pkPhoto" data-file="${esc(p.photo)}"><img data-file="${esc(p.photo)}" alt="Pickup photo" style="border-radius:10px;cursor:zoom-in"></div>` : ''}
+  <section class="panel"><h2>Cards from this pickup</h2>${s.cards.length ? invTable(s.cards) : '<div class="empty">No cards linked.</div>'}</section>
+  <section class="panel"><h2>Receipts <button class="btn sm" data-act="addReceipt" type="button" style="margin-left:auto">+ Add receipt</button></h2>${recs.length ? `<div class="rgrid">${recs.map(receiptTile).join('')}</div>` : '<div class="empty">No receipt for this pickup.</div>'}</section>`;
+};
+A.pkPhoto = el => openViewer(el.dataset.file, 'Pickup photo');
+
+/* ---------- sales ---------- */
+const SF = { year: '', platform: '' };
+V.sales = () => {
+  const all = profitTxns().filter(t => t.type !== 'writeoff');
+  const years = uniq(all.map(t => t.date.slice(0, 4))).reverse();
+  const list = all.filter(t => (!SF.year || t.date.startsWith(SF.year)) && (!SF.platform || t.platform === SF.platform)).sort((a, b) => b.date.localeCompare(a.date));
+  const sum = k => list.reduce((a, t) => a + num(t[k]), 0);
+  const days = list.map(t => { const c = cardById(t.cardId); return c && c.buy ? daysBetween(c.buy.date, t.date) : null; }).filter(x => x !== null);
+  return `<div class="page-head"><h1>Sales</h1><div class="actions">
+    <select data-act-change="sf-year" id="sf-year" aria-label="Year">${opts(years, SF.year, 'All years')}</select>
+    <select id="sf-platform" aria-label="Platform">${opts(uniq(all.map(t => t.platform)), SF.platform, 'All platforms')}</select>
+    <button class="btn" data-act="exportSales" type="button">Export CSV</button></div></div>
+  <section class="board">${tile('Sales', list.length)}${tile('Gross', money0(sum('amount')))}${tile('Fees + shipping', money0(sum('fees') + sum('shipping')))}${tile('Net profit', money0(sum('profit'), 1), cls(sum('profit')))}${tile('Avg days to sell', days.length ? Math.round(days.reduce((a, b) => a + b, 0) / days.length) : '—')}</section>
+  ${list.length ? `<div class="tablewrap"><table class="t"><thead><tr><th>Date</th><th>ID</th><th>Card</th><th>Platform</th><th class="r">Qty</th><th class="r">Sale</th><th class="r">Fees</th><th class="r">Ship</th><th class="r">Net</th><th class="r">Cost</th><th class="r">Profit</th><th class="r">ROI</th><th>Tracking</th></tr></thead><tbody>
+  ${list.map(t => { const c = cardById(t.cardId) || {}; return `<tr class="link" data-act="go" data-to="#/card/${c.id}"><td>${fmtDate(t.date)}</td><td class="code">${esc(c.code)}</td><td><b>${esc(cardName(c))}</b> <small class="muted">${esc(cardSet(c))}</small></td><td>${esc(t.platform)}</td><td class="r num">${t.qty || 1}</td><td class="r num">${money(t.amount)}</td><td class="r num">${money(t.fees)}</td><td class="r num">${money(t.shipping)}</td><td class="r num">${money(t.net)}</td><td class="r num">${money(t.cost)}</td><td class="r num ${cls(t.profit)}">${money(t.profit, 1)}</td><td class="r num ${cls(t.profit)}">${pct(t.cost ? t.profit / t.cost : null)}</td><td>${esc(t.tracking || '')}</td></tr>`; }).join('')}
+  </tbody><tfoot><tr><td colspan="5">Totals</td><td class="r num">${money(sum('amount'))}</td><td class="r num">${money(sum('fees'))}</td><td class="r num">${money(sum('shipping'))}</td><td class="r num">${money(sum('net'))}</td><td class="r num">${money(sum('cost'))}</td><td class="r num ${cls(sum('profit'))}">${money(sum('profit'), 1)}</td><td></td><td></td></tr></tfoot></table></div>` : '<div class="empty">No sales yet. Open a card and tap Mark as sold.</div>'}`;
+};
+document.addEventListener('change', e => { if (e.target.id === 'sf-year' || e.target.id === 'sf-platform') { SF[e.target.id.slice(3)] = e.target.value; route(); } if (e.target.id === 'rp-year') { RP.year = e.target.value; route(); } if (e.target.id === 'rc-year') { RC.year = e.target.value; route(); } });
+A.exportSales = () => {
+  const rows = [['Date', 'Card ID', 'Player', 'Card', 'Parallel', 'Grade', 'Type', 'Platform', 'Qty', 'Sale', 'Fees', 'Shipping', 'Net', 'Cost', 'Profit', 'Tracking']];
+  profitTxns().sort((a, b) => a.date.localeCompare(b.date)).forEach(t => { const c = cardById(t.cardId); rows.push([t.date, c.code, c.player, cardSet(c) + (c.number ? ' #' + c.number : ''), c.parallel, gradeText(c), t.type, t.platform, t.qty, t.amount, t.fees, t.shipping, t.net, t.cost, t.profit, t.tracking]); });
+  download(new Blob([csv(rows)], { type: 'text/csv' }), `dugout-sales-${today()}.csv`);
+};
+
+/* ---------- receipts ---------- */
+const RC = { q: '', year: '' };
+V.receipts = () => {
+  const all = S.receipts.filter(r => !r.purged);
+  const years = uniq(all.map(r => (r.date || '').slice(0, 4))).reverse();
+  return `<div class="page-head"><h1>Receipts</h1><div class="actions"><button class="btn pri" data-act="addReceipt" type="button">+ Add receipts</button></div></div>
+  <section class="panel"><div class="toolbar"><input type="search" id="rc-q" placeholder="Search note, amount, card, player…" value="${esc(RC.q)}" aria-label="Search receipts"><select id="rc-year" aria-label="Year">${opts(years, RC.year, 'All years')}</select></div>
+  <div class="row"><span class="muted">Tax export bundles every receipt for a year plus sales and expense spreadsheets into one zip.</span><span class="spacer"></span>
+  <select id="tax-year" aria-label="Tax year">${opts(uniq([...years, String(new Date().getFullYear())]).reverse(), String(new Date().getFullYear()))}</select><button class="btn" data-act="taxExport" type="button">Export for taxes</button></div></section>
+  <div id="rc-results"></div>`;
+};
+V.receipts.after = () => updateReceipts();
+function updateReceipts() {
+  const q = RC.q.trim().toLowerCase();
+  const list = S.receipts.filter(r => !r.purged && (!RC.year || (r.date || '').startsWith(RC.year))).filter(r => {
+    if (!q) return true;
+    const hay = [r.note, r.amount, r.date, r.name, ...(r.cardIds || []).map(id => { const c = cardById(id); return c ? c.code + ' ' + cardFull(c) : ''; }), (pickupById(r.pickupId) || {}).location].join(' ').toLowerCase();
+    return q.split(/\s+/).every(w => hay.includes(w));
+  }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const box = $('#rc-results'); if (!box) return;
+  box.innerHTML = list.length ? `<div class="rgrid">${list.map(receiptTile).join('')}</div>` : `<div class="empty">${S.receipts.some(r => !r.purged) ? 'No receipts match.' : 'No receipts yet. Snap one with your phone or upload photos and PDFs.'}</div>`;
+  hydrate(box);
+}
+document.addEventListener('input', e => { if (e.target.id === 'rc-q') { RC.q = e.target.value; updateReceipts(); } });
+A.taxExport = async () => {
+  if (!window.JSZip) return toast('Export tool did not load. Check your connection.');
+  const y = $('#tax-year').value; const zip = new JSZip();
+  const recs = S.receipts.filter(r => !r.purged && (r.date || '').startsWith(y));
+  const rows = [['Date', 'Amount', 'Note', 'Linked cards', 'Pickup', 'File']];
+  for (const r of recs) {
+    const f = await fileGet(r.fileId); const ext = r.fileType === 'application/pdf' ? 'pdf' : 'jpg';
+    const name = `receipts/${r.date}_${String(r.note || 'receipt').replace(/[^\w-]+/g, '_').slice(0, 40)}_${r.id.slice(-4)}.${ext}`;
+    if (f) zip.file(name, f.blob);
+    rows.push([r.date, r.amount, r.note, (r.cardIds || []).map(id => (cardById(id) || {}).code).join(' '), (pickupById(r.pickupId) || {}).location, f ? name : 'missing on this device']);
+  }
+  zip.file('receipts.csv', csv(rows));
+  const sales = [['Date', 'Card ID', 'Card', 'Type', 'Platform', 'Sale', 'Fees', 'Shipping', 'Net', 'Cost', 'Profit']];
+  profitTxns().filter(t => t.date.startsWith(y)).forEach(t => { const c = cardById(t.cardId); sales.push([t.date, c.code, cardFull(c), t.type, t.platform, t.amount, t.fees, t.shipping, t.net, t.cost, t.profit]); });
+  zip.file('sales.csv', csv(sales));
+  zip.file('expenses.csv', csv([['Date', 'Category', 'Amount', 'Note'], ...S.expenses.filter(x => !x.purged && x.date.startsWith(y)).map(x => [x.date, x.cat, x.amount, x.note])]));
+  const ts = taxSummary(y); zip.file('summary.csv', csv([['Line', 'Amount'], ...ts.lines.map(l => [l[0], r2(l[1])])]));
+  download(await zip.generateAsync({ type: 'blob' }), `dugout-taxes-${y}.zip`);
+  toast(`Exported ${recs.length} receipts for ${y}`);
+};
+
+/* ---------- reports ---------- */
+const RP = { year: String(new Date().getFullYear()) };
+function taxSummary(y) {
+  const tx = profitTxns().filter(t => t.date.startsWith(y));
+  const sales = tx.filter(t => t.type !== 'writeoff');
+  const gross = sales.reduce((a, t) => a + num(t.amount), 0), fees = sales.reduce((a, t) => a + num(t.fees), 0), ship = sales.reduce((a, t) => a + num(t.shipping), 0);
+  const cogs = sales.reduce((a, t) => a + num(t.cost), 0), wo = tx.filter(t => t.type === 'writeoff').reduce((a, t) => a + num(t.cost), 0);
+  const sup = S.expenses.filter(x => !x.purged && x.date.startsWith(y)).reduce((a, x) => a + num(x.amount), 0);
+  const bought = S.cards.filter(c => live(c) && c.buy && (c.buy.date || '').startsWith(y)).reduce((a, c) => a + num(c.buy.price) + num(c.buy.ship) + num(c.buy.tax) + num(c.buy.fees), 0);
+  const net = gross - fees - ship - cogs - wo - sup;
+  return { net, lines: [['Gross sales (incl. trade value)', gross], ['Platform fees', -fees], ['Shipping costs', -ship], ['Cost of cards sold', -cogs], ['Written-off cards', -wo], ['Supply expenses', -sup], ['Net profit', net], ['Cards purchased this year (at cost)', bought], ['Inventory on hand today (at cost)', totals().cost]] };
+}
+V.reports = () => {
+  const years = uniq([...profitTxns().map(t => t.date.slice(0, 4)), ...S.expenses.map(x => (x.date || '').slice(0, 4)), String(new Date().getFullYear())]).reverse();
+  const y = RP.year;
+  const months = [...Array(12)].map((_, i) => { const k = `${y}-${String(i + 1).padStart(2, '0')}`; const tx = profitTxns().filter(t => t.date.startsWith(k)); const sup = S.expenses.filter(x => !x.purged && x.date.startsWith(k)).reduce((a, x) => a + num(x.amount), 0);
+    const s = tx.filter(t => t.type !== 'writeoff'); return { k, label: new Date(k + '-15').toLocaleDateString('en-US', { month: 'short' }), n: s.length, gross: s.reduce((a, t) => a + num(t.amount), 0), costs: s.reduce((a, t) => a + num(t.fees) + num(t.shipping), 0), cogs: tx.reduce((a, t) => a + num(t.cost), 0), profit: tx.reduce((a, t) => a + num(t.profit), 0), sup }; });
+  const ts = taxSummary(y);
+  const exps = S.expenses.filter(x => !x.purged && x.date.startsWith(y)).sort((a, b) => b.date.localeCompare(a.date));
+  return `<div class="page-head"><h1>Reports</h1><div class="actions"><select id="rp-year" aria-label="Year">${opts(years, y)}</select></div></div>
+  <div class="cols">
+  <section class="panel"><h2>Monthly profit · ${esc(y)}</h2>${monthBars(months)}</section>
+  <section class="panel"><h2>Tax-year summary · ${esc(y)}</h2><div class="list">${ts.lines.map((l, i) => `<div class="li"><span class="grow">${i === 6 ? `<b>${l[0]}</b>` : esc(l[0])}</span><span class="num ${i === 6 ? cls(l[1]) : ''}">${i === 6 ? `<b>${money(l[1], 1)}</b>` : money(l[1])}</span></div>`).join('')}</div>
+  <small class="muted">For your records as a sole proprietor. Your tax preparer decides how these lines go on your return.</small></section>
+  </div>
+  <section class="panel"><h2>Monthly P&amp;L</h2><div class="tablewrap"><table class="t"><thead><tr><th>Month</th><th class="r">Sales</th><th class="r">Gross</th><th class="r">Fees + ship</th><th class="r">Cost of cards</th><th class="r">Card profit</th><th class="r">Supplies</th><th class="r">Net</th></tr></thead><tbody>
+  ${months.map(m => `<tr><td>${m.label}</td><td class="r num">${m.n}</td><td class="r num">${money(m.gross)}</td><td class="r num">${money(m.costs)}</td><td class="r num">${money(m.cogs)}</td><td class="r num ${cls(m.profit)}">${money(m.profit, 1)}</td><td class="r num">${money(m.sup)}</td><td class="r num ${cls(m.profit - m.sup)}">${money(m.profit - m.sup, 1)}</td></tr>`).join('')}
+  </tbody></table></div></section>
+  <section class="panel"><h2>Value over time</h2>${valueChart(S.snaps)}</section>
+  <section class="panel"><h2>Supply expenses · ${esc(y)} <button class="btn sm" data-act="addExpense" type="button" style="margin-left:auto">+ Add expense</button></h2>
+  ${exps.length ? `<div class="list">${exps.map(x => `<div class="li"><div class="grow"><b>${esc(x.note || x.cat)}</b><small>${fmtDate(x.date)} · ${esc(x.cat)}</small></div>${x.receiptId ? `<button class="btn sm ghost" data-act="viewReceipt" data-id="${x.receiptId}" type="button">Receipt</button>` : ''}<span class="num">${money(x.amount)}</span><button class="btn sm ghost" data-act="delExpense" data-id="${x.id}" type="button" aria-label="Remove expense">✕</button></div>`).join('')}</div>` : '<div class="empty">No supply expenses logged for this year.</div>'}</section>`;
+};
+function monthBars(months) {
+  const W = 640, H = 220, L = 54, R = 8, T = 12, B = 24;
+  const vals = months.map(m => m.profit - m.sup); const mx = Math.max(...vals, 0), mn = Math.min(...vals, 0);
+  if (mx === 0 && mn === 0) return '<div class="empty">No sales in this year yet.</div>';
+  const step = niceStep((mx - mn) / 4 || 1); const top = Math.ceil(mx / step) * step, bot = Math.floor(mn / step) * step;
+  const Y = v => T + (H - T - B) * (top - v) / Math.max(top - bot, 1); const bw = (W - L - R) / 12;
+  let g = ''; for (let v = bot; v <= top + 1e-6; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${money0(v)}</text>`;
+  const bars = vals.map((v, i) => { const y = Math.min(Y(v), Y(0)), h = Math.max(1, Math.abs(Y(v) - Y(0))); return `<rect x="${L + i * bw + bw * .18}" y="${y}" width="${bw * .64}" height="${h}" rx="3" fill="${v >= 0 ? 'var(--pos)' : 'var(--neg)'}"><title>${months[i].label}: ${money(v, 1)}</title></rect><text x="${L + i * bw + bw / 2}" y="${H - 6}" text-anchor="middle">${months[i].label[0]}</text>`; }).join('');
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Net profit by month">${g}${bars}<line x1="${L}" x2="${W - R}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--muted)"/></svg><div class="legend"><span>Net profit after supplies · year total <b class="num ${cls(vals.reduce((a, b) => a + b, 0))}">${money(vals.reduce((a, b) => a + b, 0), 1)}</b></span></div>`;
+}
+
+/* ---------- storage boxes ---------- */
+V.storage = () => {
+  const list = S.locations.filter(l => !l.purged).sort((a, b) => a.code.localeCompare(b.code));
+  return `<div class="page-head"><h1>Storage boxes</h1><div class="actions"><a class="btn" href="#/labels" data-act="go" data-to="#/labels">Print box labels</a><button class="btn pri" data-act="addBox" type="button">+ New box</button></div></div>
+  <p class="muted" style="margin:0">Stick a QR label on each box. Scanning it shows every card inside.</p>
+  ${list.length ? `<div class="cgrid">${list.map(b => { const cs = S.cards.filter(c => live(c) && c.locationId === b.id && ACTIVE.includes(c.status)); return `<a class="ctile" href="#/box/${b.id}" style="padding:12px;gap:8px"><div class="qrbox" data-qr="${esc(boxQR(b))}" style="width:96px"></div><span class="code">${esc(b.code)}</span><b>${esc(b.name)}</b><small class="muted">${cs.length} cards · ${money0(cs.reduce((a, c) => a + num(c.value) * c.qty, 0))}</small></a>`; }).join('')}</div>` : '<div class="empty">No boxes yet. Create one for each binder, box or shelf you store cards in.</div>'}`;
+};
+V.box = id => {
+  const b = locById(id); if (!b) return notFound('Box not found.');
+  const cs = S.cards.filter(c => live(c) && c.locationId === b.id && ACTIVE.includes(c.status));
+  return `<div class="page-head"><div class="row"><div class="qrbox" data-qr="${esc(boxQR(b))}" style="width:84px"></div><div><span class="code">${esc(b.code)}</span><h1>${esc(b.name)}</h1><div class="muted">${cs.length} cards · ${money0(cs.reduce((a, c) => a + num(c.value) * c.qty, 0))} value${b.notes ? ' · ' + esc(b.notes) : ''}</div></div></div>
+  <div class="actions"><button class="btn" data-act="editBox" data-id="${b.id}" type="button">Rename</button><button class="btn" data-act="labelBox" data-id="${b.id}" type="button">Print label</button></div></div>
+  ${cs.length ? `<div class="cgrid">${cs.map(cardTile).join('')}</div>` : '<div class="empty">No cards in this box. Pick this box in a card\'s Storage field.</div>'}`;
+};
+A.labelBox = el => { LB.sel = new Set([el.dataset.id]); LB.tab = 'boxes'; location.hash = '#/labels'; };
+
+/* ---------- QR labels ---------- */
+const LB = { tab: 'cards', sel: new Set(), show: 'unprinted' };
+V.labels = () => {
+  const items = LB.tab === 'cards' ? S.cards.filter(c => live(c) && ACTIVE.includes(c.status) && (LB.show === 'all' || !c.labeled || LB.sel.has(c.id))).sort((a, b) => a.code.localeCompare(b.code)) : S.locations.filter(l => !l.purged);
+  return `<div class="page-head"><h1>QR labels</h1><div class="actions"><button class="btn pri" data-act="printLabels" type="button">Print ${LB.sel.size || ''} labels</button></div></div>
+  <section class="panel"><div class="toolbar"><div class="seg"><button type="button" data-act="lbTab" data-v="cards" class="${LB.tab === 'cards' ? 'on' : ''}">Cards</button><button type="button" data-act="lbTab" data-v="boxes" class="${LB.tab === 'boxes' ? 'on' : ''}">Boxes</button></div>
+  ${LB.tab === 'cards' ? `<div class="seg"><button type="button" data-act="lbShow" data-v="unprinted" class="${LB.show === 'unprinted' ? 'on' : ''}">Not printed yet</button><button type="button" data-act="lbShow" data-v="all" class="${LB.show === 'all' ? 'on' : ''}">All in stock</button></div>` : ''}
+  <button class="btn sm" data-act="lbAll" type="button">Select all</button><button class="btn sm ghost" data-act="lbNone" type="button">Select none</button>
+  <span class="summary">Avery 5160 / 8160 size · 30 per sheet · print at 100% scale</span></div>
+  <div class="pick-list" style="max-height:300px">${items.map(it => `<label><input type="checkbox" data-lb="${it.id}" ${LB.sel.has(it.id) ? 'checked' : ''}> <span class="code">${esc(it.code)}</span> ${LB.tab === 'cards' ? esc(cardName(it)) + ' <small class="muted">' + esc(cardSet(it)) + (it.labeled ? ' · printed' : '') + '</small>' : esc(it.name)}</label>`).join('') || '<p class="muted">Nothing here. Every in-stock card already has a printed label.</p>'}</div></section>
+  <section class="panel"><h2>Preview</h2><div class="sheet-preview" id="lb-preview">${labelSheets()}</div>
+  ${LB.tab === 'cards' && LB.sel.size ? '<div class="row"><button class="btn" data-act="lbMark" type="button">Mark selected as printed</button></div>' : ''}</section>`;
+};
+function labelSheets() {
+  const pool = LB.tab === 'cards' ? [...LB.sel].map(cardById).filter(live) : [...LB.sel].map(locById).filter(Boolean);
+  if (!pool.length) return '<div class="empty">Select items above to preview labels.</div>';
+  const labs = pool.map(x => LB.tab === 'cards'
+    ? `<div class="lab"><div class="q" data-qr="${esc(cardQR(x))}"></div><div class="tx"><b>${esc(x.code)}</b><span>${esc(cardName(x))}</span><span>${esc(cardSet(x))}</span><span>${esc([x.parallel, x.serial, x.graded ? gradeText(x) : ''].filter(Boolean).join(' · '))}</span></div></div>`
+    : `<div class="lab"><div class="q" data-qr="${esc(boxQR(x))}"></div><div class="tx"><b>${esc(x.code)}</b><span>${esc(x.name)}</span></div></div>`);
+  let out = ''; for (let i = 0; i < labs.length; i += 30) out += `<div class="psheet">${labs.slice(i, i + 30).join('')}</div>`;
+  return out;
+}
+Object.assign(A, {
+  lbTab: el => { LB.tab = el.dataset.v; LB.sel = new Set(); route(); },
+  lbShow: el => { LB.show = el.dataset.v; route(); },
+  lbAll: () => { $$('[data-lb]').forEach(i => LB.sel.add(i.dataset.lb)); route(); },
+  lbNone: () => { LB.sel.clear(); route(); },
+  lbMark: async () => { for (const id of LB.sel) { const c = cardById(id); if (c) { c.labeled = today(); await save('cards', c, { quiet: true }); } } LB.sel.clear(); onChange('cards'); toast('Marked as printed'); },
+  printLabels: () => {
+    if (!LB.sel.size) return toast('Select at least one label');
+    const root = $('#print-root'); root.innerHTML = labelSheets(); hydrate(root);
+    setTimeout(() => window.print(), 60);
+  },
+});
+document.addEventListener('change', e => { const id = e.target.dataset && e.target.dataset.lb; if (!id) return; e.target.checked ? LB.sel.add(id) : LB.sel.delete(id); const p = $('#lb-preview'); if (p) { p.innerHTML = labelSheets(); hydrate(p); } const b = $('[data-act="printLabels"]'); if (b) b.textContent = `Print ${LB.sel.size || ''} labels`; });
+
+/* ---------- scan ---------- */
+const SC = { mode: 'open', stream: null, raf: 0, last: '' };
+V.scan = () => `<div class="page-head"><h1>Scan QR</h1></div>
+  <div class="seg" role="group" aria-label="When a code is scanned">${[['open', 'Open card'], ['sell', 'Mark sold'], ['find', 'Find in inventory']].map(([k, l]) => `<button type="button" data-act="scanMode" data-v="${k}" class="${SC.mode === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+  <div class="scanbox"><video id="scan-video" playsinline muted></video><div class="frame"></div></div>
+  <p id="scan-msg" class="muted" style="margin:0">Starting camera…</p>
+  <form class="row" data-form="scanManual"><input name="code" placeholder="Or type an ID like ${esc((S.settings.prefix || 'AJ-') + '0001')}" style="max-width:260px" aria-label="Card or box ID"><button class="btn" type="submit">Go</button></form>`;
+V.scan.after = () => startScan();
+A.scanMode = el => { SC.mode = el.dataset.v; $$('[data-act="scanMode"]').forEach(b => b.classList.toggle('on', b === el)); };
+FORMS.scanManual = f => handleScan(String(new FormData(f).get('code') || '').trim());
+async function startScan() {
+  const msg = $('#scan-msg'); const video = $('#scan-video');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { msg.textContent = 'This browser can\'t open the camera here. Type the ID instead, or open Dugout from its GitHub Pages address.'; return; }
+  try {
+    SC.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    if (curView !== 'scan') return stopScan();
+    video.srcObject = SC.stream; await video.play();
+    msg.textContent = 'Point at a Dugout QR label.';
+    const cv = document.createElement('canvas'); const ctx = cv.getContext('2d', { willReadFrequently: true });
+    const tick = () => {
+      if (!SC.stream) return;
+      if (video.readyState >= 2 && window.jsQR) {
+        const k = Math.min(1, 640 / video.videoWidth); cv.width = video.videoWidth * k; cv.height = video.videoHeight * k;
+        ctx.drawImage(video, 0, 0, cv.width, cv.height);
+        const code = jsQR(ctx.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height, { inversionAttempts: 'dontInvert' });
+        if (code && code.data && code.data !== SC.last) { SC.last = code.data; setTimeout(() => { SC.last = ''; }, 2500); if (handleScan(code.data) !== false) return; }
+      }
+      SC.raf = requestAnimationFrame(tick);
+    };
+    tick();
+  } catch (e) { msg.textContent = e.name === 'NotAllowedError' ? 'Camera access was blocked. Allow the camera for this site in Safari settings, then reload. You can still type an ID below.' : 'Camera unavailable: ' + e.message; }
+}
+function stopScan() { cancelAnimationFrame(SC.raf); if (SC.stream) { SC.stream.getTracks().forEach(t => t.stop()); SC.stream = null; } }
+function handleScan(text) {
+  let m, code = text;
+  if ((m = text.match(/#b\/([^#?]+)/))) { const b = boxByCode(decodeURIComponent(m[1])); if (b) { if (navigator.vibrate) navigator.vibrate(60); location.hash = '#/box/' + b.id; return; } }
+  if ((m = text.match(/#c\/([^#?]+)/))) code = decodeURIComponent(m[1]);
+  const box = boxByCode(code); if (box) { location.hash = '#/box/' + box.id; return; }
+  const c = byCode(code);
+  if (!c) { const msg = $('#scan-msg'); if (msg) msg.textContent = `No card with ID "${code}" on this device.`; else toast(`No card with ID "${code}"`); return false; }
+  if (navigator.vibrate) navigator.vibrate(60);
+  if (SC.mode === 'find') { Object.assign(F, { q: c.code, status: 'all' }); location.hash = '#/inv'; return; }
+  location.hash = '#/card/' + c.id;
+  if (SC.mode === 'sell') setTimeout(() => { if (ACTIVE.includes(c.status) && c.qty > 0) openSell(c.id); else toast(`${c.code} is already ${STATUS[c.status].toLowerCase()}`); }, 150);
+}
+
+/* ---------- settings ---------- */
+V.settings = async () => {
+  const s = S.settings; const sc = syncCfg() || {}; const b = await getMeta('backup');
+  const demo = S.cards.filter(c => c.demo && !c.purged).length;
+  const trash = S.cards.filter(c => c.deletedAt && !c.purged).length;
+  return `<div class="page-head"><h1>Settings</h1></div>
+  <div class="cols">
+  <section class="panel"><h2>Look</h2>
+    <div class="row"><button class="btn" data-act="theme" type="button">Switch light / dark</button></div>
+    <span class="muted">Accent color</span><div class="row">${Object.entries(ACCENTS).map(([n, c]) => `<button type="button" class="btn sm${s.accent === c ? ' pri' : ''}" data-act="accent" data-v="${c}"><i style="width:12px;height:12px;border-radius:50%;background:${c};display:inline-block"></i>${n}</button>`).join('')}</div></section>
+  <section class="panel"><h2>Card IDs</h2><form data-form="ids" class="fgrid">
+    ${field('ID prefix', inp('prefix', s.prefix))}${field('Digits', `<select name="digits">${opts([3, 4, 5], s.digits)}</select>`)}
+    <div class="wide row"><span class="muted">Next card: <b class="num">${esc(nextCode())}</b></span><span class="spacer"></span><button class="btn sm pri" type="submit">Save</button></div></form>
+    <small class="muted">Changing the prefix only affects new cards.</small></section>
+  </div>
+  <section class="panel"><h2>Platform fees</h2><p class="muted" style="margin:0">Used to auto-fill fees when you mark a card sold. Check these against your current seller fees.</p>
+    <form data-form="fees"><div class="tablewrap"><table class="t"><thead><tr><th>Platform</th><th>Percent of sale</th><th>Flat per order</th></tr></thead><tbody>
+    ${Object.entries(s.fees).map(([p, f], i) => `<tr><td><input name="p${i}" value="${esc(p)}"></td><td><input name="pct${i}" value="${f.pct}" inputmode="decimal"></td><td><input name="flat${i}" value="${f.flat}" inputmode="decimal"></td></tr>`).join('')}
+    <tr><td><input name="pnew" placeholder="Add platform"></td><td><input name="pctnew" inputmode="decimal" placeholder="%"></td><td><input name="flatnew" inputmode="decimal" placeholder="$"></td></tr>
+    </tbody></table></div><div class="row" style="margin-top:10px"><small class="muted">Clear a platform name to remove it.</small><span class="spacer"></span><button class="btn sm pri" type="submit">Save fees</button></div></form></section>
+  <section class="panel"><h2>Sync iPhone and PC</h2>
+    <p class="muted" style="margin:0">Dugout stores everything on each device. To keep your iPhone and PC in step, it can sync through a <b>private</b> GitHub repo you own. Photos and receipts go there too. Set this up on each device with the same repo.</p>
+    <form data-form="sync" class="fgrid">
+      ${field('GitHub username', inp('owner', sc.owner || '', 'autocomplete="off" autocapitalize="off"'))}${field('Private repo name', inp('repo', sc.repo || 'dugout-data', 'autocomplete="off" autocapitalize="off"'))}${field('Branch', inp('branch', sc.branch || 'main', 'autocapitalize="off"'))}
+      ${field('Access token', `<input name="token" type="password" value="${esc(sc.token || '')}" autocomplete="off" placeholder="github_pat_…">`, 'wide')}
+      <div class="wide row"><span id="sync-status2" class="muted">${esc(Sync.status || (sc.owner ? 'Ready' : 'Not set up'))}</span><span class="spacer"></span>${sc.owner ? '<button class="btn sm" type="button" data-act="syncOff">Turn off</button>' : ''}<button class="btn sm pri" type="submit">${sc.owner ? 'Save &amp; sync now' : 'Turn on sync'}</button></div>
+    </form>
+    <details><summary class="muted" style="cursor:pointer">How to make the repo and token</summary><ol class="muted" style="margin:8px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:4px">
+      <li>On github.com, create a new <b>private</b> repository named <span class="code">dugout-data</span> and tick "Add a README".</li>
+      <li>Go to Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.</li>
+      <li>Repository access: <b>Only select repositories</b> → <span class="code">dugout-data</span>. Permissions: <b>Contents: Read and write</b>.</li>
+      <li>Paste the token above on your PC and on your iPhone. It stays on each device and is only sent to GitHub.</li></ol></details>
+  </section>
+  <div class="cols">
+  <section class="panel"><h2>Backup</h2><p class="muted" style="margin:0">Last backup: ${b && b.last ? fmtDate(b.last) : 'never'}. A backup zip holds every record, photo and receipt.</p>
+    <div class="row"><button class="btn pri" data-act="backup" type="button">Download backup</button><label class="btn">Restore from backup<input type="file" accept=".zip" id="restore-file" hidden></label></div></section>
+  <section class="panel"><h2>Export</h2><div class="row"><button class="btn" data-act="exportCards" type="button">Inventory CSV</button><button class="btn" data-act="exportSales" type="button">Sales CSV</button></div><small class="muted">CSV files open in Excel and Google Sheets.</small></section>
+  </div>
+  <div class="cols">
+  <section class="panel"><h2>Trash</h2><p class="muted" style="margin:0">${trash} card${trash === 1 ? '' : 's'} in the trash.</p><div class="row"><a class="btn" href="#/trash">Open trash</a></div></section>
+  ${demo ? `<section class="panel"><h2>Demo data</h2><p class="muted" style="margin:0">${demo} demo cards are loaded.</p><div class="row"><button class="btn danger" data-act="removeDemo" type="button">Remove demo data</button></div></section>` : ''}
+  </div>`;
+};
+document.addEventListener('change', e => { if (e.target.id === 'restore-file' && e.target.files[0]) restoreBackup(e.target.files[0]); });
+Object.assign(FORMS, {
+  ids: async f => { const fd = new FormData(f); S.settings.prefix = String(fd.get('prefix') || '').trim().toUpperCase(); S.settings.digits = +fd.get('digits') || 4; await saveSettings(); toast('Saved'); },
+  fees: async f => {
+    const fd = new FormData(f); const fees = {}; const n = Object.keys(S.settings.fees).length;
+    for (let i = 0; i < n; i++) { const p = String(fd.get('p' + i) || '').trim(); if (p) fees[p] = { pct: num(fd.get('pct' + i)), flat: num(fd.get('flat' + i)) }; }
+    const pn = String(fd.get('pnew') || '').trim(); if (pn) fees[pn] = { pct: num(fd.get('pctnew')), flat: num(fd.get('flatnew')) };
+    S.settings.fees = fees; await saveSettings(); toast('Fees saved');
+  },
+  sync: async f => { const fd = new FormData(f); const c = { owner: String(fd.get('owner')).trim(), repo: String(fd.get('repo')).trim(), branch: String(fd.get('branch') || 'main').trim(), token: String(fd.get('token')).trim() }; if (!c.owner || !c.repo || !c.token) return toast('Fill in username, repo and token'); setSyncCfg(c); shell(); await route(); await syncNow(true); route(); },
+});
+Object.assign(A, {
+  accent: async el => { S.settings.accent = el.dataset.v; await saveSettings(); applyTheme(); },
+  backup: () => downloadBackup(),
+  syncOff: () => { setSyncCfg(null); setSyncStatus('', null); shell(); route(); toast('Sync turned off on this device'); },
+  exportCards: () => {
+    const rows = [['ID', 'Player', 'Card #', 'Brand', 'Set', 'Year', 'Sport', 'Team', 'Parallel', 'Serial', 'Rookie', 'Auto', 'Patch', 'Graded', 'Grader', 'Grade', 'Condition', 'Status', 'Qty', 'Date bought', 'Platform bought', 'Qty bought', 'Price', 'Shipping', 'Tax', 'Fees', 'Order #', 'Cost per card', 'Value', 'Profit if sold', 'Box', 'Listing', 'Notes']];
+    S.cards.filter(live).forEach(c => { const b = c.buy || {}; rows.push([c.code, c.player, c.number, c.brand, c.set, c.year, c.sport, c.team, c.parallel, c.serial, c.rookie ? 'Y' : '', c.auto ? 'Y' : '', c.patch ? 'Y' : '', c.graded ? 'Y' : '', c.gradeCo, c.grade, c.condition, STATUS[c.status], c.qty, b.date, b.platform, b.qty, b.price, b.ship, b.tax, b.fees, b.order, r2(unitCost(c)), c.value, r2(num(c.value) - unitCost(c)), (locById(c.locationId) || {}).code, c.listingUrl, c.notes]); });
+    download(new Blob([csv(rows)], { type: 'text/csv' }), `dugout-inventory-${today()}.csv`);
+  },
+  removeDemo: async el => {
+    if (el.dataset.confirm !== '1') { el.dataset.confirm = '1'; el.textContent = 'Tap again to remove demo data'; return; }
+    for (const s of SYNC_STORES) for (const r of S[s].filter(x => x.demo)) { if (r.fileId) await fileDel(r.fileId); await hardDelete(s, r.id); }
+    try { localStorage.setItem('dugout.welcomed', '1'); } catch (e) {}
+    onChange('demo'); toast('Demo data removed. You\'re ready to add your own cards.');
+  },
+});
+
+/* ---------- trash ---------- */
+V.trash = () => {
+  const list = S.cards.filter(c => c.deletedAt && !c.purged);
+  return `<div class="page-head"><h1>Trash</h1><div class="actions">${list.length ? '<button class="btn danger" data-act="emptyTrash" type="button">Empty trash</button>' : ''}</div></div>
+  ${list.length ? `<div class="list panel">${list.map(c => `<div class="li"><div class="grow"><b>${esc(c.code)} · ${esc(cardName(c))}</b><small>${esc(cardSet(c))} · deleted ${fmtDate(c.deletedAt)}</small></div><button class="btn sm" data-act="restoreCard" data-id="${c.id}" type="button">Restore</button><button class="btn sm danger" data-act="purgeCard" data-id="${c.id}" type="button">Delete forever</button></div>`).join('')}</div>` : '<div class="empty">Trash is empty.</div>'}`;
+};
+
+/* Niche Finder: ranks what has made the most money for every filter, so you know what to hunt for. */
+const CRIT = [
+  ['sport', 'Sport'], ['player', 'Player'], ['team', 'Team'], ['brand', 'Brand'], ['set', 'Set / series'], ['year', 'Year'],
+  ['parallel', 'Parallel'], ['rookie', 'Rookie cards'], ['auto', 'Autographs'], ['patch', 'Patch / memorabilia'],
+  ['gradedRaw', 'Graded vs raw'], ['gradeCo', 'Grading company'], ['grade', 'Grade'],
+  ['buyPlatform', 'Where you bought'], ['soldPlatform', 'Where it sold'], ['pickupLoc', 'Pickup location'], ['costBand', 'Buy price range'],
+];
+const COMBOS = [['sport', 'gradedRaw'], ['sport', 'rookie'], ['player', 'gradedRaw'], ['brand', 'parallel'], ['set', 'parallel'], ['sport', 'costBand'], ['buyPlatform', 'sport'], ['player', 'set'], ['sport', 'soldPlatform']];
+const BANDS = [[0, 10, 'Under $10'], [10, 25, '$10–25'], [25, 50, '$25–50'], [50, 100, '$50–100'], [100, 250, '$100–250'], [250, 1e12, '$250+']];
+const NF = { range: 'all', min: 2, rank: 'profit', sport: '' };
+const RANKS = { profit: 'Total profit', roi: 'ROI', avg: 'Profit per card', speed: 'Fastest to sell', sell: 'Sell-through' };
+
+function critVal(c, t, k) {
+  switch (k) {
+    case 'rookie': return c.rookie ? 'Rookie' : 'Not rookie';
+    case 'auto': return c.auto ? 'Autograph' : 'No auto';
+    case 'patch': return c.patch ? 'Patch / memo' : 'No patch';
+    case 'gradedRaw': return c.graded ? 'Graded' : 'Raw';
+    case 'gradeCo': return c.graded ? (c.gradeCo || 'Unknown') : null;
+    case 'grade': return c.graded ? `${c.gradeCo || ''} ${c.grade || '?'}`.trim() : null;
+    case 'parallel': return c.parallel || 'Base';
+    case 'buyPlatform': return (c.buy && c.buy.platform) || 'Unknown';
+    case 'soldPlatform': return t ? (t.platform || 'Unknown') : null;
+    case 'pickupLoc': { const p = c.buy && pickupById(c.buy.pickupId); return p ? p.location : null; }
+    case 'costBand': { const u = unitCost(c); const b = BANDS.find(b => u >= b[0] && u < b[1]); return b ? b[2] : null; }
+    case 'year': return c.year ? String(c.year) : null;
+    default: return c[k] ? String(c[k]) : null;
+  }
+}
+function rangeStart() {
+  const d = new Date();
+  if (NF.range === '90') d.setDate(d.getDate() - 90); else if (NF.range === '365') d.setDate(d.getDate() - 365); else if (NF.range === 'ytd') return d.getFullYear() + '-01-01'; else return '0000';
+  return d.toLocaleDateString('en-CA');
+}
+function finderRows() {
+  const from = rangeStart();
+  const sales = profitTxns().filter(t => t.type !== 'writeoff' && t.date >= from).map(t => ({ t, c: cardById(t.cardId) })).filter(r => r.c && (!NF.sport || r.c.sport === NF.sport));
+  const bought = S.cards.filter(c => live(c) && c.buy && (c.buy.date || '') >= from && (!NF.sport || c.sport === NF.sport));
+  return { sales, bought };
+}
+function groupBy(keys, data) {
+  const g = new Map();
+  const keyOf = (c, t) => { const v = keys.map(k => critVal(c, t, k)); return v.some(x => x === null) ? null : v.join(' · '); };
+  for (const { t, c } of data.sales) {
+    const k = keyOf(c, t); if (k === null) continue;
+    const e = g.get(k) || { key: k, sales: 0, units: 0, profit: 0, cost: 0, net: 0, days: 0, bought: 0, holding: 0, holdVal: 0 };
+    e.sales++; e.units += t.qty || 1; e.profit += num(t.profit); e.cost += num(t.cost); e.net += num(t.net);
+    e.days += c.buy ? daysBetween(c.buy.date, t.date) : 0; g.set(k, e);
+  }
+  if (!keys.includes('soldPlatform')) for (const c of data.bought) {
+    const k = keyOf(c, null); if (k === null || !g.has(k)) continue;
+    const e = g.get(k); e.bought += num(c.buy.qty) || 1; e.holding += inHand(c); e.holdVal += num(c.value) * inHand(c);
+  }
+  return [...g.values()].map(e => Object.assign(e, { roi: e.cost ? e.profit / e.cost : 0, avg: e.profit / Math.max(e.units, 1), speed: e.days / Math.max(e.sales, 1), sell: e.bought ? Math.min(1, e.units / e.bought) : null }));
+}
+function rankList(list) {
+  const f = { profit: e => -e.profit, roi: e => -e.roi, avg: e => -e.avg, speed: e => e.speed, sell: e => -(e.sell ?? -1) }[NF.rank];
+  return list.filter(e => e.sales >= NF.min).sort((a, b) => f(a) - f(b) || b.profit - a.profit);
+}
+const metricLine = e => `${money(e.profit, 1)} · ${pct(e.roi)} ROI`;
+const subLine = e => `${e.units} sold · ${money(e.avg, 1)}/card · ${Math.round(e.speed)} days avg${e.sell !== null ? ' · ' + Math.round(e.sell * 100) + '% sell-through' : ''}`;
+
+V.finder = () => {
+  const data = finderRows();
+  const sports = uniq(S.cards.filter(live).map(c => c.sport));
+  const head = `<div class="page-head"><h1>Niche Finder</h1></div>
+  <p class="muted" style="margin:0;max-width:70ch">Every sold card is grouped by each filter, then ranked so you can see which sports, players, sets, parallels, grades and sources make you the most money. Use the hunt list when you're shopping shows, shops and eBay.</p>
+  <section class="panel"><div class="toolbar">
+    <label class="f">Time range<select id="nf-range">${opts([['all', 'All time'], ['ytd', 'This year'], ['365', 'Last 12 months'], ['90', 'Last 90 days']], NF.range)}</select></label>
+    <label class="f">Rank by<select id="nf-rank">${opts(Object.entries(RANKS), NF.rank)}</select></label>
+    <label class="f">Minimum sales<select id="nf-min">${opts([[1, '1 (show everything)'], [2, '2'], [3, '3'], [5, '5']], NF.min)}</select></label>
+    <label class="f">Only this sport<select id="nf-sport">${opts(sports, NF.sport, 'All sports')}</select></label>
+  </div></section>`;
+  if (!data.sales.length) return head + `<div class="empty">No sales in this range yet. Mark cards as sold and this page will show which niches pay best. Load demo cards from Home to see it in action.</div>`;
+  const per = CRIT.map(([k, label]) => ({ k, label, rows: rankList(groupBy([k], data)) }));
+  const hunt = per.filter(p => p.rows.length && p.rows[0].profit > 0 && !(p.rows.length === 1 && ['rookie', 'auto', 'patch', 'gradedRaw'].includes(p.k)));
+  const combos = rankList(COMBOS.flatMap(ks => groupBy(ks, data).map(e => Object.assign(e, { label: ks.map(k => CRIT.find(c => c[0] === k)[1]).join(' + ') })))).filter(e => e.profit > 0).slice(0, 12);
+  const worst = per.flatMap(p => p.rows.filter(e => e.profit < 0).map(e => Object.assign({}, e, { label: p.label }))).sort((a, b) => a.profit - b.profit).slice(0, 6);
+  const total = data.sales.reduce((a, r) => a + num(r.t.profit), 0), cost = data.sales.reduce((a, r) => a + num(r.t.cost), 0);
+  return head + `
+  <section class="board">${tile('Sales analyzed', data.sales.length)}${tile('Total profit', money0(total, 1), cls(total))}${tile('Overall ROI', pct(cost ? total / cost : null), cls(total))}${tile('Ranking by', `<span style="font-size:.7em">${RANKS[NF.rank]}</span>`)}</section>
+  <section class="panel"><h2>Your hunt list · the #1 pick for each filter</h2>
+    ${hunt.length ? `<div class="hunt">${hunt.map(p => { const e = p.rows[0]; return `<button class="hcard" type="button" data-act="nfOpen" data-k="${p.k}" style="text-align:left;font-weight:400"><span class="k">${esc(p.label)}</span><span class="v">${esc(e.key)}</span><span class="m">${metricLine(e)}</span><small>${subLine(e)}</small></button>`; }).join('')}</div>` : '<div class="empty">Not enough sales to rank yet. Try lowering the minimum sales.</div>'}
+  </section>
+  ${combos.length ? `<section class="panel"><h2>Best combinations</h2><p class="muted" style="margin:0">Two filters together, like a sport plus graded or raw. These are the most specific niches to go look for.</p>${groupTable(combos, true)}</section>` : ''}
+  ${worst.length ? `<section class="panel"><h2>Losing money</h2><p class="muted" style="margin:0">Groups where you've lost money so far. Worth avoiding or buying cheaper.</p>${groupTable(worst, true)}</section>` : ''}
+  <h2 style="margin-top:6px">Every filter, ranked</h2>
+  ${per.map(p => `<details class="crit" id="nf-${p.k}" ${NF.open === p.k ? 'open' : ''}><summary>${esc(p.label)} <small>${p.rows.length ? `Best: ${esc(p.rows[0].key)} · ${metricLine(p.rows[0])}` : 'Not enough sales'}</small></summary>${p.rows.length ? groupTable(p.rows.slice(0, 15)) : '<div class="empty" style="margin:10px">Not enough sales for this filter yet.</div>'}</details>`).join('')}`;
+};
+function groupTable(rows, withLabel) {
+  const mx = Math.max(...rows.map(e => Math.abs(e.profit)), 1);
+  return `<div class="tablewrap"><table class="t"><thead><tr><th>#</th>${withLabel ? '<th>Filter</th>' : ''}<th>Group</th><th>Total profit</th><th class="r">ROI</th><th class="r">Per card</th><th class="r">Sold</th><th class="r">Avg days</th><th class="r">Sell-through</th><th class="r">Holding now</th></tr></thead><tbody>
+  ${rows.map((e, i) => `<tr><td class="num muted">${i + 1}</td>${withLabel ? `<td class="muted">${esc(e.label)}</td>` : ''}<td><b>${esc(e.key)}</b></td><td><div class="bar-cell"><div class="bar ${e.profit < 0 ? 'neg' : ''}" style="width:${Math.max(3, Math.round(90 * Math.abs(e.profit) / mx))}px"></div><span class="num ${cls(e.profit)}">${money(e.profit, 1)}</span></div></td><td class="r num ${cls(e.roi)}">${pct(e.roi)}</td><td class="r num ${cls(e.avg)}">${money(e.avg, 1)}</td><td class="r num">${e.units}</td><td class="r num">${Math.round(e.speed)}</td><td class="r num">${e.sell === null ? '—' : Math.round(e.sell * 100) + '%'}</td><td class="r num">${e.holding ? `${e.holding} · ${money0(e.holdVal)}` : '—'}</td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+A.nfOpen = el => { NF.open = el.dataset.k; const d = $('#nf-' + el.dataset.k); if (d) { d.open = true; d.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); } };
+document.addEventListener('change', e => { const id = e.target.id; if (!id || !id.startsWith('nf-')) return; const k = id.slice(3); NF[k] = k === 'min' ? +e.target.value : e.target.value; route(); });
+
+function nicheTeaser() {
+  const data = finderRows.call(null);
+  if (!data.sales.length) return '<div class="empty">Sell a few cards and your most profitable sports, players and sets show up here.</div>';
+  const saved = Object.assign({}, NF); Object.assign(NF, { min: 2, rank: 'profit', range: 'all', sport: '' });
+  const out = ['sport', 'player', 'set', 'parallel', 'gradedRaw'].map(k => { const r = rankList(groupBy([k], finderRows()))[0]; return r && r.profit > 0 ? `<div class="li"><div class="grow"><small>${esc(CRIT.find(c => c[0] === k)[1])}</small><b>${esc(r.key)}</b></div><span class="num pos">${money(r.profit, 1)}</span><span class="num muted" style="width:52px;text-align:right">${pct(r.roi)}</span></div>` : ''; }).join('');
+  Object.assign(NF, saved);
+  return out ? `<div class="list">${out}</div>` : '<div class="empty">Not enough repeat sales yet to spot a niche.</div>';
+}
+
+/* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
+async function loadDemo() {
+  let seed = 7; const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  const P = [
+    ['Victor Wembanyama', 'Basketball', 'Spurs', 2023, true], ['Anthony Edwards', 'Basketball', 'Timberwolves', 2020, true], ['Stephen Curry', 'Basketball', 'Warriors', 2023, false], ['Caitlin Clark', 'Basketball', 'Fever', 2024, true], ['Cooper Flagg', 'Basketball', 'Mavericks', 2025, true],
+    ['Patrick Mahomes', 'Football', 'Chiefs', 2023, false], ['C.J. Stroud', 'Football', 'Texans', 2023, true], ['Jayden Daniels', 'Football', 'Commanders', 2024, true], ['Brock Purdy', 'Football', '49ers', 2022, true],
+    ['Shohei Ohtani', 'Baseball', 'Dodgers', 2024, false], ['Elly De La Cruz', 'Baseball', 'Reds', 2023, true], ['Paul Skenes', 'Baseball', 'Pirates', 2024, true], ['Gunnar Henderson', 'Baseball', 'Orioles', 2023, true],
+    ['Connor Bedard', 'Hockey', 'Blackhawks', 2023, true],
+  ];
+  const SETS = { Basketball: [['Panini', 'Prizm'], ['Panini', 'Select'], ['Panini', 'Donruss Optic'], ['Panini', 'Hoops']], Football: [['Panini', 'Prizm'], ['Panini', 'Donruss'], ['Panini', 'Mosaic']], Baseball: [['Topps', 'Chrome'], ['Topps', 'Series 1'], ['Bowman', 'Chrome']], Hockey: [['Upper Deck', 'Series 1 Young Guns']] };
+  const PAR = { Panini: ['Base', 'Base', 'Silver', 'Silver', 'Green', 'Red Wave', 'Blue /199'], Topps: ['Base', 'Refractor', 'Refractor', 'Gold /50', 'Sepia'], Bowman: ['Base', 'Refractor', 'Purple /250'], 'Upper Deck': ['Base', 'Clear Cut'] };
+  const SPORT_EDGE = { Basketball: 0.42, Football: 0.22, Baseball: 0.06, Hockey: 0.18 };
+  const SRC = ['eBay', 'eBay', 'Facebook Marketplace', 'Card show', 'Local card shop', 'Whatnot'];
+  const SOLD = ['eBay', 'eBay', 'eBay', 'Whatnot', 'Facebook Marketplace', 'Card show'];
+  const day = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toLocaleDateString('en-CA'); };
+  const prefix = S.settings.prefix || 'AJ-';
+  const locs = [['Basketball raw · shelf 1'], ['Football + baseball raw'], ['Graded slabs']].map((n, i) => ({ id: 'l_demo' + i, code: 'BOX-0' + (i + 1), name: n[0], demo: true, createdAt: nowISO() }));
+  for (const l of locs) await save('locations', l, { quiet: true });
+  const pickups = [
+    { id: 'p_demo1', date: day(150), location: 'Round Rock card show', platform: 'Card show', seller: 'Table 14', total: 240, demo: true, createdAt: nowISO() },
+    { id: 'p_demo2', date: day(70), location: 'Facebook meetup · Domain', platform: 'Facebook Marketplace', seller: 'Marcus', total: 180, demo: true, createdAt: nowISO() },
+  ];
+  const cards = [], txns = [];
+  let n = Math.max(0, ...S.cards.map(c => parseInt(String(c.code).slice(prefix.length), 10) || 0));
+  for (let i = 0; i < 52; i++) {
+    const [player, sport, team, year, rookie] = pick(P);
+    const [brand, set] = pick(SETS[sport]);
+    const parallel = pick(PAR[brand]);
+    const graded = rnd() < 0.28; const gradeCo = graded ? pick(['PSA', 'PSA', 'BGS', 'SGC']) : '';
+    const grade = graded ? pick(['10', '10', '9', '9.5', '8']) : '';
+    const auto = rnd() < 0.08, patch = auto && rnd() < 0.5;
+    let base = (sport === 'Basketball' ? 18 : sport === 'Football' ? 14 : 9) * (rookie ? 1.8 : 1) * (parallel === 'Base' ? 1 : 2.2) * (graded ? (grade === '10' ? 3.2 : 1.7) : 1) * (auto ? 4 : 1) * (0.6 + rnd());
+    const price = r2(Math.max(2, base));
+    const bdays = 20 + Math.floor(rnd() * 250);
+    const pk = i < 8 ? pickups[0] : i >= 8 && i < 14 ? pickups[1] : null;
+    const edge = SPORT_EDGE[sport] + (rookie ? 0.15 : -0.05) + (graded ? 0.12 : 0) + (parallel === 'Base' ? -0.08 : 0.1) + (rnd() - 0.5) * 0.5;
+    const value = r2(price * (1 + edge));
+    const ship = pk ? 0 : r2(rnd() < 0.5 ? 0 : 4.5);
+    const c = { id: 'c_demo' + i, code: prefix + String(++n).padStart(S.settings.digits || 4, '0'), demo: true, createdAt: new Date(Date.now() - bdays * 864e5).toISOString(),
+      player, number: String(1 + Math.floor(rnd() * 300)), brand, set, year: String(year), sport, team, parallel, serial: /\//.test(parallel) ? Math.ceil(rnd() * 199) + parallel.slice(parallel.indexOf('/')) : '',
+      rookie, auto, patch, graded, gradeCo, grade, condition: graded ? '' : pick(['Near Mint-Mint', 'Near Mint', 'Mint']), notes: '', status: 'in_stock', qty: 1, value,
+      priceUpdated: day(Math.floor(rnd() * 40)), priceHistory: [{ date: day(bdays), value: price }, { date: day(Math.floor(bdays / 2)), value: r2((price + value) / 2) }, { date: day(3), value }],
+      locationId: graded ? locs[2].id : sport === 'Basketball' ? locs[0].id : locs[1].id,
+      buy: { date: pk ? pk.date : day(bdays), platform: pk ? pk.platform : pick(SRC), qty: 1, price, ship, tax: 0, fees: 0, order: pk ? '' : String(10000000 + Math.floor(rnd() * 8e7)), pickupId: pk ? pk.id : '' } };
+    cards.push(c);
+    txns.push({ id: 't_demob' + i, cardId: c.id, type: 'buy', date: c.buy.date, qty: 1, amount: r2(price + ship), platform: c.buy.platform, demo: true, createdAt: c.createdAt });
+    const age = daysBetween(c.buy.date, today());
+    if (rnd() < 0.62 && age > 10) {
+      const sdate = day(Math.max(0, age - (5 + Math.floor(rnd() * Math.min(age - 5, sport === 'Basketball' ? 35 : 80)))));
+      const plat = pick(SOLD); const gross = r2(value * (0.9 + rnd() * 0.25));
+      const fees = feeFor(plat, gross); const shipping = plat === 'Card show' || plat === 'Facebook Marketplace' ? 0 : (graded ? 5.5 : 1.25);
+      const cost = r2(unitCost(c)); const net = r2(gross - fees - shipping);
+      txns.push({ id: 't_demos' + i, cardId: c.id, type: 'sell', date: sdate, qty: 1, amount: gross, fees, shipping, net, cost, profit: r2(net - cost), platform: plat, tracking: plat === 'eBay' ? '9400 1000 0000 ' + Math.floor(1000 + rnd() * 8999) : '', demo: true, createdAt: nowISO() });
+      c.status = 'sold'; c.qty = 0; c.soldAt = sdate;
+    } else if (rnd() < 0.3) c.status = 'listed';
+  }
+  // split each pickup's total across its cards by value
+  for (const p of pickups) {
+    const pc = cards.filter(c => c.buy.pickupId === p.id); p.total = Math.round(pc.reduce((a, c) => a + c.value, 0) * 0.62); const alloc = allocate(p.total, pc.map(c => c.value), 'value');
+    pc.forEach((c, i) => { c.buy.price = alloc[i]; const t = txns.find(t => t.cardId === c.id && t.type === 'sell'); if (t) { t.cost = r2(unitCost(c)); t.profit = r2(t.net - t.cost); } const b = txns.find(t => t.cardId === c.id && t.type === 'buy'); b.amount = alloc[i]; });
+    await save('pickups', p, { quiet: true });
+  }
+  for (const c of cards) await save('cards', c, { quiet: true });
+  for (const t of txns) await save('txns', t, { quiet: true });
+  // receipts drawn on the fly
+  for (const p of pickups) {
+    const blob = await drawReceipt(p.location, p.date, cards.filter(c => c.buy.pickupId === p.id).map(c => [c.player.split(' ').pop() + ' ' + c.set, c.buy.price]), p.total);
+    const fileId = await fileSave(blob, 'receipt.png');
+    await save('receipts', { id: 'r_demo_' + p.id, fileId, fileType: 'image/png', date: p.date, amount: p.total, note: 'Pickup · ' + p.location, pickupId: p.id, cardIds: cards.filter(c => c.buy.pickupId === p.id).map(c => c.id), demo: true, createdAt: nowISO() }, { quiet: true });
+  }
+  await save('expenses', { id: 'x_demo1', date: day(60), amount: 34.99, cat: EXPENSE_CATS[0], note: '300 top loaders + penny sleeves', demo: true, createdAt: nowISO() }, { quiet: true });
+  await save('expenses', { id: 'x_demo2', date: day(30), amount: 21.5, cat: EXPENSE_CATS[1], note: 'Bubble mailers', demo: true, createdAt: nowISO() }, { quiet: true });
+  // weekly value snapshots
+  const sales = new Map(txns.filter(t => t.type === 'sell').map(t => [t.cardId, t.date]));
+  for (let w = 36; w >= 0; w--) {
+    const d = day(w * 7); let value = 0, cost = 0;
+    for (const c of cards) { if (c.buy.date > d) continue; const sd = sales.get(c.id); if (sd && sd <= d) continue; const span = Math.max(1, daysBetween(c.buy.date, today())); const k = Math.min(1, daysBetween(c.buy.date, d) / span); value += unitCost(c) + (c.value - unitCost(c)) * k; cost += unitCost(c); }
+    await save('snaps', { id: d, date: d, value: r2(value), cost: r2(cost), demo: true }, { quiet: true });
+  }
+  try { localStorage.setItem('dugout.welcomed', '1'); } catch (e) {}
+  onChange('demo'); toast('Demo cards loaded. Remove them any time in Settings.');
+}
+async function drawReceipt(store, date, items, total) {
+  const cv = document.createElement('canvas'); cv.width = 520; cv.height = 220 + items.length * 34; const g = cv.getContext('2d');
+  g.fillStyle = '#fbfbf8'; g.fillRect(0, 0, cv.width, cv.height); g.fillStyle = '#222'; g.textBaseline = 'top';
+  g.font = 'bold 26px monospace'; g.fillText(store.toUpperCase().slice(0, 30), 28, 28);
+  g.font = '18px monospace'; g.fillText(fmtDate(date) + '  · CASH', 28, 66); g.fillText('-'.repeat(40), 28, 92);
+  items.forEach(([n, p], i) => { g.fillText(n.slice(0, 28), 28, 120 + i * 34); g.fillText(money(p), 400, 120 + i * 34); });
+  const y = 120 + items.length * 34; g.fillText('-'.repeat(40), 28, y + 4); g.font = 'bold 22px monospace'; g.fillText('TOTAL', 28, y + 34); g.fillText(money(total), 380, y + 34);
+  return new Promise(r => cv.toBlob(r, 'image/png'));
+}
+
+/* Boot */
+(async function boot() {
+  try { await loadAll(); } catch (e) { S.settings = structuredClone(DEFAULT_SETTINGS); }
+  if (!S.settings) S.settings = structuredClone(DEFAULT_SETTINGS);
+  applyTheme(); shell(); bindEvents();
+  if (!DB.db) toast('This browser blocked local storage, so changes won\'t be kept. Open Dugout in Safari or Chrome directly.');
+  onChange = store => {
+    if (store !== 'settings' || true) snapshotSoon();
+    scheduleSync();
+    applyTheme();
+    if (store === 'settings' && curView === 'inv') { updateInv(); route(); return; }
+    rerender();
+  };
+  window.addEventListener('hashchange', route);
+  window.addEventListener('online', () => scheduleSync());
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && syncCfg()) syncNow(); });
+  await route();
+  if (S.cards.length) snapshotSoon();
+  if (syncCfg()) syncNow();
+})();
+</script>
+
+</body></html>
