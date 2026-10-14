@@ -698,7 +698,7 @@ function shell() {
       <div class="brand"><i></i>DUGOUT</div>
       <nav>${NAV.map(n => n === '-' ? '<div class="sep"></div>' : `<a href="#/${n[0]}" data-nav="${n[0]}">${n[1]}</a>`).join('')}</nav>
       <div class="foot">
-        <span class="muted" style="color:inherit;opacity:.6">Version 1.6 · smarter scan</span>
+        <span class="muted" style="color:inherit;opacity:.6">Version 1.7 · bulk photos</span>
         <span id="sync-status">${esc(Sync.status || (syncCfg() ? 'Sync ready' : 'Saved on this device'))}</span>
         <div class="row"><button class="btn sm" data-act="theme" type="button">Light / dark</button>${syncCfg() ? '<button class="btn sm" data-act="syncNow" type="button">Sync</button>' : ''}</div>
       </div>
@@ -777,13 +777,13 @@ V.dash = () => {
   const welcome = !S.cards.length ? `
     <section class="panel"><h2>Welcome to Dugout</h2>
       <p>Your inventory lives on this device. Add your first card, log a pickup, or load demo cards to see how everything works. Demo cards are marked and can be removed in one tap from Settings.</p>
-      <div class="row"><button class="btn pri" data-act="addCard" type="button">+ Add my first card</button><button class="btn" data-act="batch" type="button">Batch scan 9 at a time</button><button class="btn" data-act="newPickup" type="button">Log a pickup</button><button class="btn" data-act="loadDemo" type="button">Load demo cards</button></div>
+      <div class="row"><button class="btn pri" data-act="addCard" type="button">+ Add my first card</button><button class="btn" data-act="batch" type="button">Add many cards from photos</button><button class="btn" data-act="newPickup" type="button">Log a pickup</button><button class="btn" data-act="loadDemo" type="button">Load demo cards</button></div>
     </section>` : '';
   const demo = S.cards.some(c => c.demo && live(c)) ? `<div class="warn">You're looking at demo cards. Remove them in <a href="#/settings">Settings</a> when you're ready to start for real.</div>` : '';
   return `
   <div class="page-head"><h1>Home</h1><div class="actions">
     <button class="btn pri" data-act="addCard" type="button">+ Add card</button>
-    <button class="btn" data-act="batch" type="button">Batch scan</button>
+    <button class="btn" data-act="batch" type="button">Bulk add</button>
     <button class="btn" data-act="scanReceipt" type="button">Scan receipt</button>
     <a class="btn" href="#/scan">Scan QR</a>
     <button class="btn" data-act="newPickup" type="button">Log pickup</button></div></div>
@@ -875,7 +875,7 @@ V.inv = () => {
   <div class="page-head"><h1>Inventory</h1><div class="actions">
     <button class="btn" data-act="priceCheck" type="button">Price check</button>
     <button class="btn" data-act="scanReceipt" type="button">Scan receipt</button>
-    <button class="btn" data-act="batch" type="button">Batch scan</button>
+    <button class="btn" data-act="batch" type="button">Bulk add</button>
     <button class="btn pri" data-act="addCard" type="button">+ Add card</button></div></div>
   <section class="panel">
     <div class="toolbar">
@@ -3031,9 +3031,20 @@ async function sheetsFromFiles(files) {
         await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
         out.push({ bmp: await createImageBitmap(cv), name: `${f.name} p${p}` });
       }
-    } else out.push({ bmp: await createImageBitmap(f, { imageOrientation: 'from-image' }), name: f.name });
+    } else out.push(await loadPhoto(f));
   }
   return out;
+}
+async function loadPhoto(f, maxSide = 3000) {
+  let bmp = await createImageBitmap(f, { imageOrientation: 'from-image' });
+  const k = maxSide / Math.max(bmp.width, bmp.height);
+  if (k < 1) { const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k); cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height); bmp.close && bmp.close(); bmp = await createImageBitmap(cv); }
+  return { bmp, name: f.name };
+}
+/* photos picked from the camera roll: keep the order they were picked in, unless every file has its own camera name (IMG_1234) */
+function photoOrder(files) {
+  const names = files.map(f => f.name); const distinct = new Set(names).size === names.length && names.every(n => /\d/.test(n));
+  return distinct ? [...files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })) : [...files];
 }
 
 /* --- reading a card back ------------------------------------------------ */
@@ -3178,69 +3189,101 @@ function pairBacks(fronts, backs, fSheet, bSheet, mirrored) {
 }
 
 /* --- the flow ------------------------------------------------------------ */
-function openBatch() {
-  openModal(`<form data-form="batchGo">${mhead('Batch scan')}
+function openBatch(mode) {
+  mode = mode || BS.mode || 'photos'; BS.mode = mode;
+  openModal(`<form data-form="batchGo">${mhead('Add cards in bulk')}
+  <input type="hidden" name="mode" value="${mode}">
+  <div class="seg" role="group" aria-label="What are you adding from?"><button type="button" data-act="bsMode" data-v="photos" class="${mode === 'photos' ? 'on' : ''}">Photos</button><button type="button" data-act="bsMode" data-v="scanner" class="${mode === 'scanner' ? 'on' : ''}">Scanner sheets</button></div>
+  ${mode === 'photos' ? `
+  <ol class="muted" style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px">
+    <li>Photograph each card on a plain, dark surface: <b>front, then back</b>, then the next card.</li>
+    <li>Pick all the photos at once, in that order. One photo can also hold several cards.</li>
+  </ol>
+  ${field('Card photos', '<input type="file" name="photos" accept="image/*" multiple required>')}
+  ${field('Photo order', `<select name="order">${opts([['alt', 'Front, back, front, back…'], ['split', 'All fronts, then all backs'], ['fronts', 'Fronts only (no backs)']], S.settings.photoOrder || 'alt')}</select>`)}
+  <small class="muted">Picked from Photos, they're used in the order you tap them. Camera files named like IMG_1234 are sorted by name.</small>` : `
   <ol class="muted" style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px">
     <li>Lay up to <b>9 cards</b> face down on the scanner glass in 3 rows of 3, with a small gap between them.</li>
-    <li>Cover them with a sheet of <b>black paper</b> before closing the lid. The white lid hides white card borders.</li>
+    <li>Raw cards with white borders: cover them with <b>black paper</b> before closing the lid.</li>
     <li>Scan at <b>300 dpi, color, JPG</b>. Then flip each card over <b>in its own spot</b> and scan again for the backs.</li>
   </ol>
   <div class="fgrid">
     ${field('Front scans', '<input type="file" name="fronts" accept="image/*,application/pdf" multiple required>')}
     ${field('Back scans (same order)', '<input type="file" name="backs" accept="image/*,application/pdf" multiple>')}
   </div>
+  <label class="chk"><input type="checkbox" name="mirrored"> I flipped the whole sheet instead of each card (backs are mirrored)</label>`}
   <label class="chk"><input type="checkbox" name="read" checked> Read the card backs to fill in player, year, set and number</label>
   <label class="chk"><input type="checkbox" name="toploader" ${S.settings.toploader ? 'checked' : ''}> Cards are in top loaders or sleeves</label>
-  <label class="chk"><input type="checkbox" name="mirrored"> I flipped the whole sheet instead of each card (backs are mirrored)</label>
-  <small class="muted">Works with photos too: lay cards on a dark table and take one photo from straight above.</small>
   ${mfoot('Find cards')}</form>`);
 }
 FORMS.batchGo = async f => {
-  const fd = new FormData(f); const fronts = fd.getAll('fronts').filter(x => x && x.size), backs = fd.getAll('backs').filter(x => x && x.size);
-  if (!fronts.length) return toast('Choose at least one front scan');
-  BS.opts = { read: fd.get('read') === 'on', toploader: fd.get('toploader') === 'on', mirrored: fd.get('mirrored') === 'on' };
+  const fd = new FormData(f); const mode = fd.get('mode') || 'scanner';
+  BS.opts = { read: fd.get('read') === 'on', toploader: fd.get('toploader') === 'on', mirrored: fd.get('mirrored') === 'on', mode };
+  // build front/back file lists
+  let fronts = [], backs = [];
+  if (mode === 'photos') {
+    const photos = photoOrder(fd.getAll('photos').filter(x => x && x.size)); const order = fd.get('order') || 'alt';
+    if (!photos.length) return toast('Choose your card photos first');
+    if (S.settings.photoOrder !== order) { S.settings.photoOrder = order; saveSettings(); }
+    if (order === 'alt') photos.forEach((p, i) => (i % 2 ? backs : fronts).push(p));
+    else if (order === 'split') { const h = Math.ceil(photos.length / 2); fronts = photos.slice(0, h); backs = photos.slice(h); }
+    else fronts = photos;
+    if (order !== 'fronts' && photos.length % 2) toast('Odd number of photos: the last card has no back photo');
+  } else {
+    fronts = fd.getAll('fronts').filter(x => x && x.size); backs = fd.getAll('backs').filter(x => x && x.size);
+    if (!fronts.length) return toast('Choose at least one front scan');
+  }
   const sheet = $('#modal-root .sheet');
-  const prog = (msg, p) => { sheet.innerHTML = `${mhead('Batch scan')}<div class="calc"><div><span id="bs-step">${esc(msg)}</span><b>${p === null ? '' : Math.round(p * 100) + '%'}</b></div></div><div style="height:8px;background:var(--line);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(2, (p || 0) * 100)}%;background:var(--acc)"></div></div><small class="muted">Keep this screen open. Reading 9 cards takes about a minute the first time.</small>`; };
+  const prog = (msg, p) => { sheet.innerHTML = `${mhead('Adding cards')}<div class="calc"><div><span id="bs-step">${esc(msg)}</span><b>${p === null ? '' : Math.round(p * 100) + '%'}</b></div></div><div style="height:8px;background:var(--line);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(2, (p || 0) * 100)}%;background:var(--acc)"></div></div><small class="muted">Keep this screen open. Each card takes a few seconds to read.</small>`; };
   try {
-    prog('Loading scans', null);
-    const fS = await sheetsFromFiles(fronts), bS = await sheetsFromFiles(backs);
-    BS.items = []; BS.merged = 0; BS.sheets = [...fS, ...bS];
-    for (let s = 0; s < fS.length; s++) {
-      prog(`Finding cards on sheet ${s + 1} of ${fS.length}`, s / fS.length * 0.3);
-      await new Promise(r => setTimeout(r, 30));
-      const F2 = detectCardQuads(fS[s].bmp); BS.merged += F2.merged;
-      const bs = bS[s]; const B2 = bs ? detectCardQuads(bs.bmp) : { cards: [], merged: 0 }; BS.merged += B2.merged;
-      const pairs = bs ? pairBacks(F2.cards, B2.cards, fS[s], bs, BS.opts.mirrored) : F2.cards.map(() => null);
-      F2.cards.forEach((c, i) => BS.items.push({ id: 'b' + uid(), sheet: s, row: c.row, col: c.col, front: { sheet: fS[s], quad: c.quad }, back: pairs[i] ? { sheet: bs, quad: pairs[i].quad } : null, fields: null }));
+    BS.items = []; BS.merged = 0; BS.sheets = [];
+    const pairsN = mode === 'photos' ? fronts.length : null;
+    // scanner sheets are few and may be PDFs, so load them up front; photos load one pair at a time
+    const fS = mode === 'photos' ? null : await sheetsFromFiles(fronts), bS = mode === 'photos' ? null : await sheetsFromFiles(backs);
+    const total = mode === 'photos' ? pairsN : fS.length;
+    for (let s = 0; s < total; s++) {
+      prog(mode === 'photos' ? `Finding card ${s + 1} of ${total}` : `Finding cards on sheet ${s + 1} of ${total}`, s / total * 0.4);
+      await new Promise(r => setTimeout(r, 20));
+      const fs = mode === 'photos' ? await loadPhoto(fronts[s]) : fS[s];
+      const bs = mode === 'photos' ? (backs[s] ? await loadPhoto(backs[s]) : null) : bS[s];
+      const F2 = detectCardQuads(fs.bmp); BS.merged += F2.merged;
+      const B2 = bs ? detectCardQuads(bs.bmp) : { cards: [], merged: 0 }; BS.merged += B2.merged;
+      const whole = sh => ({ quad: [[0, 0], [sh.bmp.width, 0], [sh.bmp.width, sh.bmp.height], [0, sh.bmp.height]], c: [sh.bmp.width / 2, sh.bmp.height / 2], row: 0, col: 0, whole: true });
+      if (mode === 'photos') { if (!F2.cards.length) F2.cards.push(whole(fs)); if (bs && !B2.cards.length) B2.cards.push(whole(bs)); } // never drop a photo
+      // one card per photo: pair directly; several: pair by position
+      const pairs = !bs ? F2.cards.map(() => null) : (F2.cards.length === 1 && B2.cards.length === 1) ? [B2.cards[0]] : pairBacks(F2.cards, B2.cards, fs, bs, BS.opts.mirrored);
+      for (let i = 0; i < F2.cards.length; i++) {
+        const c = F2.cards[i]; const it = { id: 'b' + uid(), sheet: s, row: c.row, col: c.col, fields: null, loose: !!c.whole };
+        let fq = c.quad, bq = pairs[i] ? pairs[i].quad : null;
+        if (BS.opts.toploader) { if (!fs.src) fs.src = bitmapPixels(fs.bmp, 3400); if (!c.whole) fq = snapInside(fs.src, fq); if (bq && !pairs[i].whole) { if (!bs.src) bs.src = bitmapPixels(bs.bmp, 3400); bq = snapInside(bs.src, bq); } }
+        it.f = await cardImages(fs, fq); it.b = bq ? await cardImages(bs, bq) : null;
+        BS.items.push(it);
+      }
+      for (const sh of [fs, bs]) if (sh && mode === 'photos') { sh.src = null; sh.bmp.close && sh.bmp.close(); } // free memory
     }
-    if (!BS.items.length) { sheet.innerHTML = `${mhead('No cards found')}<p>Dugout couldn't find card edges on that scan. Put black paper over the cards before scanning, leave a gap between cards, and try again.</p><div class="sheet-foot"><button class="btn pri" type="button" data-act="batch">Try again</button></div>`; return; }
-    for (let i = 0; i < BS.items.length; i++) {
-      const it = BS.items[i];
-      prog(`Straightening card ${i + 1} of ${BS.items.length}`, 0.3 + i / BS.items.length * 0.2);
-      if (BS.opts.toploader) { if (!it.front.sheet.src) it.front.sheet.src = bitmapPixels(it.front.sheet.bmp, 3400); it.front.quad = snapInside(it.front.sheet.src, it.front.quad); if (it.back) { if (!it.back.sheet.src) it.back.sheet.src = bitmapPixels(it.back.sheet.bmp, 3400); it.back.quad = snapInside(it.back.sheet.src, it.back.quad); } }
-      it.f = await cardImages(it.front.sheet, it.front.quad); it.b = it.back ? await cardImages(it.back.sheet, it.back.quad) : null;
-    }
+    if (fS) [...fS, ...bS].forEach(sh => { sh.src = null; });
+    if (!BS.items.length) { sheet.innerHTML = `${mhead('No cards found')}<p>Dugout couldn't find card edges. Put black paper over white-bordered cards, leave a gap between cards, and try again.</p><div class="sheet-foot"><button class="btn pri" type="button" data-act="batch">Try again</button></div>`; return; }
+    await loadPlayerNames();
     for (let i = 0; i < BS.items.length; i++) {
       const it = BS.items[i]; let bt = '', ft = '';
       if (BS.opts.read) {
-        const pr = (p, label) => prog(`${label === 'Reading text' ? 'Reading' : label} card ${i + 1} of ${BS.items.length}`, 0.5 + (i + (p || 0)) / BS.items.length * 0.5);
+        const pr = (p, label) => prog(`${label === 'Reading text' ? 'Reading' : label} card ${i + 1} of ${BS.items.length}`, 0.4 + (i + (p || 0)) / BS.items.length * 0.6);
         if (it.b) bt = (await readImageText(it.b.warped, pr, '11')).text;
         const pre = parseCardBack(bt);
         if (!pre.player || !it.b) ft = (await readImageText(it.f.warped, pr, '11')).text;
       }
       it.text = bt; it.fields = parseCardBack(bt, ft);
-      await loadPlayerNames(); const pm = matchPlayer(it.fields.cands, it.fields.sport); if (pm) { it.fields.player = pm; it.fields.matched = true; }
+      const pm = matchPlayer(it.fields.cands, it.fields.sport); if (pm) { it.fields.player = pm; it.fields.matched = true; }
     }
-    BS.sheets.forEach(s => { s.src = null; }); // free memory
     renderBatchReview();
-  } catch (e) { console.error(e); sheet.innerHTML = `${mhead('Batch scan stopped')}<p>${esc(e.message)}</p><div class="sheet-foot"><button class="btn" data-act="close" type="button">Close</button><button class="btn pri" type="button" data-act="batch">Try again</button></div>`; }
+  } catch (e) { console.error(e); sheet.innerHTML = `${mhead('Stopped')}<p>${esc(e.message)}</p><div class="sheet-foot"><button class="btn" data-act="close" type="button">Close</button><button class="btn pri" type="button" data-act="batch">Try again</button></div>`; }
 };
 const bsURL = new Map();
 const blobURL = b => { if (!bsURL.has(b)) bsURL.set(b, URL.createObjectURL(b)); return bsURL.get(b); };
 function renderBatchReview() {
   const n = BS.items.length; const pickups = S.pickups.filter(p => !p.purged).sort((a, b) => b.date.localeCompare(a.date));
   const row = (it, i) => { const c = it.fields;
-    return `<fieldset data-bi="${i}" class="bs-item"><legend>Card ${i + 1}</legend>
+    return `<fieldset data-bi="${i}" class="bs-item"><legend>Card ${i + 1}</legend>${it.loose ? '<div class="warn" style="margin-bottom:8px">Couldn\'t find this card\'s edges, so the whole photo was used. Use Straighten on the card page after saving.</div>' : ''}
     <div class="bs-grid"><div class="bs-imgs"><img src="${blobURL(it.f.warped)}" alt="Front ${i + 1}">${it.b ? `<img src="${blobURL(it.b.warped)}" alt="Back ${i + 1}">` : '<div class="bs-noback">No back</div>'}</div>
     <div class="fgrid">
       ${field(c.matched ? 'Player ✓ matched' : c.player ? 'Player · check name' : 'Player', `<input data-k="player" value="${esc(c.player)}" list="dl-bpl">`)}${field('Year', `<input data-k="year" value="${esc(c.year)}" inputmode="numeric">`)}
@@ -3278,12 +3321,14 @@ function bsCollect() { // remember typed values before any re-render
 function bsRestoreShared() { const f = $('#modal-root form'); if (!f || !BS.shared) return; Object.entries(BS.shared).forEach(([k, v]) => { const el = f.elements[k]; if (el && el.type !== 'checkbox') el.value = v; }); }
 Object.assign(A, {
   batch: () => openBatch(),
+  bsMode: el => openBatch(el.dataset.v),
   bsDel: el => { bsCollect(); BS.items.splice(+el.dataset.i, 1); if (!BS.items.length) return closeModal(); renderBatchReview(); bsRestoreShared(); },
   bsSwap: el => { bsCollect(); const it = BS.items[+el.dataset.i]; [it.front, it.back] = [it.back, it.front]; [it.f, it.b] = [it.b, it.f]; renderBatchReview(); bsRestoreShared(); },
   bsRot: async el => {
-    bsCollect(); const it = BS.items[+el.dataset.i]; const side = el.dataset.s === 'f' ? 'front' : 'back'; const s = it[side];
-    s.quad = [s.quad[2], s.quad[3], s.quad[0], s.quad[1]]; // turn 180°
-    it[side === 'front' ? 'f' : 'b'] = await cardImages(s.sheet, s.quad); s.sheet.src = null;
+    bsCollect(); const it = BS.items[+el.dataset.i]; const k = el.dataset.s === 'f' ? 'f' : 'b'; const cur = it[k]; if (!cur) return;
+    const q = [cur.quad[2], cur.quad[3], cur.quad[0], cur.quad[1]]; // turn 180°
+    const bmp = await createImageBitmap(cur.orig); const src = bitmapPixels(bmp, 3400);
+    it[k] = { warped: await canvasBlob(warpCard(src, q)), orig: cur.orig, quad: q }; bmp.close && bmp.close();
     renderBatchReview(); bsRestoreShared();
   },
   bsFill: () => {
