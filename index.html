@@ -188,7 +188,7 @@ table.t { border-collapse: collapse; width: 100%; font-size: .9rem; }
 .sheet-head .x { margin-left: auto; }
 .sheet-foot { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; position: sticky; bottom: -18px; background: var(--panel); padding: 12px 0 2px; border-top: 1px solid var(--line); }
 .warn { border: 1px solid var(--acc); background: color-mix(in srgb, var(--acc) 12%, transparent); border-radius: 8px; padding: 10px 12px; font-size: .92rem; }
-.calc { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 2px; background: var(--line); border-radius: 8px; overflow: hidden; }
+.calc { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 2px; background: var(--line); border-radius: 8px; overflow: hidden; }
 .calc div { background: var(--cell); padding: 8px 10px; display: flex; flex-direction: column; }
 .calc span { font: 600 .7rem var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .calc b { font-family: var(--led); font-size: 1.1rem; }
@@ -226,6 +226,14 @@ table.t { border-collapse: collapse; width: 100%; font-size: .9rem; }
 .st-prev { display: flex; flex-direction: column; gap: 6px; }
 .st-prev canvas { width: 200px; height: 280px; max-width: 100%; border-radius: 8px; border: 1px solid var(--line); }
 @media (max-width: 700px) { .st-prev canvas { width: 140px; height: 196px; } }
+
+/* batch scan */
+.bs-grid { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 14px; align-items: start; }
+.bs-imgs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.bs-imgs img, .bs-noback { width: 100%; aspect-ratio: 5 / 7; max-width: 100%; object-fit: cover; border-radius: 5px; border: 1px solid var(--line); background: var(--panel2); }
+.bs-noback { display: flex; align-items: center; justify-content: center; font-size: .75rem; color: var(--muted); }
+.bs-text { white-space: pre-wrap; font: .78rem/1.4 var(--led); color: var(--muted); max-height: 160px; overflow: auto; margin: 6px 0 0; }
+@media (max-width: 640px) { .bs-grid { grid-template-columns: minmax(0, 1fr); } .bs-imgs { max-width: 220px; } }
 
 /* toast */
 #toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 90; display: flex; flex-direction: column; gap: 8px; align-items: center; width: min(520px, calc(100% - 32px)); pointer-events: none; }
@@ -690,6 +698,7 @@ function shell() {
       <div class="brand"><i></i>DUGOUT</div>
       <nav>${NAV.map(n => n === '-' ? '<div class="sep"></div>' : `<a href="#/${n[0]}" data-nav="${n[0]}">${n[1]}</a>`).join('')}</nav>
       <div class="foot">
+        <span class="muted" style="color:inherit;opacity:.6">Version 1.5 · batch scan</span>
         <span id="sync-status">${esc(Sync.status || (syncCfg() ? 'Sync ready' : 'Saved on this device'))}</span>
         <div class="row"><button class="btn sm" data-act="theme" type="button">Light / dark</button>${syncCfg() ? '<button class="btn sm" data-act="syncNow" type="button">Sync</button>' : ''}</div>
       </div>
@@ -768,12 +777,13 @@ V.dash = () => {
   const welcome = !S.cards.length ? `
     <section class="panel"><h2>Welcome to Dugout</h2>
       <p>Your inventory lives on this device. Add your first card, log a pickup, or load demo cards to see how everything works. Demo cards are marked and can be removed in one tap from Settings.</p>
-      <div class="row"><button class="btn pri" data-act="addCard" type="button">+ Add my first card</button><button class="btn" data-act="newPickup" type="button">Log a pickup</button><button class="btn" data-act="loadDemo" type="button">Load demo cards</button></div>
+      <div class="row"><button class="btn pri" data-act="addCard" type="button">+ Add my first card</button><button class="btn" data-act="batch" type="button">Batch scan 9 at a time</button><button class="btn" data-act="newPickup" type="button">Log a pickup</button><button class="btn" data-act="loadDemo" type="button">Load demo cards</button></div>
     </section>` : '';
   const demo = S.cards.some(c => c.demo && live(c)) ? `<div class="warn">You're looking at demo cards. Remove them in <a href="#/settings">Settings</a> when you're ready to start for real.</div>` : '';
   return `
   <div class="page-head"><h1>Home</h1><div class="actions">
     <button class="btn pri" data-act="addCard" type="button">+ Add card</button>
+    <button class="btn" data-act="batch" type="button">Batch scan</button>
     <button class="btn" data-act="scanReceipt" type="button">Scan receipt</button>
     <a class="btn" href="#/scan">Scan QR</a>
     <button class="btn" data-act="newPickup" type="button">Log pickup</button></div></div>
@@ -865,6 +875,7 @@ V.inv = () => {
   <div class="page-head"><h1>Inventory</h1><div class="actions">
     <button class="btn" data-act="priceCheck" type="button">Price check</button>
     <button class="btn" data-act="scanReceipt" type="button">Scan receipt</button>
+    <button class="btn" data-act="batch" type="button">Batch scan</button>
     <button class="btn pri" data-act="addCard" type="button">+ Add card</button></div></div>
   <section class="panel">
     <div class="toolbar">
@@ -910,9 +921,9 @@ function cardTile(c) {
     <div class="ct-money"><span class="num">${money(v)}${c.qty > 1 ? ` <small class="muted">×${c.qty}</small>` : ''}</span><span class="num ${cls(p)}">${money(p, 1)}</span></div></div></a>`;
 }
 function invTable(list) {
-  return `<div class="tablewrap"><table class="t"><thead><tr><th>ID</th><th>Player</th><th>Card</th><th>Parallel</th><th>Grade</th><th class="r">Qty</th><th class="r">Cost</th><th class="r">Value</th><th class="r">Profit</th><th class="r">ROI</th><th>Status</th><th>Box</th></tr></thead><tbody>
-  ${list.map(c => { const uc = unitCost(c), v = num(c.value), p = v - uc; const l = locById(c.locationId);
-    return `<tr class="link" data-act="go" data-to="#/card/${c.id}"><td class="code">${esc(c.code)}</td><td><b>${esc(c.player)}</b>${c.rookie ? ' <span class="pill">RC</span>' : ''}</td><td>${esc(cardSet(c))}${c.number ? ' #' + esc(c.number) : ''}</td><td>${esc(c.parallel || '')}${c.serial ? ' /' + esc(String(c.serial).replace(/^.*\//, '')) : ''}</td><td>${esc(gradeText(c))}</td><td class="r num">${c.qty}</td><td class="r num">${money(uc)}</td><td class="r num">${money(v)}</td><td class="r num ${cls(p)}">${money(p, 1)}</td><td class="r num ${cls(p)}">${pct(uc ? p / uc : null)}</td><td>${statusPill(c)}</td><td>${l ? esc(l.code) : ''}</td></tr>`; }).join('')}
+  return `<div class="tablewrap"><table class="t"><thead><tr><th>ID</th><th>Player</th><th>Card</th><th>Parallel</th><th>Grade</th><th class="r">Qty</th><th class="r">Cost</th><th class="r">Value</th><th class="r">Avg sold</th><th class="r">Profit</th><th class="r">ROI</th><th>Status</th><th>Box</th></tr></thead><tbody>
+  ${list.map(c => { const uc = unitCost(c), v = num(c.value), p = v - uc; const l = locById(c.locationId); const cs = compStats(c);
+    return `<tr class="link" data-act="go" data-to="#/card/${c.id}"><td class="code">${esc(c.code)}</td><td><b>${esc(c.player)}</b>${c.rookie ? ' <span class="pill">RC</span>' : ''}</td><td>${esc(cardSet(c))}${c.number ? ' #' + esc(c.number) : ''}</td><td>${esc(c.parallel || '')}${c.serial ? ' /' + esc(String(c.serial).replace(/^.*\//, '')) : ''}</td><td>${esc(gradeText(c))}</td><td class="r num">${c.qty}</td><td class="r num">${money(uc)}</td><td class="r num">${money(v)}</td><td class="r num">${cs ? `${money(cs.avg)} <small class="muted">(${cs.count})</small>` : '—'}</td><td class="r num ${cls(p)}">${money(p, 1)}</td><td class="r num ${cls(p)}">${pct(uc ? p / uc : null)}</td><td>${statusPill(c)}</td><td>${l ? esc(l.code) : ''}</td></tr>`; }).join('')}
   </tbody></table></div>`;
 }
 
@@ -968,6 +979,7 @@ V.card = id => {
         ${hist.length > 1 ? sparkline(hist) : ''}
         ${hist.length ? `<div class="list">${hist.slice().reverse().slice(0, 5).map(h => `<div class="li"><span class="grow">${fmtDate(h.date)}</span><span class="num">${money(h.value)}</span></div>`).join('')}</div>` : ''}
       </section>
+      ${compsPanel(c)}
       <section class="panel"><h2>Receipts <button class="btn sm" data-act="addReceipt" data-card="${c.id}" type="button" style="margin-left:auto">+ Add receipt</button></h2>
         ${recs.length ? `<div class="rgrid">${recs.map(receiptTile).join('')}</div>` : `<div class="empty">No receipts linked to this card yet.</div>`}</section>
       <section class="panel"><h2>History</h2>${activity(50, c.id)}</section>
@@ -1352,8 +1364,9 @@ function showPQ() {
   openModal(`<form data-form="pq">${mhead(`Price check ${PQ.i + 1} of ${PQ.list.length}`)}
   <div class="row" style="align-items:flex-start;flex-wrap:nowrap"><div style="width:96px;flex:none">${art(c)}</div><div style="min-width:0"><span class="code">${esc(c.code)}</span><h3 style="font-size:1.3rem">${esc(cardName(c))}</h3><div class="muted">${esc(cardSet(c))} ${esc(c.parallel || '')} · ${esc(gradeText(c))}</div>
   <div class="muted">Now ${money(c.value)} · last priced ${c.priceUpdated ? fmtDate(c.priceUpdated) : 'never'} · cost ${money(unitCost(c))}</div></div></div>
+  ${(s => s ? `<div class="calc"><div><span>Avg of last ${s.count} sales</span><b>${money(s.avg)}</b></div><div><span>Last sale</span><b style="font-size:.95rem">${fmtDate(s.lastDate)}</b></div></div>` : '')(compStats(c))}
   <a class="btn" href="${esc(compsURL(c))}" target="_blank" rel="noopener">Look up eBay sold comps ↗</a>
-  ${field('New value per card', money_inp('value', '', 'autofocus'))}
+  ${field('New value per card', money_inp('value', compStats(c) ? compStats(c).avg : '', 'autofocus'))}
   <div class="sheet-foot"><button class="btn" type="button" data-act="close">Done</button><button class="btn" type="button" data-act="pqSkip">Skip</button><button class="btn pri" type="submit">Save &amp; next</button></div></form>`, { narrow: true });
 }
 async function submitPQ(f) {
@@ -1691,7 +1704,8 @@ V.settings = async () => {
   <section class="panel"><h2>Card IDs</h2><form data-form="ids" class="fgrid">
     ${field('ID prefix', inp('prefix', s.prefix))}${field('Digits', `<select name="digits">${opts([3, 4, 5], s.digits)}</select>`)}
     <div class="wide row"><span class="muted">Next card: <b class="num">${esc(nextCode())}</b></span><span class="spacer"></span><button class="btn sm pri" type="submit">Save</button></div></form>
-    <small class="muted">Changing the prefix only affects new cards.</small></section>
+    <small class="muted">Changing the prefix only affects new cards.</small>
+    <form data-form="compsN" class="row"><span class="muted">Average the last</span><select name="n" style="width:auto">${opts([3, 5, 7, 10], compsN())}</select><span class="muted">sales</span><button class="btn sm" type="submit">Save</button></form></section>
   </div>
   <section class="panel"><h2>Platform fees</h2><p class="muted" style="margin:0">Used to auto-fill fees when you mark a card sold. Check these against your current seller fees.</p>
     <form data-form="fees"><div class="tablewrap"><table class="t"><thead><tr><th>Platform</th><th>Percent of sale</th><th>Flat per order</th></tr></thead><tbody>
@@ -1723,6 +1737,7 @@ V.settings = async () => {
 };
 document.addEventListener('change', e => { if (e.target.id === 'restore-file' && e.target.files[0]) restoreBackup(e.target.files[0]); });
 Object.assign(FORMS, {
+  compsN: async f => { S.settings.compsN = +new FormData(f).get('n') || 5; await saveSettings(); toast('Saved'); },
   ids: async f => { const fd = new FormData(f); S.settings.prefix = String(fd.get('prefix') || '').trim().toUpperCase(); S.settings.digits = +fd.get('digits') || 4; await saveSettings(); toast('Saved'); },
   fees: async f => {
     const fd = new FormData(f); const fees = {}; const n = Object.keys(S.settings.fees).length;
@@ -1924,9 +1939,10 @@ async function prepForOCR(file) {
   g.putImageData(im, 0, 0);
   return cv;
 }
-async function readImageText(file, onProgress) {
+async function readImageText(file, onProgress, psm = '6') {
   OCR.progress = m => { if (m.status === 'recognizing text') onProgress && onProgress(m.progress, 'Reading text'); else if (/load|initializ/.test(m.status)) onProgress && onProgress(null, m.status.includes('language') ? 'Downloading text reader (first time only)' : 'Starting text reader'); };
   const w = await ocrWorker();
+  await w.setParameters({ tessedit_pageseg_mode: String(psm) }); // 6 = one block (receipts), 11 = sparse text (card backs)
   const canvas = await prepForOCR(file);
   const { data } = await w.recognize(canvas);
   return { text: cleanOCR(data.text || ''), confidence: Math.round(data.confidence || 0) };
@@ -1974,7 +1990,7 @@ const PLATFORM_RES = [[/e\s?bay/i, 'eBay'], [/whatnot/i, 'Whatnot'], [/facebook|
 const SETS = [
   ['bowman chrome', 'Bowman', 'Bowman Chrome'], ['bowman draft', 'Bowman', 'Bowman Draft'], ['bowman u', 'Bowman', 'Bowman U'], ['topps chrome', 'Topps', 'Chrome'], ['cosmic chrome', 'Topps', 'Cosmic Chrome'],
   ['stadium club', 'Topps', 'Stadium Club'], ['allen & ginter', 'Topps', 'Allen & Ginter'], ['allen and ginter', 'Topps', 'Allen & Ginter'], ['gypsy queen', 'Topps', 'Gypsy Queen'], ['topps now', 'Topps', 'Topps Now'],
-  ['heritage', 'Topps', 'Heritage'], ['finest', 'Topps', 'Finest'], ['sapphire', 'Topps', 'Chrome Sapphire'], ['series 1', 'Topps', 'Series 1'], ['series 2', 'Topps', 'Series 2'], ['update series', 'Topps', 'Update'],
+  ['heritage', 'Topps', 'Heritage'], ['finest', 'Topps', 'Finest'], ['sapphire', 'Topps', 'Chrome Sapphire'], ['series 1', 'Topps', 'Series 1'], ['series 2', 'Topps', 'Series 2'], ['update series', 'Topps', 'Update'], ['update', 'Topps', 'Update'],
   ['donruss optic', 'Panini', 'Donruss Optic'], ['optic', 'Panini', 'Donruss Optic'], ['national treasures', 'Panini', 'National Treasures'], ['crown royale', 'Panini', 'Crown Royale'], ['court kings', 'Panini', 'Court Kings'],
   ['prizm', 'Panini', 'Prizm'], ['select', 'Panini', 'Select'], ['mosaic', 'Panini', 'Mosaic'], ['hoops', 'Panini', 'Hoops'], ['contenders', 'Panini', 'Contenders'], ['immaculate', 'Panini', 'Immaculate'],
   ['flawless', 'Panini', 'Flawless'], ['phoenix', 'Panini', 'Phoenix'], ['origins', 'Panini', 'Origins'], ['spectra', 'Panini', 'Spectra'], ['obsidian', 'Panini', 'Obsidian'], ['absolute', 'Panini', 'Absolute'],
@@ -2566,15 +2582,14 @@ function bitmapPixels(bmp, maxSide) {
 }
 
 /* --- corner detection ---------------------------------------------------- */
-function detectCardQuad(bmp) {
-  const { k, w, h, data } = bitmapPixels(bmp, 480); const n = w * h;
+/* mask of "not background": background colour is sampled from the photo's outer frame */
+function cardMask(bmp, maxSide) {
+  const { k, w, h, data } = bitmapPixels(bmp, maxSide); const n = w * h;
   const px = i => [data[i * 4], data[i * 4 + 1], data[i * 4 + 2]];
-  // background colour = median of a thin frame around the photo
   const bpx = []; const b = Math.max(2, Math.round(Math.min(w, h) * 0.025));
   for (let x = 0; x < w; x += 2) for (let y = 0; y < b; y++) bpx.push(px(y * w + x), px((h - 1 - y) * w + x));
   for (let y = 0; y < h; y += 2) for (let x = 0; x < b; x++) bpx.push(px(y * w + x), px(y * w + w - 1 - x));
   const med = [0, 1, 2].map(c => { const v = bpx.map(p => p[c]).sort((a, z) => a - z); return v[v.length >> 1]; });
-  // distance from background, then an automatic (Otsu) threshold
   const dist = new Uint8Array(n); const hist = new Uint32Array(256);
   for (let i = 0; i < n; i++) { const p = px(i); const d = Math.min(255, Math.round(Math.hypot(p[0] - med[0], p[1] - med[1], p[2] - med[2]) / 1.5)); dist[i] = d; hist[d]++; }
   let sum = 0; for (let t = 0; t < 256; t++) sum += t * hist[t];
@@ -2585,42 +2600,125 @@ function detectCardQuad(bmp) {
   // close small gaps (glare, dark print near the edge) with one dilate + erode
   const morph = (src, on) => { const out = new Uint8Array(n); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let v = on ? 0 : 1; for (let dy = -1; dy <= 1 && v !== (on ? 1 : 0); dy++) for (let dx = -1; dx <= 1; dx++) { const yy = y + dy, xx = x + dx; const s = yy < 0 || yy >= h || xx < 0 || xx >= w ? 0 : src[yy * w + xx]; if (on ? s : !s) { v = on ? 1 : 0; break; } } out[y * w + x] = v; } return out; };
   const edged = morph(morph(mask, true), false);
-  // everything the background can't reach from the photo's edge is card (fills dark areas inside the card)
+  // everything the background can't reach from the photo's edge is card (fills dark areas inside each card)
   const outside = new Uint8Array(n); const fl = [];
   for (let x = 0; x < w; x++) fl.push(x, (h - 1) * w + x); for (let y = 0; y < h; y++) fl.push(y * w, y * w + w - 1);
   while (fl.length) { const i = fl.pop(); if (outside[i] || edged[i]) continue; outside[i] = 1; const x = i % w, y = (i / w) | 0; if (x > 0) fl.push(i - 1); if (x < w - 1) fl.push(i + 1); if (y > 0) fl.push(i - w); if (y < h - 1) fl.push(i + w); }
   const closed = new Uint8Array(n); for (let i = 0; i < n; i++) closed[i] = outside[i] ? 0 : 1;
-  // largest connected region = the card
-  const lab = new Int32Array(n).fill(-1); let bestId = -1, bestSize = 0; const stack = [];
+  return { k, w, h, n, closed };
+}
+/* connected regions of the mask, each with its edge pixels */
+function maskRegions(M, minFrac) {
+  const { w, h, n, closed } = M; const lab = new Int32Array(n).fill(-1); const regs = []; const stack = [];
   for (let s = 0; s < n; s++) {
     if (!closed[s] || lab[s] !== -1) continue;
-    let size = 0; stack.push(s); lab[s] = s;
-    while (stack.length) { const i = stack.pop(); size++; const x = i % w, y = (i / w) | 0; for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1]) if (j >= 0 && closed[j] && lab[j] === -1) { lab[j] = s; stack.push(j); } }
-    if (size > bestSize) { bestSize = size; bestId = s; }
+    const id = regs.length; let size = 0, x0 = w, y0 = h, x1 = 0, y1 = 0; stack.push(s); lab[s] = id;
+    while (stack.length) { const i = stack.pop(); size++; const x = i % w, y = (i / w) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1]) if (j >= 0 && closed[j] && lab[j] === -1) { lab[j] = id; stack.push(j); } }
+    regs.push({ id, size, box: [x0, y0, x1, y1] });
   }
-  if (bestSize < n * 0.06) return null;
-  // edge pixels of that region
-  const pts = [];
-  for (let i = 0; i < n; i++) { if (lab[i] !== bestId) continue; const x = i % w, y = (i / w) | 0; if (x === 0 || y === 0 || x === w - 1 || y === h - 1 || lab[i - 1] !== bestId || lab[i + 1] !== bestId || lab[i - w] !== bestId || lab[i + w] !== bestId) pts.push([x, y]); }
-  // rough corners: extreme points along the diagonals
+  const keep = regs.filter(r => r.size >= n * minFrac);
+  for (const r of keep) {
+    const pts = []; const [x0, y0, x1, y1] = r.box;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * w + x; if (lab[i] !== r.id) continue; if (x === 0 || y === 0 || x === w - 1 || y === h - 1 || lab[i - 1] !== r.id || lab[i + 1] !== r.id || lab[i - w] !== r.id || lab[i + w] !== r.id) pts.push([x, y]); }
+    r.pts = pts;
+  }
+  keep.lab = lab;
+  return keep;
+}
+function regionFromLocal(L, bw, bh, ox, oy, id) { // build {size, box, pts} for pixels where L == id (local bbox coordinates)
+  let size = 0, x0 = bw, y0 = bh, x1 = 0, y1 = 0; const pts = [];
+  for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
+    const i = y * bw + x; if (L[i] !== id) continue; size++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    if (x === 0 || y === 0 || x === bw - 1 || y === bh - 1 || L[i - 1] !== id || L[i + 1] !== id || L[i - bw] !== id || L[i + bw] !== id) pts.push([x + ox, y + oy]);
+  }
+  return { size, box: [x0 + ox, y0 + oy, x1 + ox, y1 + oy], pts };
+}
+/* cards that touch: erode until the blob breaks into pieces, then grow each piece back to the blob's edge */
+function splitRegion(M, regs, r) {
+  const { w } = M; const [bx0, by0, bx1, by1] = r.box; const bw = bx1 - bx0 + 1, bh = by1 - by0 + 1;
+  let cur = new Uint8Array(bw * bh); for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) cur[y * bw + x] = regs.lab[(y + by0) * w + x + bx0] === r.id ? 1 : 0;
+  const base = cur.slice(); let seeds = null;
+  for (let it = 0; it < 60 && !seeds; it++) {
+    const nx = new Uint8Array(bw * bh);
+    for (let y = 1; y < bh - 1; y++) for (let x = 1; x < bw - 1; x++) { const i = y * bw + x; nx[i] = cur[i] && cur[i - 1] && cur[i + 1] && cur[i - bw] && cur[i + bw] ? 1 : 0; }
+    cur = nx;
+    const lab = new Int32Array(bw * bh).fill(-1); const comps = []; const st = [];
+    for (let s0 = 0; s0 < bw * bh; s0++) { if (!cur[s0] || lab[s0] !== -1) continue; let sz = 0; st.push(s0); lab[s0] = comps.length; while (st.length) { const i = st.pop(); sz++; const x = i % bw; for (const j of [x > 0 ? i - 1 : -1, x < bw - 1 ? i + 1 : -1, i - bw, i + bw]) if (j >= 0 && j < bw * bh && cur[j] && lab[j] === -1) { lab[j] = comps.length; st.push(j); } } comps.push(sz); }
+    const big = comps.map((sz, i) => [sz, i]).filter(([sz]) => sz > 60);
+    if (big.length >= 2) { const keepIds = new Set(big.map(b => b[1])); seeds = new Int32Array(bw * bh).fill(-1); for (let i = 0; i < bw * bh; i++) if (lab[i] >= 0 && keepIds.has(lab[i])) seeds[i] = lab[i]; }
+    if (!comps.length) break;
+  }
+  if (!seeds) return [];
+  // grow every seed outward at the same speed, staying inside the original blob
+  let front = []; for (let i = 0; i < bw * bh; i++) if (seeds[i] >= 0) front.push(i);
+  while (front.length) { const nf = []; for (const i of front) { const x = i % bw; for (const j of [x > 0 ? i - 1 : -1, x < bw - 1 ? i + 1 : -1, i - bw, i + bw]) if (j >= 0 && j < bw * bh && base[j] && seeds[j] === -1) { seeds[j] = seeds[i]; nf.push(j); } } front = nf; }
+  return [...new Set(seeds)].filter(id => id >= 0).map(id => regionFromLocal(seeds, bw, bh, bx0, by0, id));
+}
+/* a clean rectangle that is really k cards edge to edge: cut it into k equal cards */
+function splitQuad(q, k) {
+  const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  const wd = Math.hypot(q[1][0] - q[0][0], q[1][1] - q[0][1]), ht = Math.hypot(q[3][0] - q[0][0], q[3][1] - q[0][1]);
+  const r = (a, b) => Math.max(a, b) / Math.min(a, b);
+  const alongH = Math.abs(r(wd, ht / k) - 1.4) <= Math.abs(r(wd / k, ht) - 1.4);
+  const out = [];
+  for (let i = 0; i < k; i++) {
+    const t0 = i / k, t1 = (i + 1) / k;
+    out.push(alongH ? [lerp(q[0], q[3], t0), lerp(q[1], q[2], t0), lerp(q[1], q[2], t1), lerp(q[0], q[3], t1)] : [lerp(q[0], q[1], t0), lerp(q[0], q[1], t1), lerp(q[3], q[2], t1), lerp(q[3], q[2], t0)]);
+  }
+  return out;
+}
+/* four corners from a region's outline: diagonal extremes, refined by fitting a line to each side */
+function quadFromRegion(r) {
+  const pts = r.pts; if (pts.length < 40) return null;
   const ext = f => pts.reduce((a, p) => (f(p) > f(a) ? p : a), pts[0]);
-  let c = [ext(p => -p[0] - p[1]), ext(p => p[0] - p[1]), ext(p => p[0] + p[1]), ext(p => p[1] - p[0])];
-  // refine: fit a straight line to each side (skipping the rounded corners), then intersect neighbours
-  const diag = Math.hypot(w, h); const lines = [];
+  const c = [ext(p => -p[0] - p[1]), ext(p => p[0] - p[1]), ext(p => p[0] + p[1]), ext(p => p[1] - p[0])];
+  const diag = Math.hypot(r.box[2] - r.box[0], r.box[3] - r.box[1]) || 1; const lines = [];
   for (let s = 0; s < 4; s++) {
     const a = c[s], z = c[(s + 1) % 4]; const dx = z[0] - a[0], dy = z[1] - a[1]; const L = Math.hypot(dx, dy) || 1; const ux = dx / L, uy = dy / L;
-    const near = pts.filter(p => { const t = ((p[0] - a[0]) * ux + (p[1] - a[1]) * uy) / L; const d = Math.abs((p[0] - a[0]) * uy - (p[1] - a[1]) * ux); return t > 0.12 && t < 0.88 && d < diag * 0.03; });
+    const near = pts.filter(p => { const t = ((p[0] - a[0]) * ux + (p[1] - a[1]) * uy) / L; const d = Math.abs((p[0] - a[0]) * uy - (p[1] - a[1]) * ux); return t > 0.12 && t < 0.88 && d < diag * 0.04; });
     if (near.length < 12) { lines.push(null); continue; }
     const mx = near.reduce((q, p) => q + p[0], 0) / near.length, my = near.reduce((q, p) => q + p[1], 0) / near.length;
     let sxx = 0, syy = 0, sxy = 0; for (const p of near) { const X = p[0] - mx, Y = p[1] - my; sxx += X * X; syy += Y * Y; sxy += X * Y; }
     const th = 0.5 * Math.atan2(2 * sxy, sxx - syy); lines.push({ mx, my, dx: Math.cos(th), dy: Math.sin(th) });
   }
   const meet = (l1, l2) => { const det = l1.dx * l2.dy - l1.dy * l2.dx; if (Math.abs(det) < 1e-6) return null; const t = ((l2.mx - l1.mx) * l2.dy - (l2.my - l1.my) * l2.dx) / det; return [l1.mx + l1.dx * t, l1.my + l1.dy * t]; };
-  const refined = c.map((p, i) => { const l1 = lines[(i + 3) % 4], l2 = lines[i]; const q = l1 && l2 ? meet(l1, l2) : null; return q && Math.hypot(q[0] - p[0], q[1] - p[1]) < diag * 0.08 ? q : p; });
-  // a card-like shape covers most of its bounding quad; otherwise give up and let the person place corners
-  const area = Math.abs(refined.reduce((a, p, i) => { const q = refined[(i + 1) % 4]; return a + p[0] * q[1] - q[0] * p[1]; }, 0) / 2);
-  if (area < n * 0.06 || bestSize / area < 0.75) return null;
-  return refined.map(p => [p[0] / k, p[1] / k]);
+  const q = c.map((p, i) => { const l1 = lines[(i + 3) % 4], l2 = lines[i]; const m = l1 && l2 ? meet(l1, l2) : null; return m && Math.hypot(m[0] - p[0], m[1] - p[1]) < diag * 0.1 ? m : p; });
+  const area = Math.abs(q.reduce((a, p, i) => { const z = q[(i + 1) % 4]; return a + p[0] * z[1] - z[0] * p[1]; }, 0) / 2);
+  const side = (i, j) => Math.hypot(q[i][0] - q[j][0], q[i][1] - q[j][1]);
+  const ratio = Math.max(side(0, 1) + side(2, 3), side(1, 2) + side(3, 0)) / Math.max(1, Math.min(side(0, 1) + side(2, 3), side(1, 2) + side(3, 0)));
+  return { quad: q, area, fill: r.size / Math.max(1, area), ratio };
+}
+function detectCardQuad(bmp) {
+  const M = cardMask(bmp, 480); const regs = maskRegions(M, 0.06);
+  if (!regs.length) return null;
+  const r = regs.sort((a, b) => b.size - a.size)[0]; const f = quadFromRegion(r);
+  if (!f || f.area < M.n * 0.06 || f.fill < 0.75) return null;
+  return f.quad.map(p => [p[0] / M.k, p[1] / M.k]);
+}
+/* every card on a scanner sheet (or a photo of several cards), in reading order: rows top to bottom, left to right */
+function detectCardQuads(bmp) {
+  const M = cardMask(bmp, 1000); const regs = maskRegions(M, 0.008);
+  const good = f => f && f.fill >= 0.72 && f.ratio >= 1.08 && f.ratio <= 2.1;
+  const fits = regs.map(r => ({ r, f: quadFromRegion(r) }));
+  const singles = fits.filter(o => o.f && o.f.fill >= 0.85 && o.f.ratio >= 1.2 && o.f.ratio <= 1.65).map(o => o.r.size).sort((a, b) => a - b);
+  const typical = singles.length ? singles[singles.length >> 1] : 0;
+  const quads = []; let merged = 0;
+  for (const { r, f } of fits) {
+    const k = typical ? Math.round(r.size / typical) : 1;
+    if (good(f) && k <= 1) { if (!typical || r.size > typical * 0.35) quads.push(f.quad); continue; }
+    if (k <= 0) continue; // a small speck
+    const parts = splitRegion(M, regs, r).map(quadFromRegion).filter(g => good(g) && (!typical || g.area > typical * 0.5));
+    if (parts.length >= 2) { parts.forEach(g => quads.push(g.quad)); continue; }
+    if (f && f.fill >= 0.88 && k >= 2) { splitQuad(f.quad, k).forEach(q => quads.push(q)); continue; }
+    merged++;
+  }
+  const cards = quads.map(q => ({ quad: portraitQuad(orderQuad(q.map(p => [p[0] / M.k, p[1] / M.k]))) }));
+  const ctr = q => [q.reduce((a, p) => a + p[0], 0) / 4, q.reduce((a, p) => a + p[1], 0) / 4];
+  cards.forEach(c => { c.c = ctr(c.quad); c.hgt = Math.hypot(c.quad[3][0] - c.quad[0][0], c.quad[3][1] - c.quad[0][1]); });
+  cards.sort((a, b) => a.c[1] - b.c[1]);
+  const rows = []; for (const c of cards) { const row = rows.find(rw => Math.abs(rw.y - c.c[1]) < c.hgt * 0.45); if (row) { row.items.push(c); row.y = (row.y + c.c[1]) / 2; } else rows.push({ y: c.c[1], items: [c] }); }
+  rows.forEach((rw, ri) => { rw.items.sort((a, b) => a.c[0] - b.c[0]); rw.items.forEach((c, ci) => { c.row = ri; c.col = ci; }); });
+  return { cards: rows.flatMap(rw => rw.items), merged };
 }
 
 /* --- perspective warp --------------------------------------------------- */
@@ -2762,6 +2860,377 @@ Object.assign(A, {
     await save('cards', c, { quiet: true }); onChange('cards'); closeModal(); toast('Photo straightened');
   },
 });
+
+/* Recent sales (comps): record what a card has actually sold for on the market, then show the average of the
+   last N sales. Sales come from a screenshot of eBay sold listings (read on this device), pasted text, or by hand. */
+const compsN = () => S.settings.compsN || 5;
+function compStats(c, n = compsN()) {
+  const all = (c.comps || []).filter(x => x.price > 0).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  if (!all.length) return null;
+  const last = all.slice(0, n); const ps = last.map(x => x.price);
+  const avg = ps.reduce((a, b) => a + b, 0) / ps.length;
+  const sorted = [...ps].sort((a, b) => a - b); const mid = sorted.length >> 1;
+  const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  const newer = all.slice(0, 3), older = all.slice(3, 6);
+  const trend = older.length >= 2 ? (newer.reduce((a, x) => a + x.price, 0) / newer.length) / (older.reduce((a, x) => a + x.price, 0) / older.length) - 1 : null;
+  return { avg: r2(avg), median: r2(median), min: sorted[0], max: sorted[sorted.length - 1], count: last.length, total: all.length, trend, lastDate: all[0].date, list: all };
+}
+function compsPanel(c) {
+  const s = compStats(c); const uc = unitCost(c);
+  return `<section class="panel" id="comps"><h2>Recent sales <small style="text-transform:none;letter-spacing:0;font-family:var(--body);font-weight:400">what this card sells for</small>
+    <a href="${esc(compsURL(c))}" target="_blank" rel="noopener">Open eBay sold ↗</a></h2>
+  ${s ? `<div class="calc">
+      <div><span>Avg of last ${s.count}</span><b>${money(s.avg)}</b></div><div><span>Median</span><b>${money(s.median)}</b></div>
+      <div><span>Range</span><b style="font-size:.95rem">${money(s.min)}–${money(s.max)}</b></div>
+      <div><span>Trend</span><b class="${s.trend === null ? '' : cls(s.trend)}">${s.trend === null ? '—' : pct(s.trend)}</b></div>
+      <div><span>Profit at avg</span><b class="${cls(s.avg - uc)}">${money(s.avg - uc, 1)}</b></div>
+      <div><span>Last sale</span><b style="font-size:.95rem">${daysBetween(s.lastDate, today())}d ago</b></div></div>
+    <div class="row">${Math.abs(num(c.value) - s.avg) > 0.004 ? `<button class="btn sm pri" type="button" data-act="compUse" data-id="${c.id}" data-v="${s.avg}">Set value to ${money(s.avg)}</button>` : '<small class="muted">Value matches the average.</small>'}
+      <button class="btn sm" type="button" data-act="compUse" data-id="${c.id}" data-v="${s.median}">Use median</button></div>` : '<div class="empty">No sales logged yet. Add a few recent sold prices and Dugout averages them for you.</div>'}
+  <div class="row"><button class="btn sm" type="button" data-act="compScan" data-id="${c.id}">Scan sold screenshot</button><button class="btn sm" type="button" data-act="compPaste" data-id="${c.id}">Paste sold prices</button><button class="btn sm" type="button" data-act="compAdd" data-id="${c.id}">+ Add a sale</button></div>
+  ${s ? `<div class="list">${s.list.slice(0, 12).map((x, i) => `<div class="li"><div class="grow"><b>${fmtDate(x.date)}${i < s.count ? '' : ' <small class="muted" style="display:inline">· not in average</small>'}</b><small>${esc([x.platform, x.title].filter(Boolean).join(' · ') || '—')}</small></div>${x.link ? `<a class="btn sm ghost" href="${esc(x.link)}" target="_blank" rel="noopener">↗</a>` : ''}<span class="num">${money(x.price)}</span><button class="btn sm ghost" type="button" data-act="compDel" data-id="${c.id}" data-c="${x.id}" aria-label="Remove sale">✕</button></div>`).join('')}</div>
+    ${s.total > 12 ? `<small class="muted">${s.total - 12} older sales hidden.</small>` : ''}` : ''}
+  </section>`;
+}
+
+/* --- reading sold listings out of screenshot text or pasted text --- */
+function parseSoldText(text, card, todayStr = today()) {
+  const lines = String(text || '').split(/\n/).map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const out = []; let cur = null;
+  const push = () => { if (cur && cur.price) out.push(cur); cur = null; };
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    const sold = l.match(/\b(?:sold|ended)\b\s*:?\s*(.*)$/i);
+    if (sold && findDate(sold[1] || l, todayStr)) { push(); cur = { date: findDate(sold[1] || l, todayStr), title: '', price: null, ship: 0, notes: [] }; continue; }
+    if (!cur) continue;
+    if (/best\s*offer\s*accepted/i.test(l)) { cur.notes.push('best offer accepted'); continue; }
+    const m = moneyIn(l);
+    if (m.length && /deliver|shipping|postage/i.test(l)) { if (cur.price !== null) cur.ship = /free/i.test(l) ? 0 : m[0]; continue; }
+    if (/free\s*(deliver|shipping)/i.test(l)) continue;
+    if (m.length && cur.price === null && !/(or best offer|bids?|watch|was|list price|coupon)/i.test(l)) { cur.price = m[0]; continue; }
+    if (!m.length && cur.price === null && /[A-Za-z]{3,}/.test(l) && !/^(pre-?owned|brand new|graded|ungraded|new listing|sponsored|or best offer)/i.test(l)) cur.title = (cur.title + ' ' + l).trim();
+  }
+  push();
+  if (!out.length) { // plain list of prices, one sale per price
+    lines.forEach(l => moneyIn(l.replace(/(?<![.,\d])(\d{1,6})(?![.,]?\d)/g, '$1.00')).forEach(p => { if (p > 0) out.push({ date: findDate(l, todayStr) || todayStr, title: '', price: p, ship: 0, notes: [] }); }));
+  }
+  // flag listings that look like a different card (other grade, raw vs graded, other parallel)
+  for (const s of out) {
+    s.keep = true; s.why = [];
+    if (s.notes.includes('best offer accepted')) { s.keep = false; s.why.push('best offer accepted, real price likely lower'); }
+    if (card && s.title) {
+      const t = parseCardTitle(s.title);
+      const cg = card.graded ? `${card.gradeCo} ${card.grade}`.toUpperCase().trim() : '';
+      if (cg && t.grade && t.grade.toUpperCase() !== cg) { s.keep = false; s.why.push('different grade: ' + t.grade); }
+      if (cg && !t.grade) { s.keep = false; s.why.push('looks raw'); }
+      if (!cg && t.grade) { s.keep = false; s.why.push('graded ' + t.grade); }
+      if (card.serial && t.serial && card.serial.replace(/^.*\//, '') !== t.serial.replace(/^.*\//, '')) { s.keep = false; s.why.push('different print run ' + t.serial); }
+      const cp = String(card.parallel || '').toLowerCase().replace(/\bbase\b/, '').trim(); const tp = String(t.parallel || '').toLowerCase();
+      if (cp && tp && !cp.split(/\s+/).some(w => tp.includes(w))) { s.keep = false; s.why.push('different parallel: ' + t.parallel); }
+      if (!cp && tp && /gold|green|red|blue|purple|orange|black|pink|refractor|silver|holo/.test(tp) && !/base/.test(String(card.parallel || '').toLowerCase())) { s.keep = false; s.why.push('parallel: ' + t.parallel); }
+    }
+  }
+  return out;
+}
+if (typeof module !== 'undefined') module.exports = { parseSoldText };
+
+/* --- review step, then save --- */
+let CP = { id: null, rows: [] };
+function openCompReview(cardId, rows, sourceLabel) {
+  CP = { id: cardId, rows }; const c = cardById(cardId);
+  if (!rows.length) return toast('No sold prices found. Try a clearer screenshot, or paste the prices.');
+  openModal(`<form data-form="compSave">${mhead('Check these sales')}
+  <p class="muted" style="margin:0">${esc(sourceLabel)} · ${esc(cardFull(c))}${c.graded ? ' · ' + esc(gradeText(c)) : ' · raw'}. Unticked rows look like a different card and won't be added.</p>
+  <label class="chk"><input type="checkbox" id="cp-ship"> Include buyer's shipping in the price</label>
+  <div class="tablewrap"><table class="t"><thead><tr><th></th><th>Date</th><th>Price</th><th>Listing</th></tr></thead><tbody>
+  ${rows.map((r, i) => `<tr><td><input type="checkbox" name="k${i}" ${r.keep ? 'checked' : ''} aria-label="Include this sale"></td><td><input type="date" name="d${i}" value="${esc(r.date)}" style="width:150px"></td><td><input name="p${i}" value="${r.price}" inputmode="decimal" style="width:96px"></td>
+    <td style="white-space:normal;min-width:200px"><small>${esc(r.title || '—')}</small>${r.why.length ? `<br><small class="neg">${esc(r.why.join(' · '))}</small>` : ''}${r.ship ? `<br><small class="muted">+${money(r.ship)} shipping</small>` : ''}</td></tr>`).join('')}
+  </tbody></table></div>
+  ${field('Where these sold', inp('platform', 'eBay', 'list="dl-platforms"'))}${platformList()}
+  ${mfoot('Add sales')}</form>`);
+}
+FORMS.compSave = async f => {
+  const fd = new FormData(f); const c = cardById(CP.id); const withShip = $('#cp-ship').checked; const add = [];
+  CP.rows.forEach((r, i) => { if (fd.get('k' + i) !== 'on') return; const p = num(fd.get('p' + i)); if (p <= 0) return; add.push({ id: 'cp_' + uid(), date: fd.get('d' + i) || today(), price: r2(p + (withShip ? r.ship || 0 : 0)), platform: String(fd.get('platform') || ''), title: r.title || '' }); });
+  if (!add.length) return toast('Tick at least one sale');
+  const key = x => x.date + '|' + x.price; const have = new Set((c.comps || []).map(key));
+  const fresh = add.filter(x => !have.has(key(x)));
+  c.comps = [...(c.comps || []), ...fresh];
+  await save('cards', c, { quiet: true }); onChange('cards'); closeModal();
+  const s = compStats(c); toast(`${fresh.length} sale${fresh.length === 1 ? '' : 's'} added${add.length > fresh.length ? ` (${add.length - fresh.length} already logged)` : ''} · avg ${money(s.avg)}`);
+};
+FORMS.compOne = async f => {
+  const fd = new FormData(f); const c = cardById(f.dataset.id); const p = num(fd.get('price')); if (p <= 0) return toast('Enter the sale price');
+  c.comps = [...(c.comps || []), { id: 'cp_' + uid(), date: fd.get('date') || today(), price: r2(p), platform: String(fd.get('platform') || ''), title: String(fd.get('title') || ''), link: String(fd.get('link') || '') }];
+  await save('cards', c, { quiet: true }); onChange('cards'); closeModal(); toast('Sale added');
+};
+FORMS.compPasteGo = f => { const c = cardById(f.dataset.id); const rows = parseSoldText(new FormData(f).get('text'), c); closeModal(false); openCompReview(c.id, rows, 'From pasted text'); };
+Object.assign(A, {
+  compUse: async el => { await updatePrice(el.dataset.id, el.dataset.v); toast('Value set to ' + money(+el.dataset.v)); },
+  compDel: async el => { const c = cardById(el.dataset.id); const gone = (c.comps || []).find(x => x.id === el.dataset.c); c.comps = (c.comps || []).filter(x => x.id !== el.dataset.c); await save('cards', c); toast('Sale removed', { label: 'Undo', run: async () => { c.comps.push(gone); await save('cards', c); } }); },
+  compAdd: el => openModal(`<form data-form="compOne" data-id="${el.dataset.id}">${mhead('Add a sale')}<div class="fgrid">
+    ${field('Sold on', `<input type="date" name="date" value="${today()}">`)}${field('Price', money_inp('price', '', 'required autofocus'))}${field('Platform', inp('platform', 'eBay', 'list="dl-platforms"'))}
+    ${field('Listing title (optional)', inp('title', ''), 'wide')}${field('Link (optional)', inp('link', '', 'type="url"'), 'wide')}</div>${platformList()}${mfoot('Add sale')}</form>`, { narrow: true }),
+  compPaste: el => openModal(`<form data-form="compPasteGo" data-id="${el.dataset.id}">${mhead('Paste sold prices')}
+    <p class="muted" style="margin:0">On eBay, search the card, filter to <b>Sold items</b>, then select and copy the results and paste them here. A plain list of prices works too.</p>
+    <textarea name="text" required autofocus style="min-height:200px" placeholder="Sold  Oct 8, 2026&#10;2023 Prizm Wembanyama Silver #136&#10;$84.99&#10;&#10;or just: 82, 85.50, 90"></textarea>${mfoot('Read prices')}</form>`),
+  compScan: el => {
+    const id = el.dataset.id;
+    openModal(`<div>${mhead('Scan sold listings')}<p class="muted" style="margin:0">Take a screenshot of eBay's <b>Sold items</b> results for this card, then choose it here. You can pick several screenshots.</p>
+      <div style="margin-top:12px">${field('Screenshots', `<input type="file" id="cp-files" data-id="${id}" accept="image/*" multiple>`)}</div><p id="cp-msg" class="muted"></p></div>`, { narrow: true });
+  },
+});
+document.addEventListener('change', async e => {
+  if (e.target.id !== 'cp-files' || !e.target.files.length) return;
+  const id = e.target.dataset.id; const files = [...e.target.files]; const msg = $('#cp-msg'); const texts = [];
+  try {
+    for (let i = 0; i < files.length; i++) { const r = await readImageText(files[i], (p, label) => { msg.textContent = `${label}${files.length > 1 ? ` · ${i + 1} of ${files.length}` : ''}${p !== null ? ' ' + Math.round(p * 100) + '%' : ''}`; }); texts.push(r.text); }
+  } catch (err) { msg.textContent = err.message; return; }
+  closeModal(false); openCompReview(id, parseSoldText(texts.join('\n'), cardById(id)), `From ${files.length} screenshot${files.length > 1 ? 's' : ''}`);
+});
+
+/* Batch scan: a flatbed scan (or photo) of up to 9 cards becomes 9 inventory cards.
+   Fronts and backs are paired by position, every card is straightened, and the backs are read
+   on this device to fill in player, year, brand, set, card number, team and sport. */
+const BS = { items: [], sheets: [], merged: 0, opts: {} };
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+
+/* --- loading scans (images or PDFs from the Epson software) --- */
+async function loadPdfJs() {
+  if (window.pdfjsLib) return;
+  await new Promise((res, rej) => { const s = document.createElement('script'); s.src = PDFJS + 'pdf.min.js'; s.onload = res; s.onerror = () => rej(new Error('Could not load the PDF reader. Save the scan as JPG instead.')); document.head.appendChild(s); });
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js';
+}
+async function sheetsFromFiles(files) {
+  const out = [];
+  for (const f of files) {
+    if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+      await loadPdfJs();
+      const pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer() }).promise;
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p); const vp0 = page.getViewport({ scale: 1 }); const vp = page.getViewport({ scale: Math.min(4, 2600 / vp0.width) });
+        const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+        await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+        out.push({ bmp: await createImageBitmap(cv), name: `${f.name} p${p}` });
+      }
+    } else out.push({ bmp: await createImageBitmap(f, { imageOrientation: 'from-image' }), name: f.name });
+  }
+  return out;
+}
+
+/* --- reading a card back ------------------------------------------------ */
+const BACK_STOP = new Set(('guard forward center quarterback pitcher outfield outfielder infield infielder shortstop catcher defense defensive linebacker receiver wide running back tight end safety cornerback ' +
+  'kicker punter tackle height weight born college drafted draft acquired career totals season stats statistics team league major minor home bats throws hometown position pos year games avg ' +
+  'points rebounds assists steals blocks yards touchdowns rookie card cards official officially licensed product printed made china usa inc llc all rights reserved trademark trademarks property ' +
+  'players association nba nfl mlb nhl wnba mls national basketball football baseball hockey soccer league the and of for in with').split(' '));
+function nameFromLine(l) {
+  const w = l.replace(/[^A-Za-z.'\- ]/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (w.length < 2 || w.length > 4) return null;
+  const caps = w.every(x => /^[A-Z][A-Z.'\-]*$/.test(x)), tc = w.every(x => /^(?:[A-Z][a-z.'\-]+|[A-Z]\.(?:[A-Z]\.)?|De|La|Le|Van|Von|Mc[A-Z][a-z]+|Jr\.?|II|III)$/.test(x));
+  if (!caps && !tc) return null;
+  if (w.some(x => { const b = x.replace(/[.'\-]/g, '').toLowerCase(); return b.length < 1 || BACK_STOP.has(b) || STOP.has(b) || PARALLELS.includes(b) || TEAMS[titleCase(x)] !== undefined; })) return null;
+  if (w.join('').replace(/[^A-Za-z]/g, '').length < 5) return null;
+  return w.map(x => (/^(II|III|IV)$/.test(x) ? x : caps ? titleCase(x) : x)).join(' ');
+}
+function knownPlayer(name) {
+  if (!name) return null; const key = name.toLowerCase(); const players = uniq(S.cards.filter(live).map(c => c.player)).filter(Boolean);
+  return players.find(p => p.toLowerCase() === key) || players.find(p => p.toLowerCase().split(' ').pop() === key.split(' ').pop() && key.split(' ').length === 1) || null;
+}
+function parseCardBack(backText, frontText = '') {
+  const lines = String(backText || '').split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(l => l.length > 1);
+  const fl = String(frontText || '').split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(l => l.length > 1);
+  const all = lines.join('\n'), both = all + '\n' + fl.join('\n');
+  const c = { player: '', year: '', brand: '', set: '', number: '', parallel: '', serial: '', sport: '', team: '', grade: '', rookie: false, auto: false, patch: false };
+  // year: copyright line first ("© 2023 Panini"), then "2023-24", then a year next to a brand
+  const y = all.match(/(?:©|\(c\)|copyright)\s*(19[5-9]\d|20[0-3]\d)/i) || all.match(/\b(19[5-9]\d|20[0-3]\d)\s*(?:-\s*\d{2}\s*)?(?:panini|topps|upper deck|bowman|fleer|donruss|leaf|score)\b/i) || both.match(/\b(19[5-9]\d|20[0-3]\d)\s?[-–]\s?(\d{2})\b/);
+  if (y) c.year = y[1];
+  // brand + set from the lines that mention them (reading order decides)
+  const brandLines = [...lines, ...fl].filter(l => /©|panini|topps|upper deck|bowman|fleer|donruss|leaf|prizm|chrome|select|optic|mosaic|hoops|young guns|score|heritage|finest|contenders|phoenix/i.test(l)).join(' ');
+  const t = parseCardTitle(brandLines); c.brand = t.brand; c.set = t.set; if (!c.year && t.year) c.year = t.year;
+  // sport from the league licensing line, then from the team name
+  c.sport = /\bWNBA\b|\bNBA\b|national basketball/i.test(both) ? 'Basketball' : /\bNFL(?:PA)?\b|national football league/i.test(both) ? 'Football' : /\bMLB(?:PA)?\b|major league baseball/i.test(both) ? 'Baseball' : /\bNHL(?:PA)?\b|national hockey league/i.test(both) ? 'Hockey' : /\bMLS\b|\bFIFA\b|premier league|\bUEFA\b/i.test(both) ? 'Soccer' : '';
+  for (const n of TEAM_NAMES) { // capitalized only, so "the heat of the moment" doesn't count as the Miami Heat
+    const e = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`\\b(?:${e}|${e.toUpperCase()})\\b`).test(both)) { c.team = n; if (!c.sport && TEAMS[n]) c.sport = TEAMS[n]; break; }
+  }
+  // card number: "No. 136", "#136", or a lone number/code in the top or bottom lines
+  let num = all.match(/(?:^|\s)(?:No\.?|#)\s?([A-Z]{0,4}-?\d{1,4}[A-Z]?)\b/i);
+  const fixCode = l => l.replace(/^([A-Z]{1,5}-?)?([0-9lI|O]{1,4})$/, (m, a, b) => (a || '') + b.replace(/[lI|]/g, '1').replace(/O/g, '0')); // OCR reads 1 as l, 0 as O
+  if (!num) for (const l0 of [...lines.slice(0, 5), ...lines.slice(-4)]) {
+    const l = fixCode(l0);
+    const m = l.match(/^([A-Z]{0,4}-?\d{1,4}[A-Z]?)$/) || l.match(/^(\d{1,3})\s+[A-Z]{2,}/) || l.match(/[A-Z]{2,}\s+(\d{1,3})$/);
+    if (m && !/^(19|20)\d\d$/.test(m[1])) { num = m; break; }
+  }
+  if (num) c.number = num[1].toUpperCase();
+  // player: the first name-looking line near the top of the back, else on the front
+  for (const l of [...lines.slice(0, 8), ...fl.slice(0, 12)]) { const nm = nameFromLine(l); if (nm) { c.player = nm; break; } }
+  if (!c.player) c.player = guessPlayer(lines.slice(0, 6).join(' ')) || '';
+  const k = knownPlayer(c.player); if (k) { c.player = k; const kc = S.cards.find(x => live(x) && x.player === k); if (kc) { c.sport = c.sport || kc.sport || ''; c.team = c.team || kc.team || ''; } }
+  c.rookie = /\bROOKIE\b|\bRC\b/.test(both); c.auto = /\bautograph|\bsigned\b|certified autograph/i.test(both);
+  return c;
+}
+if (typeof module !== 'undefined') module.exports = { parseCardBack };
+
+/* --- crop + warp one card -------------------------------------------------- */
+async function cardImages(sheet, quad) {
+  if (!sheet.src) sheet.src = bitmapPixels(sheet.bmp, 3400);
+  const warped = await canvasBlob(warpCard(sheet.src, quad));
+  // keep a padded crop of the scan as the "original" so Straighten can re-adjust this card later
+  const xs = quad.map(p => p[0]), ys = quad.map(p => p[1]); const pad = 0.08 * Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  const x0 = Math.max(0, Math.floor(Math.min(...xs) - pad)), y0 = Math.max(0, Math.floor(Math.min(...ys) - pad));
+  const x1 = Math.min(sheet.bmp.width, Math.ceil(Math.max(...xs) + pad)), y1 = Math.min(sheet.bmp.height, Math.ceil(Math.max(...ys) + pad));
+  const cv = document.createElement('canvas'); cv.width = x1 - x0; cv.height = y1 - y0; cv.getContext('2d').drawImage(sheet.bmp, x0, y0, cv.width, cv.height, 0, 0, cv.width, cv.height);
+  return { warped, orig: await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.9)), quad: quad.map(p => [Math.round(p[0] - x0), Math.round(p[1] - y0)]) };
+}
+function pairBacks(fronts, backs, fSheet, bSheet, mirrored) {
+  const norm = (c, sh, mir) => [(mir ? sh.bmp.width - c[0] : c[0]) / sh.bmp.width, c[1] / sh.bmp.height];
+  const used = new Set();
+  return fronts.map(f => {
+    const a = norm(f.c, fSheet, false); let best = null, bd = Infinity;
+    backs.forEach((b, i) => { if (used.has(i)) return; const z = norm(b.c, bSheet, mirrored); const d = Math.hypot(a[0] - z[0], a[1] - z[1]); if (d < bd) { bd = d; best = i; } });
+    if (best === null || bd > 0.18) return null; used.add(best); return backs[best];
+  });
+}
+
+/* --- the flow ------------------------------------------------------------ */
+function openBatch() {
+  openModal(`<form data-form="batchGo">${mhead('Batch scan')}
+  <ol class="muted" style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px">
+    <li>Lay up to <b>9 cards</b> face down on the scanner glass in 3 rows of 3, with a small gap between them.</li>
+    <li>Cover them with a sheet of <b>black paper</b> before closing the lid. The white lid hides white card borders.</li>
+    <li>Scan at <b>300 dpi, color, JPG</b>. Then flip each card over <b>in its own spot</b> and scan again for the backs.</li>
+  </ol>
+  <div class="fgrid">
+    ${field('Front scans', '<input type="file" name="fronts" accept="image/*,application/pdf" multiple required>')}
+    ${field('Back scans (same order)', '<input type="file" name="backs" accept="image/*,application/pdf" multiple>')}
+  </div>
+  <label class="chk"><input type="checkbox" name="read" checked> Read the card backs to fill in player, year, set and number</label>
+  <label class="chk"><input type="checkbox" name="toploader" ${S.settings.toploader ? 'checked' : ''}> Cards are in top loaders or sleeves</label>
+  <label class="chk"><input type="checkbox" name="mirrored"> I flipped the whole sheet instead of each card (backs are mirrored)</label>
+  <small class="muted">Works with photos too: lay cards on a dark table and take one photo from straight above.</small>
+  ${mfoot('Find cards')}</form>`);
+}
+FORMS.batchGo = async f => {
+  const fd = new FormData(f); const fronts = fd.getAll('fronts').filter(x => x && x.size), backs = fd.getAll('backs').filter(x => x && x.size);
+  if (!fronts.length) return toast('Choose at least one front scan');
+  BS.opts = { read: fd.get('read') === 'on', toploader: fd.get('toploader') === 'on', mirrored: fd.get('mirrored') === 'on' };
+  const sheet = $('#modal-root .sheet');
+  const prog = (msg, p) => { sheet.innerHTML = `${mhead('Batch scan')}<div class="calc"><div><span id="bs-step">${esc(msg)}</span><b>${p === null ? '' : Math.round(p * 100) + '%'}</b></div></div><div style="height:8px;background:var(--line);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(2, (p || 0) * 100)}%;background:var(--acc)"></div></div><small class="muted">Keep this screen open. Reading 9 cards takes about a minute the first time.</small>`; };
+  try {
+    prog('Loading scans', null);
+    const fS = await sheetsFromFiles(fronts), bS = await sheetsFromFiles(backs);
+    BS.items = []; BS.merged = 0; BS.sheets = [...fS, ...bS];
+    for (let s = 0; s < fS.length; s++) {
+      prog(`Finding cards on sheet ${s + 1} of ${fS.length}`, s / fS.length * 0.3);
+      await new Promise(r => setTimeout(r, 30));
+      const F2 = detectCardQuads(fS[s].bmp); BS.merged += F2.merged;
+      const bs = bS[s]; const B2 = bs ? detectCardQuads(bs.bmp) : { cards: [], merged: 0 }; BS.merged += B2.merged;
+      const pairs = bs ? pairBacks(F2.cards, B2.cards, fS[s], bs, BS.opts.mirrored) : F2.cards.map(() => null);
+      F2.cards.forEach((c, i) => BS.items.push({ id: 'b' + uid(), sheet: s, row: c.row, col: c.col, front: { sheet: fS[s], quad: c.quad }, back: pairs[i] ? { sheet: bs, quad: pairs[i].quad } : null, fields: null }));
+    }
+    if (!BS.items.length) { sheet.innerHTML = `${mhead('No cards found')}<p>Dugout couldn't find card edges on that scan. Put black paper over the cards before scanning, leave a gap between cards, and try again.</p><div class="sheet-foot"><button class="btn pri" type="button" data-act="batch">Try again</button></div>`; return; }
+    for (let i = 0; i < BS.items.length; i++) {
+      const it = BS.items[i];
+      prog(`Straightening card ${i + 1} of ${BS.items.length}`, 0.3 + i / BS.items.length * 0.2);
+      if (BS.opts.toploader) { if (!it.front.sheet.src) it.front.sheet.src = bitmapPixels(it.front.sheet.bmp, 3400); it.front.quad = snapInside(it.front.sheet.src, it.front.quad); if (it.back) { if (!it.back.sheet.src) it.back.sheet.src = bitmapPixels(it.back.sheet.bmp, 3400); it.back.quad = snapInside(it.back.sheet.src, it.back.quad); } }
+      it.f = await cardImages(it.front.sheet, it.front.quad); it.b = it.back ? await cardImages(it.back.sheet, it.back.quad) : null;
+    }
+    for (let i = 0; i < BS.items.length; i++) {
+      const it = BS.items[i]; let bt = '', ft = '';
+      if (BS.opts.read) {
+        const pr = (p, label) => prog(`${label === 'Reading text' ? 'Reading' : label} card ${i + 1} of ${BS.items.length}`, 0.5 + (i + (p || 0)) / BS.items.length * 0.5);
+        if (it.b) bt = (await readImageText(it.b.warped, pr, '11')).text;
+        const pre = parseCardBack(bt);
+        if (!pre.player || !it.b) ft = (await readImageText(it.f.warped, pr, '11')).text;
+      }
+      it.text = bt; it.fields = parseCardBack(bt, ft);
+    }
+    BS.sheets.forEach(s => { s.src = null; }); // free memory
+    renderBatchReview();
+  } catch (e) { console.error(e); sheet.innerHTML = `${mhead('Batch scan stopped')}<p>${esc(e.message)}</p><div class="sheet-foot"><button class="btn" data-act="close" type="button">Close</button><button class="btn pri" type="button" data-act="batch">Try again</button></div>`; }
+};
+const bsURL = new Map();
+const blobURL = b => { if (!bsURL.has(b)) bsURL.set(b, URL.createObjectURL(b)); return bsURL.get(b); };
+function renderBatchReview() {
+  const n = BS.items.length; const pickups = S.pickups.filter(p => !p.purged).sort((a, b) => b.date.localeCompare(a.date));
+  const row = (it, i) => { const c = it.fields;
+    return `<fieldset data-bi="${i}" class="bs-item"><legend>Card ${i + 1}</legend>
+    <div class="bs-grid"><div class="bs-imgs"><img src="${blobURL(it.f.warped)}" alt="Front ${i + 1}">${it.b ? `<img src="${blobURL(it.b.warped)}" alt="Back ${i + 1}">` : '<div class="bs-noback">No back</div>'}</div>
+    <div class="fgrid">
+      ${field('Player', `<input data-k="player" value="${esc(c.player)}" list="dl-bpl">`)}${field('Year', `<input data-k="year" value="${esc(c.year)}" inputmode="numeric">`)}
+      ${field('Brand', `<input data-k="brand" value="${esc(c.brand)}" list="dl-bbr">`)}${field('Set', `<input data-k="set" value="${esc(c.set)}" list="dl-bset">`)}
+      ${field('Card #', `<input data-k="number" value="${esc(c.number)}">`)}${field('Parallel', `<input data-k="parallel" value="${esc(c.parallel)}" placeholder="Base">`)}
+      ${field('Sport', `<select data-k="sport">${opts(SPORTS, c.sport, '—')}</select>`)}${field('Team', `<input data-k="team" value="${esc(c.team)}">`)}
+      ${field('Paid', `<input data-k="price" inputmode="decimal" placeholder="split from total">`)}${field('Value', `<input data-k="value" inputmode="decimal" placeholder="0.00">`)}
+    </div></div>
+    <div class="row"><label class="chk"><input type="checkbox" data-k="rookie" ${c.rookie ? 'checked' : ''}> Rookie</label><label class="chk"><input type="checkbox" data-k="auto" ${c.auto ? 'checked' : ''}> Auto</label>
+      <span class="spacer"></span><button class="btn sm ghost" type="button" data-act="bsRot" data-i="${i}" data-s="f">Turn front</button>${it.b ? `<button class="btn sm ghost" type="button" data-act="bsRot" data-i="${i}" data-s="b">Turn back</button><button class="btn sm ghost" type="button" data-act="bsSwap" data-i="${i}">Swap sides</button>` : ''}<button class="btn sm ghost danger" type="button" data-act="bsDel" data-i="${i}">Remove</button></div>
+    ${it.text ? `<details><summary class="muted" style="cursor:pointer">Text read from the back</summary><pre class="bs-text">${esc(it.text)}</pre></details>` : ''}
+    </fieldset>`; };
+  const all = S.cards.filter(live);
+  $('#modal-root .sheet').style.width = 'min(980px, 100%)';
+  $('#modal-root .sheet').innerHTML = `<form data-form="batchSave">${mhead(`Found ${n} card${n === 1 ? '' : 's'}`)}
+  ${BS.merged ? `<div class="warn">${BS.merged} spot${BS.merged > 1 ? 's' : ''} looked like cards touching each other and ${BS.merged > 1 ? 'were' : 'was'} skipped. Leave a small gap between cards and scan those again.</div>` : ''}
+  <fieldset><legend>Same for every card</legend><div class="fgrid">
+    ${field('Date bought', `<input type="date" name="date" value="${today()}">`)}${field('Bought on', inp('platform', '', 'list="dl-platforms" placeholder="Card show, eBay…"'))}
+    ${field('Total paid for all', money_inp('total', ''))}${field('Split total', `<select name="split"><option value="equal">Evenly</option><option value="value">By value</option></select>`)}
+    ${field('Storage box', `<select name="box">${opts(S.locations.filter(l => !l.purged).map(l => [l.id, l.code + ' · ' + l.name]), '', 'None')}</select>`)}
+    ${field('From pickup', `<select name="pickup">${opts(pickups.map(p => [p.id, fmtDate(p.date) + ' · ' + (p.location || 'Pickup')]), '', 'None')}</select>`)}
+  </div>
+  <div class="row"><span class="muted">Fill blank fields on all cards:</span>
+    <input id="bs-fill-set" placeholder="Set" style="width:130px" aria-label="Set for all"><input id="bs-fill-year" placeholder="Year" style="width:80px" aria-label="Year for all"><input id="bs-fill-brand" placeholder="Brand" style="width:110px" aria-label="Brand for all"><select id="bs-fill-sport" style="width:auto" aria-label="Sport for all">${opts(SPORTS, '', 'Sport')}</select>
+    <button class="btn sm" type="button" data-act="bsFill">Fill blanks</button></div></fieldset>
+  <div style="display:flex;flex-direction:column;gap:12px">${BS.items.map(row).join('')}</div>
+  ${platformList()}${dl('dl-bpl', all.map(x => x.player))}${dl('dl-bbr', ['Panini', 'Topps', 'Upper Deck', 'Bowman', 'Donruss', 'Fleer', ...all.map(x => x.brand)])}${dl('dl-bset', all.map(x => x.set))}
+  <div class="sheet-foot"><label class="chk" style="margin-right:auto"><input type="checkbox" name="labels" checked> Print QR labels after saving</label><button class="btn" type="button" data-act="close">Cancel</button><button class="btn pri" type="submit">Add ${n} card${n === 1 ? '' : 's'}</button></div></form>`;
+}
+function bsCollect() { // remember typed values before any re-render
+  $$('[data-bi]').forEach(fs => { const it = BS.items[+fs.dataset.bi]; if (!it) return; $$('[data-k]', fs).forEach(el => { it.fields[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value.trim(); }); });
+  const f = $('#modal-root form'); BS.shared = f ? Object.fromEntries(new FormData(f)) : {};
+}
+function bsRestoreShared() { const f = $('#modal-root form'); if (!f || !BS.shared) return; Object.entries(BS.shared).forEach(([k, v]) => { const el = f.elements[k]; if (el && el.type !== 'checkbox') el.value = v; }); }
+Object.assign(A, {
+  batch: () => openBatch(),
+  bsDel: el => { bsCollect(); BS.items.splice(+el.dataset.i, 1); if (!BS.items.length) return closeModal(); renderBatchReview(); bsRestoreShared(); },
+  bsSwap: el => { bsCollect(); const it = BS.items[+el.dataset.i]; [it.front, it.back] = [it.back, it.front]; [it.f, it.b] = [it.b, it.f]; renderBatchReview(); bsRestoreShared(); },
+  bsRot: async el => {
+    bsCollect(); const it = BS.items[+el.dataset.i]; const side = el.dataset.s === 'f' ? 'front' : 'back'; const s = it[side];
+    s.quad = [s.quad[2], s.quad[3], s.quad[0], s.quad[1]]; // turn 180°
+    it[side === 'front' ? 'f' : 'b'] = await cardImages(s.sheet, s.quad); s.sheet.src = null;
+    renderBatchReview(); bsRestoreShared();
+  },
+  bsFill: () => {
+    bsCollect(); const v = { set: $('#bs-fill-set').value.trim(), year: $('#bs-fill-year').value.trim(), brand: $('#bs-fill-brand').value.trim(), sport: $('#bs-fill-sport').value };
+    BS.items.forEach(it => Object.entries(v).forEach(([k, x]) => { if (x && !it.fields[k]) it.fields[k] = x; }));
+    renderBatchReview(); bsRestoreShared(); toast('Blank fields filled');
+  },
+});
+FORMS.batchSave = async f => {
+  bsCollect(); const fd = new FormData(f); const date = fd.get('date') || today(); const platform = String(fd.get('platform') || '').trim();
+  const items = BS.items.filter(it => it.fields.player || it.fields.set);
+  if (!items.length) return toast('Add a player or set to at least one card');
+  const given = items.map(it => num(it.fields.price)); const total = num(fd.get('total'));
+  const rest = items.filter((_, i) => !given[i]);
+  const restTotal = Math.max(0, total - given.reduce((a, b) => a + b, 0));
+  const alloc = rest.length && restTotal ? allocate(restTotal, rest.map(it => num(it.fields.value)), fd.get('split')) : rest.map(() => 0);
+  let ai = 0; const ids = [];
+  const btn = f.querySelector('[type=submit]');
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i], c0 = it.fields; if (btn) btn.textContent = `Saving ${i + 1} of ${items.length}…`;
+    const price = given[i] || alloc[ai++] || 0; const v = num(c0.value);
+    const c = { id: 'c_' + uid(), code: nextCode(), createdAt: nowISO(), player: c0.player, year: c0.year, brand: c0.brand, set: c0.set, number: c0.number, parallel: c0.parallel, serial: '', sport: c0.sport, team: c0.team,
+      rookie: !!c0.rookie, auto: !!c0.auto, patch: false, graded: false, gradeCo: '', grade: '', condition: '', status: 'in_stock', qty: 1, value: v || price, priceUpdated: v ? today() : '', priceHistory: v ? [{ date: today(), value: v }] : [],
+      locationId: fd.get('box') || '', notes: '', buy: { date, platform, qty: 1, price, ship: 0, tax: 0, fees: 0, order: '', pickupId: fd.get('pickup') || '' } };
+    c.frontOrig = await fileSave(it.f.orig, 'front-scan.jpg'); c.front = await fileSave(it.f.warped, 'front.jpg'); c.frontQuad = it.f.quad;
+    if (it.b) { c.backOrig = await fileSave(it.b.orig, 'back-scan.jpg'); c.back = await fileSave(it.b.warped, 'back.jpg'); c.backQuad = it.b.quad; }
+    await save('cards', c, { quiet: true }); ids.push(c.id);
+    await logTxn({ cardId: c.id, type: 'buy', date, qty: 1, amount: price, platform, note: 'Batch scan' });
+  }
+  if (!!S.settings.toploader !== BS.opts.toploader) { S.settings.toploader = BS.opts.toploader; await saveSettings(); }
+  bsURL.forEach(u => URL.revokeObjectURL(u)); bsURL.clear(); BS.items = []; BS.sheets = [];
+  onChange('cards'); closeModal(false); toast(`Added ${ids.length} cards`);
+  if (fd.get('labels') === 'on') { LB.tab = 'cards'; LB.sel = new Set(ids); location.hash = '#/labels'; } else { Object.assign(F, { q: '', status: 'active', sort: 'new' }); location.hash = '#/inv'; }
+};
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
 async function loadDemo() {
