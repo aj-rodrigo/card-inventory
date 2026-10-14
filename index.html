@@ -698,7 +698,7 @@ function shell() {
       <div class="brand"><i></i>DUGOUT</div>
       <nav>${NAV.map(n => n === '-' ? '<div class="sep"></div>' : `<a href="#/${n[0]}" data-nav="${n[0]}">${n[1]}</a>`).join('')}</nav>
       <div class="foot">
-        <span class="muted" style="color:inherit;opacity:.6">Version 1.5 · batch scan</span>
+        <span class="muted" style="color:inherit;opacity:.6">Version 1.6 · smarter scan</span>
         <span id="sync-status">${esc(Sync.status || (syncCfg() ? 'Sync ready' : 'Saved on this device'))}</span>
         <div class="row"><button class="btn sm" data-act="theme" type="button">Light / dark</button>${syncCfg() ? '<button class="btn sm" data-act="syncNow" type="button">Sync</button>' : ''}</div>
       </div>
@@ -2009,6 +2009,10 @@ const TEAMS = (() => {
   add('Football', 'Cardinals,Falcons,Ravens,Bills,Panthers,Bears,Bengals,Browns,Cowboys,Broncos,Lions,Packers,Texans,Colts,Jaguars,Chiefs,Raiders,Chargers,Rams,Dolphins,Vikings,Patriots,Saints,Giants,Jets,Eagles,Steelers,49ers,Niners,Seahawks,Buccaneers,Bucs,Titans,Commanders');
   add('Baseball', 'Diamondbacks,Braves,Orioles,Red Sox,Cubs,White Sox,Reds,Guardians,Rockies,Tigers,Astros,Royals,Angels,Dodgers,Marlins,Brewers,Twins,Mets,Yankees,Athletics,Phillies,Pirates,Padres,Giants,Mariners,Cardinals,Rays,Rangers,Blue Jays,Nationals');
   add('Hockey', 'Ducks,Bruins,Sabres,Flames,Hurricanes,Blackhawks,Avalanche,Blue Jackets,Stars,Red Wings,Oilers,Panthers,Kings,Wild,Canadiens,Predators,Devils,Islanders,Rangers,Senators,Flyers,Penguins,Sharks,Kraken,Blues,Lightning,Maple Leafs,Canucks,Golden Knights,Capitals,Jets,Utah Hockey Club,Mammoth');
+  add('Basketball', 'SuperSonics,Sonics,Bullets,Bobcats,Grizzlies');
+  add('Baseball', 'Expos,Devil Rays,Indians');
+  add('Hockey', 'Nordiques,Whalers,Thrashers,Coyotes');
+  add('Football', 'Redskins,Oilers');
   add('Soccer', 'Inter Miami,Galaxy,LAFC,Real Madrid,Barcelona,Manchester United,Man City,Liverpool,Arsenal,Chelsea,PSG,Bayern');
   return t;
 })();
@@ -2654,6 +2658,19 @@ function splitRegion(M, regs, r) {
   while (front.length) { const nf = []; for (const i of front) { const x = i % bw; for (const j of [x > 0 ? i - 1 : -1, x < bw - 1 ? i + 1 : -1, i - bw, i + bw]) if (j >= 0 && j < bw * bh && base[j] && seeds[j] === -1) { seeds[j] = seeds[i]; nf.push(j); } } front = nf; }
   return [...new Set(seeds)].filter(id => id >= 0).map(id => regionFromLocal(seeds, bw, bh, bx0, by0, id));
 }
+/* a card snagged by thin lines (top loader rims, scanner edge shadows): peel a few pixels off, keep the biggest piece, grow it back */
+function trimRegion(M, regs, r, steps) {
+  const { w } = M; const [bx0, by0, bx1, by1] = r.box; const bw = bx1 - bx0 + 1, bh = by1 - by0 + 1; const N = bw * bh;
+  const base = new Uint8Array(N); for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) base[y * bw + x] = regs.lab[(y + by0) * w + x + bx0] === r.id ? 1 : 0;
+  let cur = base;
+  for (let it = 0; it < steps; it++) { const nx = new Uint8Array(N); for (let y = 1; y < bh - 1; y++) for (let x = 1; x < bw - 1; x++) { const i = y * bw + x; nx[i] = cur[i] && cur[i - 1] && cur[i + 1] && cur[i - bw] && cur[i + bw] ? 1 : 0; } cur = nx; }
+  const lab = new Int32Array(N).fill(-1); let best = -1, bestSz = 0; const st = [];
+  for (let s0 = 0; s0 < N; s0++) { if (!cur[s0] || lab[s0] !== -1) continue; let sz = 0; st.push(s0); lab[s0] = s0; while (st.length) { const i = st.pop(); sz++; const x = i % bw; for (const j of [x > 0 ? i - 1 : -1, x < bw - 1 ? i + 1 : -1, i - bw, i + bw]) if (j >= 0 && j < N && cur[j] && lab[j] === -1) { lab[j] = s0; st.push(j); } } if (sz > bestSz) { bestSz = sz; best = s0; } }
+  if (best < 0) return null;
+  const out = new Int32Array(N).fill(-1); let front = []; for (let i = 0; i < N; i++) if (lab[i] === best) { out[i] = 0; front.push(i); }
+  for (let it = 0; it <= steps && front.length; it++) { const nf = []; for (const i of front) { const x = i % bw; for (const j of [x > 0 ? i - 1 : -1, x < bw - 1 ? i + 1 : -1, i - bw, i + bw]) if (j >= 0 && j < N && base[j] && out[j] === -1) { out[j] = 0; nf.push(j); } } front = nf; }
+  return regionFromLocal(out, bw, bh, bx0, by0, 0);
+}
 /* a clean rectangle that is really k cards edge to edge: cut it into k equal cards */
 function splitQuad(q, k) {
   const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
@@ -2707,6 +2724,7 @@ function detectCardQuads(bmp) {
     const k = typical ? Math.round(r.size / typical) : 1;
     if (good(f) && k <= 1) { if (!typical || r.size > typical * 0.35) quads.push(f.quad); continue; }
     if (k <= 0) continue; // a small speck
+    if (k === 1) { let t = null; for (const st of [3, 6, 10]) { const g = trimRegion(M, regs, r, st); const q = g && quadFromRegion(g); if (good(q) && (!typical || q.area > typical * 0.6)) { t = q; break; } } if (t) { quads.push(t.quad); continue; } }
     const parts = splitRegion(M, regs, r).map(quadFromRegion).filter(g => good(g) && (!typical || g.area > typical * 0.5));
     if (parts.length >= 2) { parts.forEach(g => quads.push(g.quad)); continue; }
     if (f && f.fill >= 0.88 && k >= 2) { splitQuad(f.quad, k).forEach(q => quads.push(q)); continue; }
@@ -3036,25 +3054,44 @@ function knownPlayer(name) {
   if (!name) return null; const key = name.toLowerCase(); const players = uniq(S.cards.filter(live).map(c => c.player)).filter(Boolean);
   return players.find(p => p.toLowerCase() === key) || players.find(p => p.toLowerCase().split(' ').pop() === key.split(' ').pop() && key.split(' ').length === 1) || null;
 }
+function lev(a, b, max = 9) { // edit distance, gives up past max
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) { const cur = [i]; let best = i; for (let j = 1; j <= b.length; j++) { cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); if (cur[j] < best) best = cur[j]; } if (best > max) return max + 1; prev = cur; }
+  return prev[b.length];
+}
+const POS_LINE = /^(?:G\/F|F\/C|G|F|C|PG|SG|SF|PF|QB|RB|WR|TE|K|P|LB|DB|CB|S|DE|DT|OL|1B|2B|3B|SS|OF|LF|CF|RF|DH|SP|RP|LW|RW|D)\s*[•·\-¢e*.,»«]+\s*([A-Za-z0-9 ]{3,})$/;
+function teamFromPosLine(l) {
+  const m = l.match(POS_LINE); if (!m) return null; const t = m[1].trim().toUpperCase();
+  for (const n of TEAM_NAMES) if (n.toUpperCase() === t) return n;
+  let best = null, bd = 9; for (const n of TEAM_NAMES) { const u = n.toUpperCase(); if (u.length < 5) continue; const d = lev(t, u, 2); if (d < bd) { bd = d; best = n; } }
+  return bd <= 2 ? best : null;
+}
 function parseCardBack(backText, frontText = '') {
   const lines = String(backText || '').split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(l => l.length > 1);
   const fl = String(frontText || '').split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(l => l.length > 1);
   const all = lines.join('\n'), both = all + '\n' + fl.join('\n');
-  const c = { player: '', year: '', brand: '', set: '', number: '', parallel: '', serial: '', sport: '', team: '', grade: '', rookie: false, auto: false, patch: false };
-  // year: copyright line first ("© 2023 Panini"), then "2023-24", then a year next to a brand
-  const y = all.match(/(?:©|\(c\)|copyright)\s*(19[5-9]\d|20[0-3]\d)/i) || all.match(/\b(19[5-9]\d|20[0-3]\d)\s*(?:-\s*\d{2}\s*)?(?:panini|topps|upper deck|bowman|fleer|donruss|leaf|score)\b/i) || both.match(/\b(19[5-9]\d|20[0-3]\d)\s?[-–]\s?(\d{2})\b/);
-  if (y) c.year = y[1];
+  const c = { player: '', year: '', brand: '', set: '', number: '', parallel: '', serial: '', sport: '', team: '', grade: '', rookie: false, auto: false, patch: false, cands: [] };
+  // year: a season ("2023-24" or "92-93") names the product year better than the copyright date
+  const s4 = both.match(/\b(19[5-9]\d|20[0-3]\d)\s?[-–]\s?(\d{2})\b/);
+  const s2 = both.match(/\b(\d{2})\s?[-–]\s?(\d{2})\b(?=\s*(?:NBA|NFL|MLB|NHL|WNBA|season|basketball|football|baseball|hockey|[A-Z]))/i);
+  const y = all.match(/(?:©|\(c\)|copyright|copr\.?)\s*©?\s*(19[5-9]\d|20[0-3]\d)/i) || all.match(/\b(19[5-9]\d|20[0-3]\d)\s*(?:-\s*\d{2}\s*)?(?:panini|topps|upper deck|bowman|fleer|donruss|leaf|score)\b/i);
+  if (s4 && ((+s4[1] % 100) + 1) % 100 === +s4[2]) c.year = s4[1];
+  else if (s2 && (+s2[1] + 1) % 100 === +s2[2]) c.year = String((+s2[1] >= 40 ? 1900 : 2000) + +s2[1]);
+  else if (y) c.year = y[1];
   // brand + set from the lines that mention them (reading order decides)
-  const brandLines = [...lines, ...fl].filter(l => /©|panini|topps|upper deck|bowman|fleer|donruss|leaf|prizm|chrome|select|optic|mosaic|hoops|young guns|score|heritage|finest|contenders|phoenix/i.test(l)).join(' ');
+  const brandLines = [...lines, ...fl].filter(l => /©|panini|topps|upper deck|bowman|fleer|donruss|leaf|prizm|chrome|select|optic|mosaic|hoops|young guns|score|heritage|finest|contenders|phoenix|stadium club|update/i.test(l)).join(' ');
   const t = parseCardTitle(brandLines); c.brand = t.brand; c.set = t.set; if (!c.year && t.year) c.year = t.year;
   // sport from the league licensing line, then from the team name
   c.sport = /\bWNBA\b|\bNBA\b|national basketball/i.test(both) ? 'Basketball' : /\bNFL(?:PA)?\b|national football league/i.test(both) ? 'Football' : /\bMLB(?:PA)?\b|major league baseball/i.test(both) ? 'Baseball' : /\bNHL(?:PA)?\b|national hockey league/i.test(both) ? 'Hockey' : /\bMLS\b|\bFIFA\b|premier league|\bUEFA\b/i.test(both) ? 'Soccer' : '';
-  for (const n of TEAM_NAMES) { // capitalized only, so "the heat of the moment" doesn't count as the Miami Heat
+  for (const l of [...lines.slice(0, 20), ...fl]) { const tm = teamFromPosLine(l); if (tm) { c.team = tm; break; } } // "G • TRAIL BLAZERS"
+  if (!c.team) for (const n of TEAM_NAMES) { // capitalized only, so "the heat of the moment" doesn't count as the Miami Heat
     const e = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (new RegExp(`\\b(?:${e}|${e.toUpperCase()})\\b`).test(both)) { c.team = n; if (!c.sport && TEAMS[n]) c.sport = TEAMS[n]; break; }
+    if (new RegExp(`\\b(?:${e}|${e.toUpperCase()})\\b`).test(both)) { c.team = n; break; }
   }
-  // card number: "No. 136", "#136", or a lone number/code in the top or bottom lines
-  let num = all.match(/(?:^|\s)(?:No\.?|#)\s?([A-Z]{0,4}-?\d{1,4}[A-Z]?)\b/i);
+  if (!c.sport && c.team && TEAMS[c.team]) c.sport = TEAMS[c.team];
+  // card number: "CARD 4 OF 21", "No. 136", "#136", or a lone number/code in the top or bottom lines
+  let num = all.match(/\bCARD\s*#?\s*([A-Z]{0,4}-?\d{1,4})\b/i) || all.match(/(?:^|\s)(?:No\.?|#)\s?([A-Z]{0,4}-?\d{1,4}[A-Z]?)\b/i);
   const fixCode = l => l.replace(/^([A-Z]{1,5}-?)?([0-9lI|O]{1,4})$/, (m, a, b) => (a || '') + b.replace(/[lI|]/g, '1').replace(/O/g, '0')); // OCR reads 1 as l, 0 as O
   if (!num) for (const l0 of [...lines.slice(0, 5), ...lines.slice(-4)]) {
     const l = fixCode(l0);
@@ -3062,12 +3099,60 @@ function parseCardBack(backText, frontText = '') {
     if (m && !/^(19|20)\d\d$/.test(m[1])) { num = m; break; }
   }
   if (num) c.number = num[1].toUpperCase();
-  // player: the first name-looking line near the top of the back, else on the front
-  for (const l of [...lines.slice(0, 8), ...fl.slice(0, 12)]) { const nm = nameFromLine(l); if (nm) { c.player = nm; break; } }
-  if (!c.player) c.player = guessPlayer(lines.slice(0, 6).join(' ')) || '';
+  // player: name-looking lines, plus first/last names stacked on two lines ("CLYDE" / "DREXLER")
+  const cands = [];
+  const scan = (arr, off) => {
+    arr.forEach((l, i) => { const nm = nameFromLine(l); if (nm) cands.push({ name: nm, i: i + off }); });
+    const singles = arr.map((l, i) => ({ w: l.replace(/^[^A-Za-z]+|[^A-Za-z.]+$/g, ''), i })).filter(o => /^[A-Z][A-Z.'\-]{1,14}$/.test(o.w) && !BACK_STOP.has(o.w.toLowerCase()) && !STOP.has(o.w.toLowerCase()) && TEAMS[titleCase(o.w)] === undefined);
+    for (const a of singles) for (const b of singles) if (b.i > a.i && b.i - a.i <= 3) cands.push({ name: titleCase(a.w) + ' ' + titleCase(b.w), i: a.i + off + 0.5, first: a.w, last: b.w });
+  };
+  scan(lines.slice(0, 18), 0); scan(fl.slice(0, 14), 100);
+  // a name is usually followed by the position/team line
+  const near = i => [1, 2, 3].some(d => { const l = i < 100 ? lines[Math.floor(i) + d] : fl[Math.floor(i) - 100 + d]; return l && (POS_LINE.test(l) || (c.team && l.toUpperCase().includes(c.team.toUpperCase()))); });
+  cands.forEach(o => { o.score = (near(o.i) ? -50 : 0) + o.i; });
+  cands.sort((a, b) => a.score - b.score);
+  c.cands = cands.map(o => o.name);
+  c.player = cands.length ? cands[0].name : (guessPlayer(lines.slice(0, 6).join(' ')) || '');
   const k = knownPlayer(c.player); if (k) { c.player = k; const kc = S.cards.find(x => live(x) && x.player === k); if (kc) { c.sport = c.sport || kc.sport || ''; c.team = c.team || kc.team || ''; } }
   c.rookie = /\bROOKIE\b|\bRC\b/.test(both); c.auto = /\bautograph|\bsigned\b|certified autograph/i.test(both);
   return c;
+}
+
+/* real player names (NBA, MLB incl. prospects, NFL) to fix misreads like "EFF HORNACEK" */
+const PN = { idx: null, loading: null };
+const nkey = s => String(s || '').toUpperCase().replace(/[^A-Z ]/g, '').trim();
+const SUFFIX = /^(JR|SR|II|III|IV|V)$/;
+function splitName(full) { const w = nkey(full).split(/\s+/).filter(Boolean); while (w.length > 2 && SUFFIX.test(w[w.length - 1])) w.pop(); return { first: w.slice(0, -1).join(' '), last: w[w.length - 1] || '' }; }
+async function loadPlayerNames() {
+  if (PN.idx) return PN.idx;
+  if (!PN.loading) PN.loading = (async () => {
+    try {
+      const r = await fetch('player-names.json'); if (!r.ok) throw new Error(r.status); const data = await r.json();
+      const idx = {};
+      for (const [sport, txt] of Object.entries(data)) { const m = new Map(); for (const full of txt.split('\n')) { const { last } = splitName(full); if (!last) continue; if (!m.has(last)) m.set(last, []); m.get(last).push(full); } idx[sport] = m; }
+      PN.idx = idx;
+    } catch (e) { PN.idx = {}; }
+    return PN.idx;
+  })();
+  return PN.loading;
+}
+function matchPlayer(cands, sport) {
+  const idx = PN.idx || {}; const pools = sport && idx[sport] ? [idx[sport]] : Object.values(idx); if (!pools.length) return null;
+  let best = null;
+  for (let ci = 0; ci < Math.min(cands.length, 8); ci++) {
+    const { first, last } = splitName(cands[ci]); if (!first || last.length < 3) continue;
+    for (const m of pools) {
+      let hits = m.get(last) ? [[last, 0]] : [];
+      if (!hits.length && last.length >= 5) { const max = last.length >= 8 ? 2 : 1; for (const k of m.keys()) { if (Math.abs(k.length - last.length) > max || k[0] !== last[0]) continue; const d = lev(k, last, max); if (d <= max) hits.push([k, d]); } }
+      for (const [k, dl] of hits) for (const full of m.get(k)) {
+        const f = splitName(full).first; const df = lev(f, first, 4); const allow = Math.max(1, Math.floor(f.length * 0.34));
+        if (df > allow) continue;
+        const score = df + dl * 1.5 + ci * 0.6 + (full.length > 22 ? 0.1 : 0) + (/\b(Jr|Sr|II|III)\b\.?$/.test(full) ? 0.3 : 0);
+        if (!best || score < best.score) best = { full, score };
+      }
+    }
+  }
+  return best && best.score <= 3 ? best.full : null;
 }
 if (typeof module !== 'undefined') module.exports = { parseCardBack };
 
@@ -3144,6 +3229,7 @@ FORMS.batchGo = async f => {
         if (!pre.player || !it.b) ft = (await readImageText(it.f.warped, pr, '11')).text;
       }
       it.text = bt; it.fields = parseCardBack(bt, ft);
+      await loadPlayerNames(); const pm = matchPlayer(it.fields.cands, it.fields.sport); if (pm) { it.fields.player = pm; it.fields.matched = true; }
     }
     BS.sheets.forEach(s => { s.src = null; }); // free memory
     renderBatchReview();
@@ -3157,7 +3243,7 @@ function renderBatchReview() {
     return `<fieldset data-bi="${i}" class="bs-item"><legend>Card ${i + 1}</legend>
     <div class="bs-grid"><div class="bs-imgs"><img src="${blobURL(it.f.warped)}" alt="Front ${i + 1}">${it.b ? `<img src="${blobURL(it.b.warped)}" alt="Back ${i + 1}">` : '<div class="bs-noback">No back</div>'}</div>
     <div class="fgrid">
-      ${field('Player', `<input data-k="player" value="${esc(c.player)}" list="dl-bpl">`)}${field('Year', `<input data-k="year" value="${esc(c.year)}" inputmode="numeric">`)}
+      ${field(c.matched ? 'Player ✓ matched' : c.player ? 'Player · check name' : 'Player', `<input data-k="player" value="${esc(c.player)}" list="dl-bpl">`)}${field('Year', `<input data-k="year" value="${esc(c.year)}" inputmode="numeric">`)}
       ${field('Brand', `<input data-k="brand" value="${esc(c.brand)}" list="dl-bbr">`)}${field('Set', `<input data-k="set" value="${esc(c.set)}" list="dl-bset">`)}
       ${field('Card #', `<input data-k="number" value="${esc(c.number)}">`)}${field('Parallel', `<input data-k="parallel" value="${esc(c.parallel)}" placeholder="Base">`)}
       ${field('Sport', `<select data-k="sport">${opts(SPORTS, c.sport, '—')}</select>`)}${field('Team', `<input data-k="team" value="${esc(c.team)}">`)}
@@ -3168,6 +3254,7 @@ function renderBatchReview() {
     ${it.text ? `<details><summary class="muted" style="cursor:pointer">Text read from the back</summary><pre class="bs-text">${esc(it.text)}</pre></details>` : ''}
     </fieldset>`; };
   const all = S.cards.filter(live);
+  const common = k => { const cnt = {}; BS.items.forEach(it => { const v = it.fields[k]; if (v) cnt[v] = (cnt[v] || 0) + 1; }); const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]; return top && top[1] >= Math.max(2, n * 0.5) ? top[0] : ''; };
   $('#modal-root .sheet').style.width = 'min(980px, 100%)';
   $('#modal-root .sheet').innerHTML = `<form data-form="batchSave">${mhead(`Found ${n} card${n === 1 ? '' : 's'}`)}
   ${BS.merged ? `<div class="warn">${BS.merged} spot${BS.merged > 1 ? 's' : ''} looked like cards touching each other and ${BS.merged > 1 ? 'were' : 'was'} skipped. Leave a small gap between cards and scan those again.</div>` : ''}
@@ -3178,7 +3265,7 @@ function renderBatchReview() {
     ${field('From pickup', `<select name="pickup">${opts(pickups.map(p => [p.id, fmtDate(p.date) + ' · ' + (p.location || 'Pickup')]), '', 'None')}</select>`)}
   </div>
   <div class="row"><span class="muted">Fill blank fields on all cards:</span>
-    <input id="bs-fill-set" placeholder="Set" style="width:130px" aria-label="Set for all"><input id="bs-fill-year" placeholder="Year" style="width:80px" aria-label="Year for all"><input id="bs-fill-brand" placeholder="Brand" style="width:110px" aria-label="Brand for all"><select id="bs-fill-sport" style="width:auto" aria-label="Sport for all">${opts(SPORTS, '', 'Sport')}</select>
+    <input id="bs-fill-set" placeholder="Set" value="${esc(common('set'))}" style="width:130px" aria-label="Set for all"><input id="bs-fill-year" placeholder="Year" value="${esc(common('year'))}" style="width:80px" aria-label="Year for all"><input id="bs-fill-brand" placeholder="Brand" value="${esc(common('brand'))}" style="width:110px" aria-label="Brand for all"><select id="bs-fill-sport" style="width:auto" aria-label="Sport for all">${opts(SPORTS, common('sport'), 'Sport')}</select>
     <button class="btn sm" type="button" data-act="bsFill">Fill blanks</button></div></fieldset>
   <div style="display:flex;flex-direction:column;gap:12px">${BS.items.map(row).join('')}</div>
   ${platformList()}${dl('dl-bpl', all.map(x => x.player))}${dl('dl-bbr', ['Panini', 'Topps', 'Upper Deck', 'Bowman', 'Donruss', 'Fleer', ...all.map(x => x.brand)])}${dl('dl-bset', all.map(x => x.set))}
