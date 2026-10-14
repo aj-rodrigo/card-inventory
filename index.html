@@ -349,6 +349,7 @@ async function loadAll() {
 
 let onChange = () => {};
 async function save(store, obj, opts = {}) {
+  if (!opts.raw && typeof canonRecord === 'function') canonRecord(store, obj); // reuse existing spellings
   if (!opts.keepStamp) obj.updatedAt = nowISO();
   const arr = S[store];
   const i = arr.findIndex(x => x.id === obj.id);
@@ -517,7 +518,7 @@ async function syncNow(manual) {
         const remote = await raw.json();
         const changed = await mergeData(remote);
         await pullFiles(remote.files || []);
-        if (changed) onChange('sync');
+        if (changed) { await mergeDuplicateNames(); onChange('sync'); }
       } else if (head.status === 401 || head.status === 403) {
         throw new Error('GitHub rejected the token. Check it has Contents read/write on this repo.');
       } else if (head.status === 404) {
@@ -639,7 +640,62 @@ const cls = n => n > 0.004 ? 'pos' : n < -0.004 ? 'neg' : '';
 const fmtDate = d => d ? new Date(d.slice(0, 10) + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 const daysBetween = (a, b) => Math.max(0, Math.round((new Date(b + 'T12:00') - new Date(a + 'T12:00')) / 864e5));
 const opts = (list, sel, blank) => (blank !== undefined ? `<option value="">${esc(blank)}</option>` : '') + list.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}"${String(v) === String(sel ?? '') ? ' selected' : ''}>${esc(l)}</option>`; }).join('');
-const uniq = arr => [...new Set(arr.filter(x => x !== undefined && x !== null && x !== ''))].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
+const ckey = v => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g, ''); // "SkyBox", "skybox " and "Sky Box" are the same name
+const uniq = arr => { const seen = new Map(); for (const x of arr) { if (x === undefined || x === null || x === '') continue; const k = typeof x === 'string' ? ckey(x) || x : x; if (!seen.has(k)) seen.set(k, x); } return [...seen.values()].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true })); };
+
+/* one spelling per name: a new entry reuses the spelling already in use (or the official one) */
+const CANON_CARD = ['player', 'brand', 'set', 'team', 'parallel', 'sport', 'gradeCo', 'condition'];
+function canonVocab(field) {
+  const tc = w => w.replace(/\b([a-z])([a-z']*)/gi, (_, a, b) => a.toUpperCase() + b.toLowerCase());
+  switch (field) {
+    case 'brand': return typeof BRANDS !== 'undefined' ? [...BRANDS.map(b => b[1]), 'Donruss', 'Bowman'] : [];
+    case 'set': return typeof SETS !== 'undefined' ? SETS.map(x => x[2]) : [];
+    case 'team': return typeof TEAMS !== 'undefined' ? Object.keys(TEAMS) : [];
+    case 'parallel': return typeof PARALLELS !== 'undefined' ? ['Base', ...PARALLELS.map(tc)] : ['Base'];
+    case 'sport': return SPORTS; case 'gradeCo': return GRADERS; case 'condition': return CONDITIONS;
+    case 'platform': return [...PLATFORMS, ...Object.keys(S.settings.fees || {})];
+    default: return [];
+  }
+}
+function canonValues(field, skipId) {
+  if (field === 'platform') return [...S.cards.filter(c => c.id !== skipId && c.buy).map(c => c.buy.platform), ...S.txns.map(t => t.platform), ...S.pickups.map(p => p.platform)];
+  if (field === 'location') return S.pickups.filter(p => p.id !== skipId).map(p => p.location);
+  return S.cards.filter(c => c.id !== skipId && !c.purged).map(c => c[field]);
+}
+function canonValue(field, v, skipId) {
+  if (typeof v !== 'string') return v;
+  v = v.trim().replace(/\s+/g, ' '); const k = ckey(v); if (!k) return v;
+  const known = canonVocab(field).find(x => ckey(x) === k); if (known) return known;
+  const counts = new Map(); for (const x of canonValues(field, skipId)) if (typeof x === 'string' && x && ckey(x) === k) counts.set(x, (counts.get(x) || 0) + 1);
+  let best = v, bc = 0; for (const [x, n] of counts) if (n > bc) { best = x; bc = n; }
+  return best;
+}
+function canonRecord(store, o) {
+  if (!o || o.purged) return o;
+  if (store === 'cards') { CANON_CARD.forEach(f => { if (o[f]) o[f] = canonValue(f, o[f], o.id); }); if (o.buy && o.buy.platform) o.buy.platform = canonValue('platform', o.buy.platform, o.id); (o.comps || []).forEach(x => { if (x.platform) x.platform = canonValue('platform', x.platform); }); }
+  if (store === 'txns' && o.platform) o.platform = canonValue('platform', o.platform);
+  if (store === 'pickups') { if (o.platform) o.platform = canonValue('platform', o.platform); if (o.location) o.location = canonValue('location', o.location, o.id); }
+  return o;
+}
+/* merge spellings that already exist ("Skybox" + "SkyBox" become one) */
+async function mergeDuplicateNames() {
+  const merged = [];
+  const pick = (field, vals) => { // key -> spelling to keep
+    const groups = new Map(); vals.forEach(v => { if (typeof v !== 'string' || !v.trim()) return; const k = ckey(v); if (!k) return; if (!groups.has(k)) groups.set(k, new Map()); const g = groups.get(k); g.set(v, (g.get(v) || 0) + 1); });
+    const out = new Map(); const vocab = canonVocab(field);
+    for (const [k, g] of groups) { if (g.size < 2 && !vocab.some(x => ckey(x) === k && !g.has(x))) continue; const known = vocab.find(x => ckey(x) === k); const top = known || [...g.entries()].sort((a, b) => b[1] - a[1] || (b[0] !== b[0].toLowerCase()) - (a[0] !== a[0].toLowerCase()))[0][0]; out.set(k, top); if (g.size > 1 || !g.has(top)) merged.push(`${[...g.keys()].filter(x => x !== top).join(', ')} → ${top}`); }
+    return out;
+  };
+  const live2 = S.cards.filter(c => !c.purged);
+  const maps = {}; CANON_CARD.forEach(f => { maps[f] = pick(f, live2.map(c => c[f])); });
+  const pm = pick('platform', [...live2.filter(c => c.buy).map(c => c.buy.platform), ...S.txns.map(t => t.platform), ...S.pickups.map(p => p.platform)]);
+  const lm = pick('location', S.pickups.map(p => p.location));
+  const fix = (m, v) => (typeof v === 'string' && m.get(ckey(v)) && m.get(ckey(v)) !== v ? m.get(ckey(v)) : v);
+  for (const c of live2) { let ch = false; CANON_CARD.forEach(f => { const n = fix(maps[f], c[f]); if (n !== c[f]) { c[f] = n; ch = true; } }); if (c.buy) { const n = fix(pm, c.buy.platform); if (n !== c.buy.platform) { c.buy.platform = n; ch = true; } } if (ch) await save('cards', c, { quiet: true, raw: true }); }
+  for (const t of S.txns) { const n = fix(pm, t.platform); if (n !== t.platform) { t.platform = n; await save('txns', t, { quiet: true, raw: true }); } }
+  for (const p of S.pickups) { const a = fix(pm, p.platform), b = fix(lm, p.location); if (a !== p.platform || b !== p.location) { p.platform = a; p.location = b; await save('pickups', p, { quiet: true, raw: true }); } }
+  return [...new Set(merged)];
+}
 function hue(s) { let h = 0; for (const ch of String(s || '')) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; }
 function download(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); }
 function csv(rows) { return rows.map(r => r.map(v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(',')).join('\n'); }
@@ -698,7 +754,7 @@ function shell() {
       <div class="brand"><i></i>DUGOUT</div>
       <nav>${NAV.map(n => n === '-' ? '<div class="sep"></div>' : `<a href="#/${n[0]}" data-nav="${n[0]}">${n[1]}</a>`).join('')}</nav>
       <div class="foot">
-        <span class="muted" style="color:inherit;opacity:.6">Version 1.7 · bulk photos</span>
+        <span class="muted" style="color:inherit;opacity:.6">Version 1.8 · no duplicate names</span>
         <span id="sync-status">${esc(Sync.status || (syncCfg() ? 'Sync ready' : 'Saved on this device'))}</span>
         <div class="row"><button class="btn sm" data-act="theme" type="button">Light / dark</button>${syncCfg() ? '<button class="btn sm" data-act="syncNow" type="button">Sync</button>' : ''}</div>
       </div>
@@ -3473,6 +3529,7 @@ async function drawReceipt(store, date, items, total) {
   window.addEventListener('hashchange', route);
   window.addEventListener('online', () => scheduleSync());
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && syncCfg()) syncNow(); });
+  try { const m = await mergeDuplicateNames(); if (m.length) toast(`Merged duplicate names: ${m.slice(0, 3).join('; ')}${m.length > 3 ? ` and ${m.length - 3} more` : ''}`); } catch (e) { console.warn(e); }
   await route();
   if (S.cards.length) snapshotSoon();
   if (syncCfg()) syncNow();
