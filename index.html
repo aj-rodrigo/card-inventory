@@ -204,6 +204,17 @@ table.t { border-collapse: collapse; width: 100%; font-size: .9rem; }
 .pick-list label { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); align-items: center; font-size: .92rem; }
 .pick-list label:last-child { border-bottom: 0; }
 
+/* 3D card */
+.c3d { display: flex; flex-direction: column; gap: 8px; }
+.c3d-stage { position: relative; }
+.c3d.is3d .c3d-stage > .art { display: none; }
+.c3d-canvas { display: block; width: 100%; aspect-ratio: 5 / 6.6; max-width: 100%; touch-action: none; cursor: grab; border-radius: 12px; background: radial-gradient(ellipse at 50% 40%, var(--panel2), var(--bg) 75%); }
+.c3d-canvas:active { cursor: grabbing; }
+.c3d:not(.is3d) .c3d-ctl button[data-act^="c3d"]:not([data-act="c3dFull"]), .c3d:not(.is3d) .c3d-hint { display: none; }
+.c3d-full .c3d-stage { display: flex; }
+.c3d-full .c3d-canvas { aspect-ratio: auto; height: 100%; border-radius: 0; background: radial-gradient(ellipse at 50% 45%, #232a33, #000 80%); }
+@media (max-width: 760px) { .photo-col .c3d { width: min(100%, 360px); align-self: center; } }
+
 /* toast */
 #toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 90; display: flex; flex-direction: column; gap: 8px; align-items: center; width: min(520px, calc(100% - 32px)); pointer-events: none; }
 .toast { background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 9px; font-weight: 600; display: flex; gap: 12px; align-items: center; pointer-events: auto; box-shadow: 0 6px 20px rgba(0,0,0,.35); }
@@ -689,6 +700,7 @@ const V = {};
 let curView = '';
 async function route() {
   stopScan();
+  if (window.disposeAll3D) { disposeAll3D(); $$('.c3d-full').forEach(v => v.remove()); }
   $('#shell') && $('#shell').classList.remove('menu');
   const h = decodeURIComponent(location.hash || '#/dash');
   let m;
@@ -710,6 +722,7 @@ async function rerender() { if (!$('#modal-root').children.length) await route()
 async function hydrate(root) {
   for (const img of $$('img[data-file]', root)) { const u = await fileURL(img.dataset.file); if (u) img.src = u; else img.closest('.art')?.classList.add('missing'); }
   for (const el of $$('[data-qr]', root)) el.innerHTML = qrSVG(el.dataset.qr);
+  if (window.hydrate3D) hydrate3D(root);
 }
 function qrSVG(text) {
   if (!window.qrcode) return '<small class="muted">QR library offline</small>';
@@ -749,6 +762,7 @@ V.dash = () => {
   return `
   <div class="page-head"><h1>Home</h1><div class="actions">
     <button class="btn pri" data-act="addCard" type="button">+ Add card</button>
+    <button class="btn" data-act="scanReceipt" type="button">Scan receipt</button>
     <a class="btn" href="#/scan">Scan QR</a>
     <button class="btn" data-act="newPickup" type="button">Log pickup</button></div></div>
   ${demo}${welcome}
@@ -838,6 +852,7 @@ V.inv = () => {
   return `
   <div class="page-head"><h1>Inventory</h1><div class="actions">
     <button class="btn" data-act="priceCheck" type="button">Price check</button>
+    <button class="btn" data-act="scanReceipt" type="button">Scan receipt</button>
     <button class="btn pri" data-act="addCard" type="button">+ Add card</button></div></div>
   <section class="panel">
     <div class="toolbar">
@@ -911,8 +926,10 @@ V.card = id => {
   </section>
   <div class="detail">
     <div class="photo-col">
-      <div data-act="viewPhoto" data-id="${c.id}" data-side="front">${art(c, 'front')}</div>
-      ${c.back ? `<div class="row"><button class="btn sm" data-act="viewPhoto" data-id="${c.id}" data-side="back" type="button">View back photo</button></div>` : ''}
+      <div class="c3d" data-card3d="${c.id}"><div class="c3d-stage">${art(c, 'front')}</div>
+        <div class="row c3d-ctl"><button class="btn sm" data-act="c3dFlip" type="button">Flip</button><button class="btn sm" data-act="c3dReset" type="button">Reset</button><button class="btn sm" data-act="c3dFull" data-id="${c.id}" type="button">Full screen</button>
+        ${c.front ? `<button class="btn sm ghost" data-act="viewPhoto" data-id="${c.id}" data-side="front" type="button">Front photo</button>` : ''}${c.back ? `<button class="btn sm ghost" data-act="viewPhoto" data-id="${c.id}" data-side="back" type="button">Back photo</button>` : ''}</div>
+        <small class="muted c3d-hint">Drag or swipe to turn it · double-tap to flip${c.front ? '' : ' · add photos to see the real card'}</small></div>
       <div class="row" style="align-items:flex-end"><div class="qrbox" data-qr="${esc(cardQR(c))}"></div><div style="display:flex;flex-direction:column;gap:6px"><span class="code">${esc(c.code)}</span><button class="btn sm" data-act="labelOne" data-id="${c.id}" type="button">Print label</button></div></div>
       <div class="row">
         ${active ? `<button class="btn sm" data-act="listed" data-id="${c.id}" type="button">${c.status === 'listed' ? 'Mark not listed' : 'Mark listed'}</button>` : ''}
@@ -1002,7 +1019,8 @@ function openCardForm(id, preset = {}) {
   </fieldset>
   <fieldset><legend>Photos</legend><div class="fgrid">
     ${field('Front photo', `<input type="file" name="front" accept="image/*">`)}${field('Back photo', `<input type="file" name="back" accept="image/*">`)}
-  </div>${c.front || c.back ? '<small class="muted">Choosing a new photo replaces the current one.</small>' : ''}</fieldset>
+  </div><label class="chk"><input type="checkbox" name="autocrop" checked> Auto-crop to the card (shoot it on a plain, contrasting surface)</label>
+  <small class="muted">Front and back photos build the 3D card on its page.${c.front || c.back ? ' Choosing a new photo replaces the current one.' : ''}</small></fieldset>
   <fieldset><legend>Purchase</legend><div class="fgrid">
     ${field('Date purchased', `<input type="date" name="b_date" value="${esc(b.date || today())}">`)}
     ${field('Platform purchased', inp('b_platform', b.platform, 'list="dl-platforms" placeholder="eBay, card show…"'))}
@@ -1054,7 +1072,7 @@ async function submitCard(f) {
   if (!old || num(old.value) !== newVal) { c.value = newVal; c.priceHistory = [...(c.priceHistory || []), { date: today(), value: newVal }]; c.priceUpdated = today(); }
   for (const side of ['front', 'back']) {
     const file = fd.get(side);
-    if (file && file.size) { if (c[side]) await fileDel(c[side]); c[side] = await fileSave(await compressImage(file), file.name); }
+    if (file && file.size) { if (c[side]) await fileDel(c[side]); const img = fd.get('autocrop') === 'on' ? await autoCropCard(file) : file; c[side] = await fileSave(await compressImage(img), file.name); }
   }
   await save('cards', c, { quiet: true });
   if (!old) await logTxn({ cardId: c.id, type: 'buy', date: c.buy.date, qty: c.buy.qty, amount: r2(c.buy.price + c.buy.ship + c.buy.tax + c.buy.fees), platform: c.buy.platform });
@@ -1251,13 +1269,14 @@ function openReceiptForm(cardId, rid) {
     ${field('Pickup', `<select name="pickupId">${opts(S.pickups.filter(p => !p.purged).map(p => [p.id, fmtDate(p.date) + ' · ' + (p.location || 'Pickup')]), r ? r.pickupId : '', 'None')}</select>`)}
     ${field('Note', inp('note', r ? r.note : '', 'placeholder="Seller, store, order #…"'), 'wide')}
   </div>
+  ${r && r.text ? field('Text read from this receipt', `<textarea name="text" style="min-height:120px;font-family:var(--led);font-size:.85rem">${esc(r.text)}</textarea>`) : ''}
   <fieldset><legend>Linked cards</legend>${cardPicker(sel)}<small class="muted">One receipt can cover many cards, like a lot or a pickup.</small></fieldset>
   ${mfoot(r ? 'Save' : 'Save receipts')}</form>`);
 }
 async function submitReceipt(f) {
   const fd = new FormData(f); const rid = f.dataset.id;
   const meta = { date: fd.get('date') || today(), amount: num(fd.get('amount')), note: String(fd.get('note') || '').trim(), pickupId: fd.get('pickupId') || '', cardIds: fd.getAll('cardIds') };
-  if (rid) { const r = S.receipts.find(x => x.id === rid); Object.assign(r, meta); await save('receipts', r); closeModal(); return toast('Receipt saved'); }
+  if (rid) { const r = S.receipts.find(x => x.id === rid); Object.assign(r, meta); if (fd.has('text')) r.text = String(fd.get('text')); await save('receipts', r); closeModal(); return toast('Receipt saved'); }
   const files = [...fd.getAll('files'), fd.get('snap')].filter(x => x && x.size);
   if (!files.length) return toast('Choose a photo or file first');
   for (const file of files) await saveReceipt(file, Object.assign({}, meta));
@@ -1344,7 +1363,7 @@ const A = {
   resplit: el => resplitPickup(el.dataset.id, el.dataset.mode),
   addReceipt: el => openReceiptForm(el.dataset.card),
   editReceipt: el => { document.querySelector('.viewer')?.remove(); openReceiptForm(null, el.dataset.id); },
-  viewReceipt: el => { const r = S.receipts.find(x => x.id === el.dataset.id); openViewer(r.fileId, `${fmtDate(r.date)} · ${r.amount ? money(r.amount) : ''} ${r.note || ''}`, `<button class="btn sm" type="button" data-act="editReceipt" data-id="${r.id}">Edit links</button><button class="btn sm" type="button" data-act="delReceipt" data-id="${r.id}">Delete</button>`); },
+  viewReceipt: el => { const r = S.receipts.find(x => x.id === el.dataset.id); openViewer(r.fileId, `${fmtDate(r.date)} · ${r.amount ? money(r.amount) : ''} ${r.note || ''}`, `${r.fileType === 'application/pdf' ? '' : r.text ? `<button class="btn sm" type="button" data-act="showText" data-id="${r.id}">Show text</button>` : `<button class="btn sm" type="button" data-act="readText" data-id="${r.id}">Read text</button>`}<button class="btn sm" type="button" data-act="editReceipt" data-id="${r.id}">Edit links</button><button class="btn sm" type="button" data-act="delReceipt" data-id="${r.id}">Delete</button>`); },
   delReceipt: async el => { if (el.dataset.confirm !== '1') { el.dataset.confirm = '1'; el.textContent = 'Tap again to delete'; return; } const r = S.receipts.find(x => x.id === el.dataset.id); document.querySelector('.viewer')?.remove(); await fileDel(r.fileId); r.purged = true; r.cardIds = []; await save('receipts', r); toast('Receipt deleted'); },
   addExpense: () => openExpenseForm(),
   delExpense: async el => { const x = S.expenses.find(e => e.id === el.dataset.id); x.purged = true; await save('expenses', x); toast('Expense removed', { label: 'Undo', run: async () => { delete x.purged; await save('expenses', x); } }); },
@@ -1457,7 +1476,7 @@ const RC = { q: '', year: '' };
 V.receipts = () => {
   const all = S.receipts.filter(r => !r.purged);
   const years = uniq(all.map(r => (r.date || '').slice(0, 4))).reverse();
-  return `<div class="page-head"><h1>Receipts</h1><div class="actions"><button class="btn pri" data-act="addReceipt" type="button">+ Add receipts</button></div></div>
+  return `<div class="page-head"><h1>Receipts</h1><div class="actions"><button class="btn pri" data-act="scanReceipt" type="button">Scan receipt → add cards</button><button class="btn" data-act="addReceipt" type="button">+ Add receipts</button></div></div>
   <section class="panel"><div class="toolbar"><input type="search" id="rc-q" placeholder="Search note, amount, card, player…" value="${esc(RC.q)}" aria-label="Search receipts"><select id="rc-year" aria-label="Year">${opts(years, RC.year, 'All years')}</select></div>
   <div class="row"><span class="muted">Tax export bundles every receipt for a year plus sales and expense spreadsheets into one zip.</span><span class="spacer"></span>
   <select id="tax-year" aria-label="Tax year">${opts(uniq([...years, String(new Date().getFullYear())]).reverse(), String(new Date().getFullYear()))}</select><button class="btn" data-act="taxExport" type="button">Export for taxes</button></div></section>
@@ -1468,7 +1487,7 @@ function updateReceipts() {
   const q = RC.q.trim().toLowerCase();
   const list = S.receipts.filter(r => !r.purged && (!RC.year || (r.date || '').startsWith(RC.year))).filter(r => {
     if (!q) return true;
-    const hay = [r.note, r.amount, r.date, r.name, ...(r.cardIds || []).map(id => { const c = cardById(id); return c ? c.code + ' ' + cardFull(c) : ''; }), (pickupById(r.pickupId) || {}).location].join(' ').toLowerCase();
+    const hay = [r.note, r.amount, r.date, r.name, r.text,...(r.cardIds || []).map(id => { const c = cardById(id); return c ? c.code + ' ' + cardFull(c) : ''; }), (pickupById(r.pickupId) || {}).location].join(' ').toLowerCase();
     return q.split(/\s+/).every(w => hay.includes(w));
   }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   const box = $('#rc-results'); if (!box) return;
@@ -1821,6 +1840,696 @@ function nicheTeaser() {
   const out = ['sport', 'player', 'set', 'parallel', 'gradedRaw'].map(k => { const r = rankList(groupBy([k], finderRows()))[0]; return r && r.profit > 0 ? `<div class="li"><div class="grow"><small>${esc(CRIT.find(c => c[0] === k)[1])}</small><b>${esc(r.key)}</b></div><span class="num pos">${money(r.profit, 1)}</span><span class="num muted" style="width:52px;text-align:right">${pct(r.roi)}</span></div>` : ''; }).join('');
   Object.assign(NF, saved);
   return out ? `<div class="list">${out}</div>` : '<div class="empty">Not enough repeat sales yet to spot a niche.</div>';
+}
+
+/* Receipt scanner: reads text from photos and screenshots on this device (Tesseract OCR, no account or key),
+   then guesses the date, totals and each card so the person only has to review. */
+const OCR = { worker: null, loading: null, progress: null };
+const TESS_SRC = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+
+function loadScriptOnce(src) {
+  return new Promise((res, rej) => {
+    if (window.Tesseract) return res();
+    const s = document.createElement('script'); s.src = src; s.onload = res;
+    s.onerror = () => rej(new Error('Could not load the text reader. Check your internet connection and try again.'));
+    document.head.appendChild(s);
+  });
+}
+async function ocrWorker() {
+  if (OCR.worker) return OCR.worker;
+  if (!OCR.loading) OCR.loading = (async () => {
+    await loadScriptOnce(window.DUGOUT_TESS_SRC || TESS_SRC);
+    const o = { logger: m => OCR.progress && OCR.progress(m) };
+    if (window.DUGOUT_TESS_OPTS) Object.assign(o, window.DUGOUT_TESS_OPTS);
+    const w = await Tesseract.createWorker('eng', 1, o);
+    await w.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: '6' });
+    OCR.worker = w; return w;
+  })().catch(e => { OCR.loading = null; throw e; });
+  return OCR.loading;
+}
+
+/* Clean up the photo so the text stands out: upscale small screenshots, grayscale,
+   stretch contrast, and flip dark-mode screenshots to dark text on white. */
+async function prepForOCR(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const long = Math.max(bmp.width, bmp.height);
+  const k = long < 1400 ? Math.min(2.5, 1800 / long) : long > 3200 ? 3200 / long : 1;
+  const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+  const g = cv.getContext('2d', { willReadFrequently: true }); g.imageSmoothingQuality = 'high';
+  g.drawImage(bmp, 0, 0, cv.width, cv.height);
+  const W = cv.width, H = cv.height;
+  const im = g.getImageData(0, 0, W, H); const d = im.data; const n = W * H;
+  const gray = new Float32Array(n); let sum = 0;
+  for (let i = 0, p = 0; p < n; i += 4, p++) { const y = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; gray[p] = y; sum += y; }
+  if (sum / n < 110) for (let p = 0; p < n; p++) gray[p] = 255 - gray[p]; // dark-mode screenshot
+  // divide by the local average brightness: removes shadows and uneven lighting on paper photos
+  const r = Math.max(8, Math.round(Math.min(W, H) / 30)); const ii = new Float64Array((W + 1) * (H + 1));
+  for (let y = 0; y < H; y++) { let row = 0; for (let x = 0; x < W; x++) { row += gray[y * W + x]; ii[(y + 1) * (W + 1) + x + 1] = ii[y * (W + 1) + x + 1] + row; } }
+  const out = new Float32Array(n); const hist = new Uint32Array(256);
+  for (let y = 0; y < H; y++) {
+    const y0 = Math.max(0, y - r), y1 = Math.min(H, y + r + 1);
+    for (let x = 0; x < W; x++) {
+      const x0 = Math.max(0, x - r), x1 = Math.min(W, x + r + 1);
+      const s = ii[y1 * (W + 1) + x1] - ii[y0 * (W + 1) + x1] - ii[y1 * (W + 1) + x0] + ii[y0 * (W + 1) + x0];
+      const mean = Math.max(1, s / ((y1 - y0) * (x1 - x0)));
+      const v = Math.min(255, gray[y * W + x] / mean * 255 * 1.08); out[y * W + x] = v; hist[v | 0]++;
+    }
+  }
+  let lo = 0, hi = 255, acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc > n * 0.01) { lo = v; break; } }
+  acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > n * 0.01) { hi = v; break; } }
+  const span = Math.max(24, hi - lo);
+  for (let i = 0, p = 0; p < n; i += 4, p++) { let y = (out[p] - lo) * 255 / span; y = y < 0 ? 0 : y > 255 ? 255 : y; d[i] = d[i + 1] = d[i + 2] = y; }
+  g.putImageData(im, 0, 0);
+  return cv;
+}
+async function readImageText(file, onProgress) {
+  OCR.progress = m => { if (m.status === 'recognizing text') onProgress && onProgress(m.progress, 'Reading text'); else if (/load|initializ/.test(m.status)) onProgress && onProgress(null, m.status.includes('language') ? 'Downloading text reader (first time only)' : 'Starting text reader'); };
+  const w = await ocrWorker();
+  const canvas = await prepForOCR(file);
+  const { data } = await w.recognize(canvas);
+  return { text: cleanOCR(data.text || ''), confidence: Math.round(data.confidence || 0) };
+}
+const cleanOCR = t => t.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[—–]/g, '-').replace(/[ \t]{2,}/g, '  ').replace(/\n{3,}/g, '\n\n').trim();
+
+/* ------------------------------------------------------------------ */
+/* Parsing: turn raw receipt text into fields                          */
+/* ------------------------------------------------------------------ */
+const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
+const MON = '(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\\.?';
+const DATE_RES = [
+  [new RegExp(`\\b${MON}\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s*(\\d{4})?\\b`, 'i'), m => [m[3], MONTHS[m[1].toLowerCase().slice(0, m[1].toLowerCase().startsWith('sept') ? 4 : 3)], m[2]]],
+  [new RegExp(`\\b(\\d{1,2})\\s+${MON},?\\s+(\\d{4})\\b`, 'i'), m => [m[3], MONTHS[m[2].toLowerCase().slice(0, 3)], m[1]]],
+  [/\b(20\d{2})[\/\-.](0?[1-9]|1[0-2])[\/\-.](0?[1-9]|[12]\d|3[01])\b/, m => [m[1], +m[2] - 1, m[3]]],
+  [/\b(0?[1-9]|1[0-2])[\/\-.](0?[1-9]|[12]\d|3[01])[\/\-.](\d{4}|\d{2})\b/, m => [m[3].length === 2 ? '20' + m[3] : m[3], +m[1] - 1, m[2]]],
+];
+function findDate(line, todayStr = today()) {
+  for (const [re, f] of DATE_RES) {
+    const m = line.match(re); if (!m) continue;
+    let [y, mo, d] = f(m); if (mo === undefined) continue;
+    const ty = +todayStr.slice(0, 4);
+    let year = y ? +y : ty;
+    let iso = `${year}-${String(mo + 1).padStart(2, '0')}-${String(+d).padStart(2, '0')}`;
+    if (!y && iso > todayStr) iso = `${year - 1}${iso.slice(4)}`;
+    if (iso > todayStr || iso < '2000') continue;
+    return iso;
+  }
+  return null;
+}
+const MONEY_RE = /(?:^|[^\d.,])(?:US\s?)?[$S§]?\s?(\d{1,3}(?:,\d{3})+|\d{1,6})[.,](\d{2})(?![\d%])/g;
+function moneyIn(line) { const out = []; let m; MONEY_RE.lastIndex = 0; while ((m = MONEY_RE.exec(line))) out.push(parseFloat(m[1].replace(/,/g, '') + '.' + m[2])); return out; }
+const LABELS = {
+  subtotal: /sub\s*-?\s*total|items?\s*(?:\(\d+\)\s*)?(?:sub)?total|item\s*price\s*total/i,
+  shipping: /shipping|postage|delivery|\bs\s*&\s*h\b/i,
+  tax: /\b(?:sales\s*)?tax(?:es)?\b|\bvat\b|\bgst\b/i,
+  fees: /\bfees?\b|buyer\s*protection|service\s*charge|processing/i,
+  discount: /discount|coupon|promo|savings|you\s*saved/i,
+  total: /\b(?:order\s*total|grand\s*total|total\s*(?:paid|charged|amount)|amount\s*paid|you\s*paid|total)\b/i,
+};
+const NOT_ITEM = /\b(total|subtotal|tax|shipping|postage|delivery|order\s*(?:number|no|#|id|date|details|info)|payment|paid\s*with|visa|mastercard|amex|discover|apple\s*pay|paypal|cash|change|balance|card\s*ending|ending\s*in|address|street|ave\b|suite|zip|thank|refund|return|track|tracking|estimated|arriv|ship\s*to|deliver|feedback|coupon|discount|fees?|receipt|invoice|customer|phone|www\.|\.com)\b/i;
+const PLATFORM_RES = [[/e\s?bay/i, 'eBay'], [/whatnot/i, 'Whatnot'], [/facebook|marketplace|messenger/i, 'Facebook Marketplace'], [/\bcomc\b/i, 'COMC'], [/mercari/i, 'Mercari'], [/fanatics\s*collect/i, 'Fanatics Collect'], [/myslabs/i, 'MySlabs'], [/tcg\s*player/i, 'TCGplayer'], [/card\s*show/i, 'Card show']];
+
+/* brand + set vocabulary (longest phrases first) */
+const SETS = [
+  ['bowman chrome', 'Bowman', 'Bowman Chrome'], ['bowman draft', 'Bowman', 'Bowman Draft'], ['bowman u', 'Bowman', 'Bowman U'], ['topps chrome', 'Topps', 'Chrome'], ['cosmic chrome', 'Topps', 'Cosmic Chrome'],
+  ['stadium club', 'Topps', 'Stadium Club'], ['allen & ginter', 'Topps', 'Allen & Ginter'], ['allen and ginter', 'Topps', 'Allen & Ginter'], ['gypsy queen', 'Topps', 'Gypsy Queen'], ['topps now', 'Topps', 'Topps Now'],
+  ['heritage', 'Topps', 'Heritage'], ['finest', 'Topps', 'Finest'], ['sapphire', 'Topps', 'Chrome Sapphire'], ['series 1', 'Topps', 'Series 1'], ['series 2', 'Topps', 'Series 2'], ['update series', 'Topps', 'Update'],
+  ['donruss optic', 'Panini', 'Donruss Optic'], ['optic', 'Panini', 'Donruss Optic'], ['national treasures', 'Panini', 'National Treasures'], ['crown royale', 'Panini', 'Crown Royale'], ['court kings', 'Panini', 'Court Kings'],
+  ['prizm', 'Panini', 'Prizm'], ['select', 'Panini', 'Select'], ['mosaic', 'Panini', 'Mosaic'], ['hoops', 'Panini', 'Hoops'], ['contenders', 'Panini', 'Contenders'], ['immaculate', 'Panini', 'Immaculate'],
+  ['flawless', 'Panini', 'Flawless'], ['phoenix', 'Panini', 'Phoenix'], ['origins', 'Panini', 'Origins'], ['spectra', 'Panini', 'Spectra'], ['obsidian', 'Panini', 'Obsidian'], ['absolute', 'Panini', 'Absolute'],
+  ['certified', 'Panini', 'Certified'], ['prestige', 'Panini', 'Prestige'], ['chronicles', 'Panini', 'Chronicles'], ['revolution', 'Panini', 'Revolution'], ['zenith', 'Panini', 'Zenith'], ['donruss', 'Panini', 'Donruss'],
+  ['young guns', 'Upper Deck', 'Young Guns'], ['sp authentic', 'Upper Deck', 'SP Authentic'], ['o-pee-chee', 'Upper Deck', 'O-Pee-Chee'], ['opc', 'Upper Deck', 'O-Pee-Chee'],
+];
+const BRANDS = [['upper deck', 'Upper Deck'], ['panini', 'Panini'], ['topps', 'Topps'], ['bowman', 'Bowman'], ['leaf', 'Leaf'], ['fleer', 'Fleer'], ['skybox', 'SkyBox'], ['score', 'Score']];
+const PARALLELS = ['concourse', 'premier level', 'courtside', 'field level', 'club level', 'cracked ice', 'red wave', 'blue wave', 'green wave', 'purple wave', 'gold wave', 'pink pulsar', 'fast break', 'tie-dye', 'tie dye', 'x-fractor', 'xfractor', 'superfractor', 'gold vinyl', 'black finite',
+  'refractor', 'holo', 'silver', 'gold', 'green', 'red', 'blue', 'purple', 'orange', 'black', 'pink', 'teal', 'bronze', 'white', 'yellow', 'aqua', 'neon', 'camo', 'tiger', 'zebra', 'snakeskin', 'ice', 'lava',
+  'pulsar', 'velocity', 'atomic', 'sepia', 'speckle', 'mojo', 'hyper', 'disco', 'shimmer', 'scope', 'wave', 'choice', 'genesis', 'mini diamond', 'shock'];
+/* team nicknames → sport (null when the name is used in more than one league) */
+const TEAMS = (() => {
+  const t = {};
+  const add = (sport, list) => list.split(',').forEach(n => { n = n.trim(); t[n] = t[n] === undefined ? sport : t[n] === sport ? sport : null; });
+  add('Basketball', 'Hawks,Celtics,Nets,Hornets,Bulls,Cavaliers,Cavs,Mavericks,Mavs,Nuggets,Pistons,Warriors,Rockets,Pacers,Clippers,Lakers,Grizzlies,Heat,Bucks,Timberwolves,Pelicans,Knicks,Thunder,Magic,76ers,Sixers,Suns,Trail Blazers,Blazers,Kings,Spurs,Raptors,Jazz,Wizards,Fever,Sky,Aces,Liberty,Lynx,Mercury,Sparks,Storm,Wings,Dream,Sun,Valkyries');
+  add('Football', 'Cardinals,Falcons,Ravens,Bills,Panthers,Bears,Bengals,Browns,Cowboys,Broncos,Lions,Packers,Texans,Colts,Jaguars,Chiefs,Raiders,Chargers,Rams,Dolphins,Vikings,Patriots,Saints,Giants,Jets,Eagles,Steelers,49ers,Niners,Seahawks,Buccaneers,Bucs,Titans,Commanders');
+  add('Baseball', 'Diamondbacks,Braves,Orioles,Red Sox,Cubs,White Sox,Reds,Guardians,Rockies,Tigers,Astros,Royals,Angels,Dodgers,Marlins,Brewers,Twins,Mets,Yankees,Athletics,Phillies,Pirates,Padres,Giants,Mariners,Cardinals,Rays,Rangers,Blue Jays,Nationals');
+  add('Hockey', 'Ducks,Bruins,Sabres,Flames,Hurricanes,Blackhawks,Avalanche,Blue Jackets,Stars,Red Wings,Oilers,Panthers,Kings,Wild,Canadiens,Predators,Devils,Islanders,Rangers,Senators,Flyers,Penguins,Sharks,Kraken,Blues,Lightning,Maple Leafs,Canucks,Golden Knights,Capitals,Jets,Utah Hockey Club,Mammoth');
+  add('Soccer', 'Inter Miami,Galaxy,LAFC,Real Madrid,Barcelona,Manchester United,Man City,Liverpool,Arsenal,Chelsea,PSG,Bayern');
+  return t;
+})();
+const TEAM_NAMES = Object.keys(TEAMS).sort((a, b) => b.length - a.length);
+const STOP = new Set(('card cards rookie rc rpa auto autograph autographed autos signed signature patch jersey relic memorabilia mem refractor parallel base insert sp ssp case hit lot of the and with graded raw ' +
+  'psa bgs sgc cgc tag beckett bvg gem mint mt nm ex near new sealed nba nfl mlb nhl wnba mls football basketball baseball hockey soccer item items price qty quantity sold by free shipping numbered serial ' +
+  'short print variation var image photo color prizms pack box blaster hobby retail first 1st edition bowman topps panini upper deck leaf fleer skybox score chrome draft prospect prospects ' +
+  'pop population each total order buy now brand qb wr rb te lot! nice clean sharp').split(' '));
+
+function parseCardTitle(raw) {
+  let s = ' ' + String(raw || '').replace(/[|_]/g, ' ').replace(/\s+/g, ' ') + ' ';
+  const low = () => s.toLowerCase();
+  const c = { player: '', year: '', brand: '', set: '', number: '', parallel: '', serial: '', sport: '', team: '', grade: '', rookie: false, auto: false, patch: false };
+  // strip full dates so they don't read as serial numbers
+  s = s.replace(/\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/g, ' ');
+  const g = s.match(/\b(PSA|BGS|SGC|CGC|TAG|Beckett|BVG)\s*(?:GEM\s*(?:MINT|MT)\s*|MINT\s*|NM-?MT\s*)?(10|[1-9](?:\.5)?)\b/i);
+  if (g) { c.grade = (g[1].toUpperCase() === 'BECKETT' ? 'BGS' : g[1].toUpperCase()) + ' ' + g[2]; s = s.replace(g[0], ' '); }
+  const y = s.match(/\b(19[5-9]\d|20[0-3]\d)(?:[-\/](\d{2}))?\b/); if (y) { c.year = y[1]; s = s.replace(y[0], ' '); }
+  const ser = s.match(/(?:^|[\s(])(\d{1,4})?\s?\/\s?(\d{1,4})(?![\/\d])/);
+  if (ser && +ser[2] > 0 && +ser[2] <= 9999 && (!ser[1] || +ser[1] <= +ser[2])) { c.serial = ser[1] ? `${ser[1]}/${ser[2]}` : `/${ser[2]}`; s = s.replace(ser[0], ' '); }
+  const num = s.match(/#\s?([A-Z]{0,5}-?\d{1,4}[A-Z]?)\b/i) || s.match(/\b(?:no\.?|card)\s?(\d{1,4})\b/i);
+  if (num) { c.number = num[1].toUpperCase(); s = s.replace(num[0], ' '); }
+  c.rookie = /\bRC\b|\brookie\b|\bRPA\b|\b1st\s+bowman\b/i.test(s);
+  c.auto = /\bauto(?:graph(?:ed)?)?s?\b|\bsigned\b|\bsignatures?\b|\bRPA\b|on-card/i.test(s);
+  c.patch = /\bpatch\b|\bjersey\b|\brelic\b|memorabilia|\bRPA\b|\bmem\b/i.test(s);
+  for (const n of TEAM_NAMES) { const re = new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i'); if (re.test(s)) { c.team = n; if (TEAMS[n]) c.sport = TEAMS[n]; s = s.replace(re, ' '); break; } }
+  { // the set named first in the title wins (longer names win ties: "Bowman Chrome" over "Bowman")
+    let best = null;
+    for (const [k, b, st] of SETS) { const m = low().match(new RegExp(`\\b${k.replace(/[&]/g, '\\$&')}\\b`)); if (m && (!best || m.index < best.i || (m.index === best.i && k.length > best.k.length))) best = { i: m.index, k, b, st }; }
+    if (best) { c.brand = best.b; c.set = best.st; s = s.replace(new RegExp(`\\b${best.k.replace(/[&]/g, '\\$&')}\\b`, 'i'), ' '); }
+  }
+  if (c.set === 'Young Guns') c.rookie = true;
+  if (c.set === 'Prizm') s = s.replace(/\bprizm\b/gi, ' ');
+  for (const [k, b] of BRANDS) { const re = new RegExp(`\\b${k}\\b`, 'i'); if (re.test(s)) { if (!c.brand || k !== 'score') c.brand = b; s = s.replace(re, ' '); } }
+  if (c.brand === 'Bowman' && c.set === 'Chrome') c.set = 'Bowman Chrome';
+  const par = [];
+  for (const p of PARALLELS) { const re = new RegExp(`\\b${p.replace('-', '[- ]?')}\\b`, 'i'); const m = s.match(re); if (m) { par.push([s.toLowerCase().indexOf(m[0].toLowerCase()), titleCase(p)]); s = s.replace(re, ' '); } }
+  if (/\bprizm\b/i.test(s) && c.set !== 'Prizm') { par.push([s.toLowerCase().indexOf('prizm'), 'Prizm']); s = s.replace(/\bprizm\b/i, ' '); }
+  c.parallel = par.sort((a, b) => a[0] - b[0]).map(p => p[1]).join(' ');
+  if (!c.sport) { const l = raw.toLowerCase(); c.sport = /\b(nba|wnba|basketball|hoops)\b/.test(l) ? 'Basketball' : /\b(nfl|football)\b/.test(l) ? 'Football' : /\b(mlb|baseball)\b/.test(l) ? 'Baseball' : /\b(nhl|hockey|young guns)\b/.test(l) ? 'Hockey' : /\b(soccer|mls|premier league|fifa|uefa)\b/.test(l) ? 'Soccer' : ''; }
+  c.player = guessPlayer(s);
+  return c;
+}
+function titleCase(w) { return w.replace(/\b([a-z])([a-z']*)/gi, (_, a, b) => a.toUpperCase() + b.toLowerCase()); }
+function guessPlayer(s) {
+  const words = s.replace(/\$?\d+[.,]\d{2}/g, ' ').replace(/[^A-Za-z.'\- ]/g, ' ').split(/\s+/).filter(Boolean);
+  const particle = /^(de|la|del|da|van|von|der|di|st\.?|jr\.?|sr\.?|ii|iii|iv|le|dos)$/i;
+  let best = [], cur = [];
+  const flush = () => { while (cur.length && particle.test(cur[cur.length - 1]) && !/^(jr|sr|ii|iii|iv)/i.test(cur[cur.length - 1])) cur.pop(); if (cur.length >= 2 && cur.length > best.length) best = cur.slice(0, 4); cur = []; };
+  for (const w of words) {
+    const bare = w.replace(/[.'\-]/g, '').toLowerCase();
+    const isName = /^[A-Z]/.test(w) && bare.length >= 2 && !STOP.has(bare) && !PARALLELS.includes(bare);
+    if (isName || (cur.length && particle.test(w))) { cur.push(w); if (cur.length >= 4) flush(); }
+    else flush();
+    if (best.length >= 2 && !cur.length) break;
+  }
+  flush();
+  if (!best.length) { const one = words.find(w => /^[A-Z][a-z'\-]{3,}$/.test(w) && !STOP.has(w.toLowerCase()) && !PARALLELS.includes(w.toLowerCase())); if (one) best = [one]; } // receipts often list a last name only
+  return best.map(w => (/^[A-Z.'\-]+$/.test(w) && w.length > 3 ? titleCase(w) : w)).join(' ').replace(/^[.'\-]+|[.'\-]+$/g, '');
+}
+function cardScore(line) {
+  let sc = 0;
+  line = line.replace(/\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/g, ' ').replace(/\b(19|20)\d{2}[\/\-.]\d{1,2}[\/\-.]\d{1,2}\b/g, ' ');
+  if (/\b(19[5-9]\d|20[0-3]\d)\b/.test(line)) sc += 1;
+  if (SETS.some(([k]) => new RegExp(`\\b${k.replace(/[&]/g, '\\$&')}\\b`, 'i').test(line)) || BRANDS.some(([k]) => new RegExp(`\\b${k}\\b`, 'i').test(line))) sc += 2;
+  if (/#\s?[A-Z]{0,5}-?\d/i.test(line)) sc += 1;
+  if (/\b(RC|rookie|auto|PSA|BGS|SGC|refractor|parallel|patch|numbered|SSP|SP)\b|\/\s?\d{1,4}\b/i.test(line)) sc += 1;
+  return sc;
+}
+function parseReceipt(text, todayStr) {
+  const lines = String(text || '').split(/\n/).map(l => l.replace(/\s+/g, ' ').trim()).filter(l => l.length > 1);
+  const out = { platform: '', date: '', orderNo: '', seller: '', subtotal: null, shipping: null, tax: null, fees: null, total: null, items: [] };
+  const all = lines.join('\n');
+  for (const [re, p] of PLATFORM_RES) if (re.test(all)) { out.platform = p; break; }
+  // date: prefer lines that talk about the order/purchase
+  const dated = lines.filter(l => /order|placed|paid|purchas|date|sold|bought/i.test(l)).map(l => findDate(l, todayStr)).find(Boolean);
+  out.date = dated || lines.map(l => findDate(l, todayStr)).find(Boolean) || '';
+  const on = all.match(/\b(\d{2}-\d{5}-\d{5})\b/) || all.match(/(?:order|transaction|invoice|receipt)\s*(?:number|no\.?|#|id)?\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{5,})/i);
+  if (on && /\d/.test(on[1])) out.orderNo = on[1];
+  const se = all.match(/(?:sold\s*by|seller(?:\s*name)?)\s*[:\-]?\s*([A-Za-z0-9_.\-]{3,30})/i); if (se) out.seller = se[1];
+  // labeled amounts (value on the same line, or the next line for stacked layouts)
+  const used = new Set();
+  lines.forEach((l, i) => {
+    let key = null;
+    if (LABELS.subtotal.test(l)) key = 'subtotal';
+    else if (LABELS.discount.test(l)) key = null;
+    else if (LABELS.shipping.test(l)) key = 'shipping';
+    else if (LABELS.tax.test(l)) key = 'tax';
+    else if (LABELS.fees.test(l)) key = 'fees';
+    else if (LABELS.total.test(l)) key = 'total';
+    if (!key) return;
+    let v = moneyIn(l).pop();
+    if (v === undefined && lines[i + 1] && !Object.values(LABELS).some(re => re.test(lines[i + 1]))) { v = moneyIn(lines[i + 1])[0]; if (v !== undefined) used.add(i + 1); }
+    if (v === undefined && key === 'shipping' && /free/i.test(l)) v = 0;
+    if (v === undefined) return;
+    used.add(i);
+    if (key === 'total') out.total = Math.max(out.total || 0, v); else if (out[key] === null) out[key] = v; else out[key] += v;
+  });
+  // items: card-looking lines, plus any priced line that isn't a label
+  for (let i = 0; i < lines.length; i++) {
+    if (used.has(i)) continue;
+    const l = lines[i]; const sc = cardScore(l); const m = moneyIn(l);
+    const looksCard = sc >= 2 && !NOT_ITEM.test(l.replace(/#\s?\w+/g, ''));
+    const pricedLine = m.length && /[A-Za-z]{3,}/.test(l.replace(/\$?\d+[.,]\d{2}/g, '')) && !NOT_ITEM.test(l) && !/^\W*(qty|quantity|item\s*price|price|each|x\s?\d)/i.test(l);
+    if (!looksCard && !pricedLine) continue;
+    let title = l.replace(/(?:US\s?)?\$\s?\d[\d,]*[.,]\d{2}/g, '').replace(/\s+\d[\d,]*\.\d{2}\s*$/, '').trim();
+    let price = m.length ? m[m.length - 1] : null; let qty = null; let j = i;
+    // titles that wrap onto following lines (a new card usually starts with its year)
+    while (price === null && j - i < 2 && lines[j + 1] && !used.has(j + 1) && !NOT_ITEM.test(lines[j + 1]) && !/\b(19[5-9]\d|20[0-3]\d)\b/.test(lines[j + 1]) && lines[j + 1].length < 80 && !/^\W*(qty|quantity|item\s*price|price)\b/i.test(lines[j + 1]) && /[A-Za-z]{2,}/.test(lines[j + 1].replace(/\$?\d+[.,]\d{2}/g, ''))) {
+      j++; used.add(j); const mm = moneyIn(lines[j]);
+      title += ' ' + lines[j].replace(/(?:US\s?)?\$\s?\d[\d,]*[.,]\d{2}/g, '').replace(/\s+\d[\d,]*\.\d{2}\s*$/, '').trim();
+      if (mm.length) price = mm[mm.length - 1];
+    }
+    for (let k = j + 1; k <= j + 3 && k < lines.length && price === null; k++) {
+      if (used.has(k) || cardScore(lines[k]) >= 2 || LABELS.total.test(lines[k]) || LABELS.subtotal.test(lines[k]) || LABELS.shipping.test(lines[k]) || LABELS.tax.test(lines[k])) break;
+      const mm = moneyIn(lines[k]); if (mm.length) { price = mm[mm.length - 1]; used.add(k); }
+      const q = lines[k].match(/(?:qty|quantity)\s*[:.]?\s*(\d{1,3})/i); if (q) { qty = +q[1]; used.add(k); }
+    }
+    for (let k = j + 1; k <= j + 3 && k < lines.length && !qty; k++) { if (cardScore(lines[k]) >= 2) break; const q = lines[k].match(/(?:qty|quantity)\s*[:.]?\s*(\d{1,3})/i); if (q) { qty = +q[1]; used.add(k); } }
+    const q0 = (title + ' ' + (lines[j + 1] || '')).match(/(?:qty|quantity)\s*[:.]?\s*(\d{1,3})|\b[x×]\s?(\d{1,2})\b|\b(\d{1,2})\s?[x×]\b/i);
+    if (!qty && q0) qty = +(q0[1] || q0[2] || q0[3]);
+    title = title.replace(/(?:qty|quantity)\s*[:.]?\s*\d+/i, '').replace(/\s{2,}/g, ' ').trim();
+    if (title.replace(/[^A-Za-z]/g, '').length < 3) continue;
+    used.add(i);
+    out.items.push({ title, qty: qty || 1, price, card: parseCardTitle(title) });
+  }
+  // receipts that list a unit price next to "Qty 2": use whichever reading matches the subtotal
+  const sub = out.subtotal ?? (out.total !== null ? out.total - (out.shipping || 0) - (out.tax || 0) - (out.fees || 0) : null);
+  if (sub !== null && out.items.some(it => it.qty > 1 && it.price !== null)) {
+    const a = out.items.reduce((s, it) => s + (it.price || 0), 0), b = out.items.reduce((s, it) => s + (it.price || 0) * it.qty, 0);
+    if (Math.abs(b - sub) < Math.abs(a - sub)) out.items.forEach(it => { if (it.price !== null) it.price = Math.round(it.price * it.qty * 100) / 100; });
+  }
+  if (!out.items.length && out.total !== null) out.items.push({ title: '', qty: 1, price: out.subtotal ?? out.total, card: parseCardTitle('') });
+  return out;
+}
+if (typeof module !== 'undefined') module.exports = { parseReceipt, parseCardTitle, findDate, moneyIn };
+
+/* ------------------------------------------------------------------ */
+/* Scan flow UI                                                        */
+/* ------------------------------------------------------------------ */
+const SR = { files: [], texts: [], parsed: null };
+function openScanReceipt() {
+  SR.files = []; SR.texts = []; SR.parsed = null;
+  openModal(`<div>${mhead('Scan a receipt')}
+  <p class="muted" style="margin:0">Snap a photo or upload screenshots of an order. Dugout reads the text on this device, then fills in the cards for you to check.</p>
+  <div class="fgrid" style="margin-top:12px">${field('Take a photo', `<input type="file" id="sr-snap" accept="image/*" capture="environment">`)}${field('Or choose screenshots / photos', `<input type="file" id="sr-files" accept="image/*" multiple>`)}</div>
+  <small class="muted">Best results: eBay, Whatnot or COMC order screenshots, and flat, well-lit paper receipts. For a PDF invoice, take a screenshot of it first. Long orders can be several screenshots at once.</small></div>`, { narrow: true });
+}
+async function runScan(files) {
+  SR.files = files; SR.texts = [];
+  const body = $('#modal-root .sheet');
+  body.innerHTML = `${mhead('Reading receipt')}<div class="calc"><div><span id="sr-step">Starting</span><b id="sr-pct">0%</b></div></div>
+    <div style="height:8px;background:var(--line);border-radius:4px;overflow:hidden"><div id="sr-bar" style="height:100%;width:2%;background:var(--acc);transition:width .2s"></div></div>
+    <small class="muted">The first scan downloads the text reader (a few MB). After that it's fast.</small>`;
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const r = await readImageText(files[i], (p, label) => {
+        const step = $('#sr-step'); if (!step) return;
+        step.textContent = `${label}${files.length > 1 ? ` · image ${i + 1} of ${files.length}` : ''}`;
+        if (p !== null) { const tot = (i + p) / files.length; $('#sr-pct').textContent = Math.round(tot * 100) + '%'; $('#sr-bar').style.width = Math.max(2, tot * 100) + '%'; }
+      });
+      SR.texts.push(r);
+    }
+  } catch (e) {
+    body.innerHTML = `${mhead('Couldn\'t read that')}<p>${esc(e.message)}</p><div class="sheet-foot"><button class="btn" data-act="close" type="button">Close</button><button class="btn pri" data-act="scanReceipt" type="button">Try again</button></div>`;
+    return;
+  }
+  SR.parsed = enrichFromInventory(parseReceipt(SR.texts.map(t => t.text).join('\n')));
+  renderScanReview();
+}
+/* fill gaps from cards already in inventory: "Mahomes" → "Patrick Mahomes", plus his sport and team */
+function enrichFromInventory(p) {
+  const players = new Map(); S.cards.filter(live).forEach(c => { if (c.player) players.set(c.player.toLowerCase(), c); });
+  for (const it of p.items) {
+    const c = it.card; if (!c.player) continue;
+    const key = c.player.toLowerCase();
+    let hit = players.get(key);
+    if (!hit && !key.includes(' ')) { const m = [...players.keys()].filter(n => n.split(' ').pop() === key); if (m.length === 1) hit = players.get(m[0]); }
+    if (hit) { c.player = hit.player; if (!c.sport) c.sport = hit.sport || ''; if (!c.team) c.team = hit.team || ''; }
+  }
+  return p;
+}
+function renderScanReview() {
+  const p = SR.parsed; const text = SR.texts.map(t => t.text).join('\n\n');
+  const conf = Math.round(SR.texts.reduce((a, t) => a + t.confidence, 0) / Math.max(1, SR.texts.length));
+  const item = (it, i) => { const c = it.card;
+    return `<fieldset data-item="${i}"><legend>Card ${i + 1}</legend>
+    ${it.title ? `<small class="muted">From receipt: “${esc(it.title)}”</small>` : '<small class="muted">No card title found. Fill in what you know.</small>'}
+    <div class="fgrid">
+      ${field('Player', `<input data-k="player" value="${esc(c.player)}">`)}${field('Year', `<input data-k="year" value="${esc(c.year)}" inputmode="numeric">`)}
+      ${field('Brand', `<input data-k="brand" value="${esc(c.brand)}">`)}${field('Set', `<input data-k="set" value="${esc(c.set)}">`)}
+      ${field('Card #', `<input data-k="number" value="${esc(c.number)}">`)}${field('Parallel', `<input data-k="parallel" value="${esc(c.parallel)}">`)}
+      ${field('Serial', `<input data-k="serial" value="${esc(c.serial)}">`)}${field('Grade', `<input data-k="grade" value="${esc(c.grade)}" placeholder="PSA 10 or blank">`)}
+      ${field('Sport', `<select data-k="sport">${opts(SPORTS, c.sport, '—')}</select>`)}${field('Team', `<input data-k="team" value="${esc(c.team)}">`)}
+      ${field('Qty', `<input data-k="qty" value="${it.qty || 1}" inputmode="numeric">`)}${field('Price paid (all qty)', `<input data-k="price" value="${it.price ?? ''}" inputmode="decimal" placeholder="0.00">`)}
+    </div>
+    <div class="row"><label class="chk"><input type="checkbox" data-k="rookie" ${c.rookie ? 'checked' : ''}> Rookie</label><label class="chk"><input type="checkbox" data-k="auto" ${c.auto ? 'checked' : ''}> Auto</label><label class="chk"><input type="checkbox" data-k="patch" ${c.patch ? 'checked' : ''}> Patch</label><span class="spacer"></span><button class="btn sm ghost" type="button" data-act="srDel" data-i="${i}">Remove</button></div>
+    </fieldset>`; };
+  $('#modal-root .sheet').innerHTML = `<form data-form="scanSave">${mhead('Check what was read')}
+  <div class="row">${SR.files.map((f, i) => `<button type="button" class="btn sm" data-act="srImg" data-i="${i}">Image ${i + 1}</button>`).join('')}<span class="muted">Text confidence ${conf}%${conf < 60 ? ' · low, so check everything' : ''}</span></div>
+  <details ${p.items.length ? '' : 'open'}><summary style="cursor:pointer;font-weight:600">Extracted text</summary>
+    <textarea id="sr-text" style="min-height:180px;font-family:var(--led);font-size:.85rem;margin-top:8px">${esc(text)}</textarea>
+    <div class="row" style="margin-top:6px"><button class="btn sm" type="button" data-act="srCopy">Copy text</button><button class="btn sm" type="button" data-act="srReparse">Re-read fields from this text</button><small class="muted">Fix a misread word above, then re-read.</small></div>
+  </details>
+  <fieldset><legend>Order</legend><div class="fgrid">
+    ${field('Date', `<input type="date" name="date" value="${esc(p.date || today())}">`)}${field('Platform', `<input name="platform" value="${esc(p.platform)}" list="dl-platforms">`)}
+    ${field('Seller', `<input name="seller" value="${esc(p.seller)}">`)}${field('Order #', `<input name="orderNo" value="${esc(p.orderNo)}">`)}
+    ${field('Subtotal', `<input name="subtotal" value="${p.subtotal ?? ''}" inputmode="decimal">`)}${field('Shipping', `<input name="shipping" value="${p.shipping ?? ''}" inputmode="decimal">`)}
+    ${field('Tax', `<input name="tax" value="${p.tax ?? ''}" inputmode="decimal">`)}${field('Fees', `<input name="fees" value="${p.fees ?? ''}" inputmode="decimal">`)}
+    ${field('Total', `<input name="total" value="${p.total ?? ''}" inputmode="decimal">`)}
+  </div><label class="chk"><input type="checkbox" name="split" checked> Split shipping, tax and fees across the cards by price</label>
+  <div id="sr-check"></div></fieldset>
+  <div id="sr-items" style="display:flex;flex-direction:column;gap:12px">${p.items.map(item).join('')}</div>
+  <div class="row"><button class="btn sm" type="button" data-act="srAdd">+ Add another card</button></div>
+  ${platformList()}
+  <div class="sheet-foot"><button class="btn" type="button" data-act="srReceiptOnly">Save receipt only</button><button class="btn pri" type="submit">Add ${p.items.length || ''} card${p.items.length === 1 ? '' : 's'} + receipt</button></div></form>`;
+  const f = $('#modal-root form'); f.addEventListener('input', srCheck); srCheck();
+}
+function srCollect() {
+  const f = $('#modal-root form'); const fd = new FormData(f);
+  const items = $$('[data-item]', f).map(fs => { const o = {}; $$('[data-k]', fs).forEach(el => { o[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value.trim(); }); return o; });
+  return { fd, items };
+}
+function srCheck() {
+  const box = $('#sr-check'); if (!box) return;
+  const { fd, items } = srCollect();
+  const sumItems = items.reduce((a, it) => a + num(it.price), 0);
+  const expect = num(fd.get('subtotal')) || (num(fd.get('total')) ? num(fd.get('total')) - num(fd.get('shipping')) - num(fd.get('tax')) - num(fd.get('fees')) : 0);
+  box.innerHTML = expect && Math.abs(expect - sumItems) > 0.02 ? `<div class="warn">Card prices add up to ${money(sumItems)}, but the receipt's items come to ${money(expect)}. A price may have been misread.</div>` : sumItems ? `<small class="muted">Card prices add up to ${money(sumItems)}.</small>` : '';
+}
+async function srSaveReceipts(meta) {
+  const recs = [];
+  for (let i = 0; i < SR.files.length; i++) recs.push(await saveReceipt(SR.files[i], Object.assign({}, meta, { amount: i === 0 ? meta.amount : 0, text: (SR.texts[i] || {}).text || '' })));
+  return recs;
+}
+FORMS.scanSave = async f => {
+  const { fd, items } = srCollect();
+  const good = items.filter(it => it.player || it.set || it.price);
+  if (!good.length) return toast('Add at least one card, or use Save receipt only');
+  const date = fd.get('date') || today(); const platform = String(fd.get('platform') || '').trim();
+  const extra = { ship: num(fd.get('shipping')), tax: num(fd.get('tax')), fees: num(fd.get('fees')) };
+  let prices = good.map(it => num(it.price));
+  const sum = prices.reduce((a, b) => a + b, 0);
+  if (!sum && num(fd.get('total'))) prices = allocate(num(fd.get('total')) - extra.ship - extra.tax - extra.fees, good.map(() => 1), 'equal');
+  const share = k => fd.get('split') === 'on' ? allocate(extra[k], prices.map(p => p || 1), 'value') : prices.map((_, i) => i === 0 ? extra[k] : 0);
+  const ships = share('ship'), taxes = share('tax'), fees = share('fees');
+  const ids = [];
+  for (let i = 0; i < good.length; i++) {
+    const it = good[i]; const g = it.grade.match(/^(PSA|BGS|SGC|CGC|TAG|Other)\s*(.+)$/i);
+    const q = Math.max(1, parseInt(it.qty, 10) || 1);
+    const c = { id: 'c_' + uid(), code: nextCode(), createdAt: nowISO(), player: it.player, year: it.year, brand: it.brand, set: it.set, number: it.number, parallel: it.parallel, serial: it.serial, sport: it.sport, team: it.team,
+      rookie: it.rookie, auto: it.auto, patch: it.patch, graded: !!g, gradeCo: g ? g[1].toUpperCase() : '', grade: g ? g[2] : '', condition: '', status: 'in_stock', qty: q, value: r2((prices[i] + ships[i] + taxes[i] + fees[i]) / q), priceHistory: [], // starts at cost until priced
+
+      buy: { date, platform, qty: q, price: prices[i], ship: ships[i], tax: taxes[i], fees: fees[i], order: String(fd.get('orderNo') || ''), pickupId: '' }, notes: String(fd.get('seller') || '') ? 'Seller: ' + fd.get('seller') : '' };
+    await save('cards', c, { quiet: true }); ids.push(c.id);
+    await logTxn({ cardId: c.id, type: 'buy', date, qty: q, amount: r2(prices[i] + ships[i] + taxes[i] + fees[i]), platform, note: 'From scanned receipt' });
+  }
+  await srSaveReceipts({ date, amount: num(fd.get('total')) || r2(sum + extra.ship + extra.tax + extra.fees), note: [platform, fd.get('seller'), fd.get('orderNo') && '#' + fd.get('orderNo')].filter(Boolean).join(' · '), cardIds: ids });
+  onChange('cards'); closeModal(false);
+  toast(`Added ${ids.length} card${ids.length > 1 ? 's' : ''}. Set their current values when you price them.`);
+  location.hash = ids.length === 1 ? '#/card/' + ids[0] : '#/inv';
+  if (ids.length > 1) { Object.assign(F, { q: '', status: 'active', sort: 'new' }); route(); }
+};
+Object.assign(A, {
+  scanReceipt: () => openScanReceipt(),
+  srImg: el => { const f = SR.files[+el.dataset.i]; if (!f) return; const u = URL.createObjectURL(f); const v = document.createElement('div'); v.className = 'viewer'; v.innerHTML = `<div class="vbar"><b>Image ${+el.dataset.i + 1}</b><button class="btn sm" type="button">Close</button></div><div class="vbody"><img src="${u}" alt="Receipt image"></div>`; v.querySelector('button').onclick = () => { v.remove(); URL.revokeObjectURL(u); }; document.body.appendChild(v); },
+  srCopy: () => { const t = $('#sr-text'); navigator.clipboard.writeText(t.value).then(() => toast('Text copied')).catch(() => { t.focus(); t.select(); }); },
+  srReparse: () => { const t = $('#sr-text').value; const conf = SR.texts.length ? SR.texts.reduce((a, x) => a + x.confidence, 0) / SR.texts.length : 0; SR.texts = SR.files.map((_, i) => ({ text: i === 0 ? t : '', confidence: conf })); if (!SR.texts.length) SR.texts = [{ text: t, confidence: conf }]; SR.parsed = enrichFromInventory(parseReceipt(t)); renderScanReview(); toast('Fields re-read from the text'); },
+  srAdd: () => { SR.parsed.items.push({ title: '', qty: 1, price: null, card: parseCardTitle('') }); const keep = srCollectKeep(); renderScanReview(); srRestore(keep); },
+  srDel: el => { const keep = srCollectKeep(); SR.parsed.items.splice(+el.dataset.i, 1); keep.items.splice(+el.dataset.i, 1); renderScanReview(); srRestore(keep); },
+  srReceiptOnly: async () => {
+    const { fd } = srCollect();
+    await srSaveReceipts({ date: fd.get('date') || today(), amount: num(fd.get('total')), note: [fd.get('platform'), fd.get('seller'), fd.get('orderNo') && '#' + fd.get('orderNo')].filter(Boolean).join(' · '), cardIds: [] });
+    onChange('receipts'); closeModal(false); location.hash = '#/receipts'; toast('Receipt saved with its text. Link cards to it any time.');
+  },
+  readText: async el => {
+    const r = S.receipts.find(x => x.id === el.dataset.id); const f = await fileGet(r.fileId); if (!f) return toast('File missing on this device');
+    if (r.fileType === 'application/pdf') return toast('Take a screenshot of the PDF to read its text');
+    el.disabled = true; el.textContent = 'Reading…';
+    try { const out = await readImageText(f.blob, p => { if (p !== null) el.textContent = `Reading ${Math.round(p * 100)}%`; }); r.text = out.text; await save('receipts', r, { quiet: true }); showReceiptText(r); }
+    catch (e) { toast(e.message); } finally { el.disabled = false; el.textContent = 'Read text'; }
+  },
+  showText: el => showReceiptText(S.receipts.find(x => x.id === el.dataset.id)),
+});
+function srCollectKeep() { const { fd, items } = srCollect(); return { order: Object.fromEntries(fd), items, text: $('#sr-text').value }; }
+function srRestore(k) {
+  const f = $('#modal-root form'); Object.entries(k.order).forEach(([n, v]) => { const el = f.elements[n]; if (el && el.type !== 'checkbox') el.value = v; });
+  $$('[data-item]', f).forEach((fs, i) => { const o = k.items[i]; if (!o) return; $$('[data-k]', fs).forEach(el => { if (el.type === 'checkbox') el.checked = !!o[el.dataset.k]; else el.value = o[el.dataset.k] ?? ''; }); });
+  $('#sr-text').value = k.text; srCheck();
+}
+function showReceiptText(r) {
+  const v = document.querySelector('.viewer'); if (!v) return;
+  let panel = v.querySelector('.vtext');
+  if (!panel) { panel = document.createElement('div'); panel.className = 'vtext'; panel.style.cssText = 'background:#11151a;color:#e9eef3;padding:12px 16px;max-height:38vh;overflow:auto;white-space:pre-wrap;font:13px/1.45 var(--led);border-top:1px solid #333'; v.appendChild(panel); }
+  panel.textContent = r.text || 'No text found.';
+}
+document.addEventListener('change', e => {
+  if (e.target.id === 'sr-snap' || e.target.id === 'sr-files') { const files = [...e.target.files].filter(f => f.type.startsWith('image/') || /\.(heic|jpe?g|png|webp)$/i.test(f.name)); if (files.length) runScan(files); else toast('Choose a photo or screenshot'); }
+});
+
+/* 3D card viewer: builds a real card (rounded corners, thickness, front + back photos) in WebGL,
+   with a clear slab for graded cards. Drag or swipe on any axis, double-tap to flip, pinch or scroll to zoom. */
+const V3 = { live: new Set() };
+const CARD_W = 2.5, CARD_H = 3.5, CARD_D = 0.035;
+
+/* ---- tiny matrix helpers (column-major, WebGL order) ---- */
+const M4 = {
+  persp(fovy, aspect, n, f) { const t = 1 / Math.tan(fovy / 2), nf = 1 / (n - f); return [t / aspect, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) * nf, -1, 0, 0, 2 * f * n * nf, 0]; },
+  mul(a, b) { const o = new Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; } return o; },
+  rx(t) { const c = Math.cos(t), s = Math.sin(t); return [1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1]; },
+  ry(t) { const c = Math.cos(t), s = Math.sin(t); return [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]; },
+  tr(x, y, z) { return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]; },
+};
+
+/* ---- geometry: rounded rectangle prism with separate front, back and edge parts ---- */
+function rrOutline(w, h, r, seg = 8) {
+  const pts = []; const cs = [[w / 2 - r, h / 2 - r, 0], [-w / 2 + r, h / 2 - r, Math.PI / 2], [-w / 2 + r, -h / 2 + r, Math.PI], [w / 2 - r, -h / 2 + r, Math.PI * 1.5]];
+  for (const [cx, cy, a0] of cs) for (let i = 0; i <= seg; i++) { const a = a0 + (Math.PI / 2) * (i / seg); pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
+  return pts; // counter-clockwise
+}
+function slabParts(w, h, d, r) {
+  const pts = rrOutline(w, h, r); const n = pts.length;
+  const face = (z, nz) => {
+    const P = [], N = [], U = [];
+    for (let i = 0; i < n; i++) {
+      const a = pts[i], b = pts[(i + 1) % n];
+      const tri = nz > 0 ? [[0, 0], a, b] : [[0, 0], b, a];
+      for (const [x, y] of tri) { P.push(x, y, z); N.push(0, 0, nz); U.push(nz > 0 ? (x + w / 2) / w : (w / 2 - x) / w, (h / 2 - y) / h); }
+    }
+    return { P, N, U };
+  };
+  const edge = () => {
+    const P = [], N = [], U = [];
+    for (let i = 0; i < n; i++) {
+      const a = pts[i], b = pts[(i + 1) % n]; const ex = b[0] - a[0], ey = b[1] - a[1]; const l = Math.hypot(ex, ey) || 1; const nx = ey / l, ny = -ex / l;
+      for (const [x, y, z] of [[a[0], a[1], -d / 2], [b[0], b[1], -d / 2], [b[0], b[1], d / 2], [a[0], a[1], -d / 2], [b[0], b[1], d / 2], [a[0], a[1], d / 2]]) { P.push(x, y, z); N.push(nx, ny, 0); U.push(0, 0); }
+    }
+    return { P, N, U };
+  };
+  return { front: face(d / 2, 1), back: face(-d / 2, -1), edge: edge() };
+}
+
+const VS = `attribute vec3 aP;attribute vec3 aN;attribute vec2 aU;uniform mat4 uProj,uView,uModel;varying vec3 vN,vW;varying vec2 vU;
+void main(){vec4 w=uModel*vec4(aP,1.);vW=w.xyz;vN=mat3(uModel)*aN;vU=aU;gl_Position=uProj*uView*w;}`;
+const FS = `precision mediump float;varying vec3 vN,vW;varying vec2 vU;uniform sampler2D uTex;uniform float uUseTex,uAlpha,uShine,uSpec,uHolo;uniform vec3 uColor,uCam;
+void main(){vec3 base=uUseTex>.5?texture2D(uTex,vU).rgb:uColor;vec3 N=normalize(vN);if(!gl_FrontFacing)N=-N;vec3 V=normalize(uCam-vW);
+vec3 L1=normalize(vec3(-.45,.65,1.)),L2=normalize(vec3(.7,-.3,.6));float d=max(dot(N,L1),0.)*.75+max(dot(N,L2),0.)*.3;
+float s=pow(max(dot(N,normalize(L1+V)),0.),uShine)*uSpec+pow(max(dot(N,normalize(L2+V)),0.),uShine)*uSpec*.4;
+float fres=pow(1.-abs(dot(N,V)),2.);vec3 holo=.5+.5*cos(6.2832*(dot(N,V)*1.6+vU.x*.8+vU.y*.5+vec3(0.,.33,.67)));
+vec3 col=base*(.42+d)+vec3(s)+holo*uHolo*(.35*fres+.25*s);gl_FragColor=vec4(col,uAlpha+(1.-uAlpha)*min(1.,s*1.5+fres*.6));}`;
+
+function makeGL(canvas) {
+  const gl = canvas.getContext('webgl', { antialias: true, alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: false });
+  if (!gl) return null;
+  const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+  const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr);
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+  gl.useProgram(pr);
+  const loc = {}; ['aP', 'aN', 'aU'].forEach(a => loc[a] = gl.getAttribLocation(pr, a));
+  ['uProj', 'uView', 'uModel', 'uTex', 'uUseTex', 'uAlpha', 'uShine', 'uSpec', 'uHolo', 'uColor', 'uCam'].forEach(u => loc[u] = gl.getUniformLocation(pr, u));
+  return { gl, pr, loc };
+}
+function glMesh(G, part) {
+  const { gl } = G; const mk = (arr) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.STATIC_DRAW); return b; };
+  return { p: mk(part.P), n: mk(part.N), u: mk(part.U), count: part.P.length / 3 };
+}
+function glTex(G, src) {
+  const { gl } = G; const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+const loadImg = url => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+function fitTexture(img, maxW = 1024) { // scale large photos down to a card-shaped canvas so the GPU stays happy
+  const cv = document.createElement('canvas'); cv.width = maxW; cv.height = Math.round(maxW * CARD_H / CARD_W);
+  const g = cv.getContext('2d'); g.fillStyle = '#ddd'; g.fillRect(0, 0, cv.width, cv.height);
+  const ir = img.width / img.height, cr = cv.width / cv.height; let sw = img.width, sh = img.height, sx = 0, sy = 0;
+  if (ir > cr) { sw = img.height * cr; sx = (img.width - sw) / 2; } else { sh = img.width / cr; sy = (img.height - sh) / 2; }
+  g.drawImage(img, sx, sy, sw, sh, 0, 0, cv.width, cv.height); return cv;
+}
+
+/* generated faces for cards without photos */
+function genFront(c) {
+  const W = 500, H = 700, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d'); const h = hue(c.team || c.player);
+  const gr = g.createLinearGradient(0, 0, W, H); gr.addColorStop(0, `hsl(${h} 65% 45%)`); gr.addColorStop(1, `hsl(${h + 40} 55% 16%)`); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  g.strokeStyle = 'rgba(255,255,255,.65)'; g.lineWidth = 8; g.strokeRect(22, 22, W - 44, H - 44);
+  g.fillStyle = '#fff'; g.font = '800 170px "Barlow Condensed", Arial Narrow, sans-serif'; g.textBaseline = 'alphabetic';
+  g.fillText(String(c.player || '?').split(/\s+/).map(w => w[0]).join('').slice(0, 3).toUpperCase(), 48, H - 150);
+  g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(22, H - 132, W - 44, 110);
+  g.fillStyle = '#fff'; g.font = '700 46px "Barlow Condensed", Arial Narrow, sans-serif'; g.fillText(String(c.player || 'Unnamed card').toUpperCase().slice(0, 22), 44, H - 76);
+  g.font = '600 30px "Barlow Condensed", Arial Narrow, sans-serif'; g.globalAlpha = .85; g.fillText([c.year, c.brand, c.set].filter(Boolean).join(' ').toUpperCase().slice(0, 30), 44, H - 38); g.globalAlpha = 1;
+  if (c.rookie) { g.fillStyle = '#fff'; g.fillRect(W - 120, 44, 76, 50); g.fillStyle = '#111'; g.font = '800 38px "Barlow Condensed", sans-serif'; g.fillText('RC', W - 104, 84); }
+  return cv;
+}
+function genBack(c) {
+  const W = 500, H = 700, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
+  g.fillStyle = '#d9d4c7'; g.fillRect(0, 0, W, H); g.strokeStyle = '#7a6f5c'; g.lineWidth = 6; g.strokeRect(20, 20, W - 40, H - 40);
+  g.fillStyle = '#2b2a27'; g.font = '800 44px "Barlow Condensed", Arial Narrow, sans-serif'; g.fillText(String(c.player || 'Unnamed card').toUpperCase().slice(0, 22), 42, 90);
+  g.font = '600 28px Barlow, Arial, sans-serif';
+  const rows = [['Set', [c.year, c.brand, c.set].filter(Boolean).join(' ')], ['Card #', c.number], ['Parallel', c.parallel || 'Base'], ['Serial', c.serial], ['Team', c.team], ['Grade', gradeText(c)], ['ID', c.code]].filter(r => r[1]);
+  rows.forEach(([k, v], i) => { const y = 150 + i * 46; g.fillStyle = '#6b6252'; g.fillText(k, 42, y); g.fillStyle = '#2b2a27'; g.fillText(String(v).slice(0, 24), 180, y); });
+  if (window.qrcode && c.code) { const q = qrcode(0, 'M'); q.addData(cardQR(c)); q.make(); const n = q.getModuleCount(), cell = Math.floor(150 / n); g.fillStyle = '#fff'; g.fillRect(W - 60 - n * cell - 10, H - 70 - n * cell - 10, n * cell + 20, n * cell + 20); g.fillStyle = '#000'; for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) g.fillRect(W - 60 - n * cell + k * cell, H - 70 - n * cell + r * cell, cell, cell); }
+  g.fillStyle = '#6b6252'; g.font = '600 22px Barlow, Arial, sans-serif'; g.fillText('No back photo yet', 42, H - 60);
+  return cv;
+}
+function genLabel(c) {
+  const W = 1000, H = 230, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
+  g.fillStyle = '#f7f7f4'; g.fillRect(0, 0, W, H); g.strokeStyle = '#b8202c'; g.lineWidth = 10; g.strokeRect(5, 5, W - 10, H - 10);
+  g.fillStyle = '#111'; g.font = '700 46px Barlow, Arial, sans-serif'; g.fillText([c.year, c.brand, c.set].filter(Boolean).join(' ').toUpperCase().slice(0, 30), 36, 70);
+  g.fillText(`${String(c.player || '').toUpperCase().slice(0, 24)}${c.number ? '  #' + c.number : ''}`.slice(0, 32), 36, 128);
+  g.font = '600 38px Barlow, Arial, sans-serif'; g.fillStyle = '#444'; g.fillText([c.parallel, c.serial].filter(Boolean).join('  ').toUpperCase().slice(0, 30), 36, 182);
+  g.textAlign = 'right'; g.fillStyle = '#111'; g.font = '800 110px "Barlow Condensed", Arial Narrow, sans-serif'; g.fillText(String(c.grade || '?'), W - 40, 140);
+  g.font = '700 40px Barlow, Arial, sans-serif'; g.fillText(String(c.gradeCo || '').toUpperCase(), W - 40, 196);
+  return cv;
+}
+
+async function mountCard3D(host, c) {
+  const canvas = document.createElement('canvas'); canvas.className = 'c3d-canvas'; canvas.setAttribute('aria-label', `3D view of ${cardName(c)}. Drag to rotate, double-tap to flip.`); canvas.setAttribute('role', 'img');
+  let G; try { G = makeGL(canvas); } catch (e) { console.warn(e); G = null; }
+  if (!G) return null; // no WebGL: keep the 2D picture
+  const { gl, loc } = G;
+  const texFor = async (side) => { const id = c[side]; if (id) { try { const u = await fileURL(id); if (u) return fitTexture(await loadImg(u)); } catch (e) {} } return side === 'front' ? genFront(c) : genBack(c); };
+  const [fImg, bImg] = await Promise.all([texFor('front'), texFor('back')]);
+  const shiny = /refractor|holo|prizm|silver|chrome|foil|wave|shimmer|mojo|hyper|cracked|ice|pulsar|x-?fractor|superfractor|sapphire/i.test([c.parallel, c.set].join(' '));
+  const card = slabParts(CARD_W, CARD_H, CARD_D, 0.13);
+  const parts = [
+    { m: glMesh(G, card.front), tex: glTex(G, fImg), shine: shiny ? 70 : 40, spec: shiny ? .55 : .3, holo: shiny ? .55 : 0, off: [0, 0, 0] },
+    { m: glMesh(G, card.back), tex: glTex(G, bImg), shine: 30, spec: .18, holo: 0, off: [0, 0, 0] },
+    { m: glMesh(G, card.edge), color: [.93, .92, .88], shine: 20, spec: .1, holo: 0, off: [0, 0, 0] },
+  ];
+  let zoomBase = 8.9;
+  if (c.graded) {
+    const cardY = -0.42, slab = slabParts(3.3, 5.35, 0.42, 0.18), lab = slabParts(2.9, 0.67, 0.012, 0.04);
+    parts.forEach(p => { p.off = [0, cardY, 0]; });
+    const labTex = glTex(G, genLabel(c));
+    parts.push({ m: glMesh(G, lab.front), tex: labTex, shine: 30, spec: .2, holo: 0, off: [0, 2.12, 0.02] }, { m: glMesh(G, lab.back), color: [.95, .95, .93], shine: 20, spec: .1, off: [0, 2.12, 0.02] });
+    parts.push({ m: glMesh(G, slab.edge), color: [.92, .96, 1], alpha: .45, shine: 90, spec: .9, holo: 0, off: [0, 0, 0], glass: true },
+      { m: glMesh(G, slab.back), color: [.92, .96, 1], alpha: .1, shine: 120, spec: .8, holo: 0, off: [0, 0, 0], glass: true },
+      { m: glMesh(G, slab.front), color: [.92, .96, 1], alpha: .12, shine: 120, spec: 1, holo: 0, off: [0, 0, 0], glass: true });
+    zoomBase = 12.4;
+  }
+  host.querySelector('.c3d-stage').prepend(canvas);
+  host.classList.add('is3d');
+
+  const st = { rx: -0.12, ry: -0.35, vx: 0, vy: 0, dist: zoomBase, drag: false, lastT: performance.now(), idle: 0, flip: null, raf: 0, dead: false, pointers: new Map(), pinch: 0 };
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const resize = () => { const r = canvas.getBoundingClientRect(); const dpr = Math.min(2, window.devicePixelRatio || 1); canvas.width = Math.max(2, Math.round(r.width * dpr)); canvas.height = Math.max(2, Math.round(r.height * dpr)); };
+  const ro = new ResizeObserver(resize); ro.observe(canvas); resize();
+
+  const bindAttr = (b, a, sz) => { gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.enableVertexAttribArray(loc[a]); gl.vertexAttribPointer(loc[a], sz, gl.FLOAT, false, 0, 0); };
+  const draw = () => {
+    gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    const aspect = canvas.width / canvas.height; const fit = aspect < 0.72 ? 0.72 / aspect : 1;
+    gl.uniformMatrix4fv(loc.uProj, false, M4.persp(0.5, aspect, 0.1, 100)); gl.uniformMatrix4fv(loc.uView, false, M4.tr(0, 0, -st.dist * fit)); gl.uniform3f(loc.uCam, 0, 0, st.dist * fit);
+    const R = M4.mul(M4.rx(st.rx), M4.ry(st.ry));
+    for (const pass of [false, true]) {
+      gl.depthMask(!pass);
+      for (const p of parts) {
+        if (!!p.glass !== pass) continue;
+        gl.uniformMatrix4fv(loc.uModel, false, M4.mul(R, M4.tr(...p.off)));
+        bindAttr(p.m.p, 'aP', 3); bindAttr(p.m.n, 'aN', 3); bindAttr(p.m.u, 'aU', 2);
+        if (p.tex) { gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, p.tex); gl.uniform1i(loc.uTex, 0); gl.uniform1f(loc.uUseTex, 1); } else { gl.uniform1f(loc.uUseTex, 0); gl.uniform3fv(loc.uColor, p.color); }
+        gl.uniform1f(loc.uAlpha, p.alpha ?? 1); gl.uniform1f(loc.uShine, p.shine); gl.uniform1f(loc.uSpec, p.spec); gl.uniform1f(loc.uHolo, p.holo || 0);
+        gl.drawArrays(gl.TRIANGLES, 0, p.m.count);
+      }
+    }
+    gl.depthMask(true);
+  };
+  const tick = (t) => {
+    if (st.dead) return;
+    const dt = Math.min(0.05, (t - st.lastT) / 1000); st.lastT = t;
+    if (st.flip) { const k = Math.min(1, (t - st.flip.t0) / 600); const e = 1 - Math.pow(1 - k, 3); st.ry = st.flip.from + (st.flip.to - st.flip.from) * e; if (k >= 1) st.flip = null; }
+    else if (!st.drag) {
+      st.ry += st.vy * dt; st.rx += st.vx * dt; const damp = Math.pow(0.04, dt); st.vx *= damp; st.vy *= damp;
+      st.idle += dt;
+      if (st.idle > 2.5 && !reduce && Math.abs(st.vy) < 0.05) { // gentle sway back toward the nearest face
+        const face = Math.round(st.ry / Math.PI) * Math.PI; st.ry += (face - 0.3 + Math.sin(t / 1600) * 0.25 - st.ry) * dt * 0.8; st.rx += (-0.1 + Math.sin(t / 2100) * 0.08 - st.rx) * dt * 0.8;
+      }
+    }
+    draw(); st.raf = requestAnimationFrame(tick);
+  };
+  /* input */
+  let lastTap = 0, last = null;
+  const flip = () => { st.vx = st.vy = 0; st.flip = { from: st.ry, to: Math.round(st.ry / Math.PI) * Math.PI + Math.PI, t0: performance.now() }; st.idle = 0; };
+  canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId); st.pointers.set(e.pointerId, [e.clientX, e.clientY]);
+    if (st.pointers.size === 2) { const [a, b] = [...st.pointers.values()]; st.pinch = Math.hypot(a[0] - b[0], a[1] - b[1]); }
+    st.drag = true; st.flip = null; st.idle = 0; last = { x: e.clientX, y: e.clientY, t: performance.now() };
+    const now = performance.now(); if (now - lastTap < 300 && st.pointers.size === 1) flip(); lastTap = now;
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!st.pointers.has(e.pointerId)) return; st.pointers.set(e.pointerId, [e.clientX, e.clientY]);
+    if (st.pointers.size === 2) { const [a, b] = [...st.pointers.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (st.pinch) st.dist = Math.min(zoomBase * 1.8, Math.max(zoomBase * 0.45, st.dist * st.pinch / d)); st.pinch = d; return; }
+    if (!last) return; const now = performance.now(); const dx = e.clientX - last.x, dy = e.clientY - last.y; const k = 0.0115;
+    st.ry += dx * k; st.rx += dy * k; const dtm = Math.max(8, now - last.t) / 1000; st.vy = dx * k / dtm; st.vx = dy * k / dtm; last = { x: e.clientX, y: e.clientY, t: now };
+  });
+  const up = e => { st.pointers.delete(e.pointerId); if (!st.pointers.size) { st.drag = false; st.pinch = 0; last = null; if (performance.now() - (last ? last.t : 0) > 80) {} } else st.pinch = 0; };
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+  canvas.addEventListener('wheel', e => { e.preventDefault(); st.dist = Math.min(zoomBase * 1.8, Math.max(zoomBase * 0.45, st.dist * (1 + e.deltaY * 0.0012))); st.idle = 0; }, { passive: false });
+  canvas.addEventListener('dblclick', e => e.preventDefault());
+  const api = {
+    flip, reset: () => { st.flip = null; st.vx = st.vy = 0; st.rx = -0.12; st.ry = -0.35; st.dist = zoomBase; st.idle = 0; },
+    dispose: () => { st.dead = true; cancelAnimationFrame(st.raf); ro.disconnect(); const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext(); canvas.remove(); V3.live.delete(api); },
+    state: st, draw,
+  };
+  V3.live.add(api);
+  st.raf = requestAnimationFrame(tick);
+  return api;
+}
+function disposeAll3D() { [...V3.live].forEach(v => v.dispose()); }
+
+/* card page hook-up */
+async function hydrate3D(root) {
+  for (const host of $$('[data-card3d]', root)) {
+    if (host.dataset.mounted) continue; host.dataset.mounted = '1';
+    const c = cardById(host.dataset.card3d); if (!c) continue;
+    const v = await mountCard3D(host, c); if (v) host._v3 = v;
+  }
+}
+Object.assign(A, {
+  c3dFlip: el => { const h = el.closest('[data-card3d]') || el.closest('.viewer'); h && h._v3 && h._v3.flip(); },
+  c3dReset: el => { const h = el.closest('[data-card3d]') || el.closest('.viewer'); h && h._v3 && h._v3.reset(); },
+  c3dFull: async el => {
+    const c = cardById(el.dataset.id); const v = document.createElement('div'); v.className = 'viewer c3d-full';
+    v.innerHTML = `<div class="vbar"><b>${esc(cardName(c))}</b><button class="btn sm" type="button" data-act="c3dFlip">Flip</button><button class="btn sm" type="button" data-act="c3dReset">Reset</button><button class="btn sm" type="button" data-v="close">Close</button></div><div class="c3d-stage" style="flex:1;position:relative"></div>`;
+    document.body.appendChild(v);
+    v._v3 = await mountCard3D(v, c);
+    if (!v._v3) { v.remove(); return toast('3D isn\'t supported in this browser'); }
+    v.querySelector('[data-v=close]').onclick = () => { v._v3.dispose(); v.remove(); };
+  },
+});
+
+/* auto-crop: find the card in a photo shot on a plain background and trim the rest */
+async function autoCropCard(file) {
+  if (!file || !file.type || !file.type.startsWith('image/')) return file;
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const k = Math.min(1, 360 / Math.max(bmp.width, bmp.height)); const w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(bmp, 0, 0, w, h);
+    const d = g.getImageData(0, 0, w, h).data; const px = (x, y) => { const i = (y * w + x) * 4; return [d[i], d[i + 1], d[i + 2]]; };
+    const border = []; const b = Math.max(2, Math.round(Math.min(w, h) * 0.03));
+    for (let x = 0; x < w; x += 2) for (let y = 0; y < b; y++) { border.push(px(x, y), px(x, h - 1 - y)); }
+    for (let y = 0; y < h; y += 2) for (let x = 0; x < b; x++) { border.push(px(x, y), px(w - 1 - x, y)); }
+    const med = [0, 1, 2].map(ch => { const v = border.map(p => p[ch]).sort((a, c) => a - c); return v[v.length >> 1]; });
+    const rows = new Uint32Array(h), cols = new Uint32Array(w);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const p = px(x, y); if (Math.max(Math.abs(p[0] - med[0]), Math.abs(p[1] - med[1]), Math.abs(p[2] - med[2])) > 42) { rows[y]++; cols[x]++; } }
+    const span = (arr, len, other) => { let a = 0, z = len - 1; while (a < len && arr[a] < other * 0.18) a++; while (z > a && arr[z] < other * 0.18) z--; return [a, z]; };
+    const [y0, y1] = span(rows, h, w), [x0, x1] = span(cols, w, h);
+    const bw = x1 - x0, bh = y1 - y0;
+    if (bw < w * 0.25 || bh < h * 0.25 || (bw > w * 0.96 && bh > h * 0.96)) return file; // no clear card edge: keep the photo as is
+    const pad = 0.006, sx = Math.max(0, (x0 / w - pad)) * bmp.width, sy = Math.max(0, (y0 / h - pad)) * bmp.height;
+    const sw = Math.min(bmp.width - sx, (bw / w + pad * 2) * bmp.width), sh = Math.min(bmp.height - sy, (bh / h + pad * 2) * bmp.height);
+    const out = document.createElement('canvas'); out.width = Math.round(sw); out.height = Math.round(sh); out.getContext('2d').drawImage(bmp, sx, sy, sw, sh, 0, 0, out.width, out.height);
+    return await new Promise(r => out.toBlob(bl => r(bl || file), 'image/jpeg', 0.9));
+  } catch (e) { return file; }
 }
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
