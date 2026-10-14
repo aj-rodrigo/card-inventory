@@ -235,6 +235,10 @@ table.t { border-collapse: collapse; width: 100%; font-size: .9rem; }
 .bs-text { white-space: pre-wrap; font: .78rem/1.4 var(--led); color: var(--muted); max-height: 160px; overflow: auto; margin: 6px 0 0; }
 @media (max-width: 640px) { .bs-grid { grid-template-columns: minmax(0, 1fr); } .bs-imgs { max-width: 220px; } }
 
+.bs-low { border-color: var(--neg); box-shadow: 0 0 0 1px var(--neg); }
+.bs-mid { border-color: var(--acc); }
+.bs-unsure legend { color: var(--acc); }
+
 /* toast */
 #toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 90; display: flex; flex-direction: column; gap: 8px; align-items: center; width: min(520px, calc(100% - 32px)); pointer-events: none; }
 .toast { background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 9px; font-weight: 600; display: flex; gap: 12px; align-items: center; pointer-events: auto; box-shadow: 0 6px 20px rgba(0,0,0,.35); }
@@ -754,7 +758,7 @@ function shell() {
       <div class="brand"><i></i>DUGOUT</div>
       <nav>${NAV.map(n => n === '-' ? '<div class="sep"></div>' : `<a href="#/${n[0]}" data-nav="${n[0]}">${n[1]}</a>`).join('')}</nav>
       <div class="foot">
-        <span class="muted" style="color:inherit;opacity:.6">Version 1.8 · no duplicate names</span>
+        <span class="muted" style="color:inherit;opacity:.6">Version 1.10 · receipts for existing cards</span>
         <span id="sync-status">${esc(Sync.status || (syncCfg() ? 'Sync ready' : 'Saved on this device'))}</span>
         <div class="row"><button class="btn sm" data-act="theme" type="button">Light / dark</button>${syncCfg() ? '<button class="btn sm" data-act="syncNow" type="button">Sync</button>' : ''}</div>
       </div>
@@ -1036,7 +1040,7 @@ V.card = id => {
         ${hist.length ? `<div class="list">${hist.slice().reverse().slice(0, 5).map(h => `<div class="li"><span class="grow">${fmtDate(h.date)}</span><span class="num">${money(h.value)}</span></div>`).join('')}</div>` : ''}
       </section>
       ${compsPanel(c)}
-      <section class="panel"><h2>Receipts <button class="btn sm" data-act="addReceipt" data-card="${c.id}" type="button" style="margin-left:auto">+ Add receipt</button></h2>
+      <section class="panel"><h2>Receipts <span style="margin-left:auto;display:flex;gap:6px"><button class="btn sm pri" data-act="cardReceipt" data-id="${c.id}" type="button">Scan receipt → fill purchase</button><button class="btn sm" data-act="addReceipt" data-card="${c.id}" type="button">+ Attach receipt</button></span></h2>
         ${recs.length ? `<div class="rgrid">${recs.map(receiptTile).join('')}</div>` : `<div class="empty">No receipts linked to this card yet.</div>`}</section>
       <section class="panel"><h2>History</h2>${activity(50, c.id)}</section>
     </div>
@@ -1161,6 +1165,7 @@ async function submitCard(f) {
       c[side + 'Orig'] = await fileSave(r.orig, file.name);
       c[side] = r.out === r.orig ? c[side + 'Orig'] : await fileSave(await compressImage(r.out), side + '.jpg');
       c[side + 'Quad'] = r.quad ? r.quad.map(p => [Math.round(p[0]), Math.round(p[1])]) : null;
+      if (r.check) toast(`Check the ${side} photo's corners: tap Straighten on the card page`);
     }
   }
   await save('cards', c, { quiet: true });
@@ -2860,10 +2865,10 @@ async function processCardPhoto(file, auto, toploader) {
   const orig = await compressImage(file, 2400, 0.9);
   if (!auto) return { orig, out: orig, quad: null };
   try {
-    const bmp = await bitmapOf(orig); const q = detectCardQuad(bmp);
-    if (q) { const src = bitmapPixels(bmp, 2400); let quad = portraitQuad(orderQuad(q)); if (toploader) quad = snapInside(src, quad); return { orig, out: await canvasBlob(warpCard(src, quad)), quad }; }
+    const bmp = await bitmapOf(orig); const r = findCardCorners(bmp, { toploader });
+    if (r) { const src = bitmapPixels(bmp, 2400); return { orig, out: await canvasBlob(warpCard(src, r.quad)), quad: r.quad, check: !cornersOK(r) }; }
   } catch (e) { console.warn('straighten failed', e); }
-  return { orig, out: await autoCropCard(orig), quad: null };
+  return { orig, out: await autoCropCard(orig), quad: null, check: true };
 }
 
 /* --- corner editor ------------------------------------------------------- */
@@ -2874,13 +2879,13 @@ async function openStraighten(cardId, side = 'front') {
   const f = await fileGet(fileId); if (!f) return toast('Photo missing on this device');
   ST.bmp = await bitmapOf(f.blob); ST.src = bitmapPixels(ST.bmp, 2400);
   if (c[side + 'Quad'] && c[side + 'Orig']) ST.quad = c[side + 'Quad'].map(p => p.slice());
-  else { const q = detectCardQuad(ST.bmp); ST.quad = q ? portraitQuad(orderQuad(q)) : defaultQuad(); if (q && S.settings.toploader) ST.quad = snapInside(ST.src, ST.quad); }
+  else { const r = findCardCorners(ST.bmp, { toploader: !!S.settings.toploader }); ST.quad = r ? r.quad : defaultQuad(); ST.fit = r; }
   openModal(`<div>${mhead('Straighten photo')}
     <div class="row"><div class="seg">${['front', 'back'].map(s => `<button type="button" data-act="stSide" data-v="${s}" class="${s === side ? 'on' : ''}" ${c[s] ? '' : 'disabled'}>${s === 'front' ? 'Front' : 'Back'}</button>`).join('')}</div>
-      <small class="muted">Drag the 4 dots onto the card's corners (inside the top loader, if it's in one).</small></div>
+      <small class="muted">Drag the dots near the corners, then tap <b>Snap to edges</b> to lock them onto the card exactly.</small></div>
     <div class="st-wrap"><div class="st-stage" id="st-stage"><canvas id="st-img"></canvas><svg id="st-svg"></svg>${[0, 1, 2, 3].map(i => `<button type="button" class="st-h" data-h="${i}" aria-label="Corner ${i + 1}"></button>`).join('')}<canvas id="st-loupe" width="140" height="140" hidden></canvas></div>
       <div class="st-prev"><span class="muted" style="font:600 .72rem var(--display);letter-spacing:.08em;text-transform:uppercase">Result</span><canvas id="st-out" width="250" height="350"></canvas></div></div>
-    <div class="sheet-foot"><button class="btn" type="button" data-act="stAuto">Auto-detect</button><button class="btn" type="button" data-act="stSnap">Snap inside top loader</button><button class="btn" type="button" data-act="stRotate">Rotate 90°</button><button class="btn" type="button" data-act="stFull">Use whole photo</button><span class="spacer"></span><button class="btn" type="button" data-act="close">Cancel</button><button class="btn pri" type="button" data-act="stSave">Save</button></div></div>`);
+    <div class="sheet-foot"><button class="btn" type="button" data-act="stAuto">Auto-detect</button><button class="btn" type="button" data-act="stFit">Snap to edges</button><button class="btn" type="button" data-act="stSnap">Snap inside top loader</button><button class="btn" type="button" data-act="stRotate">Rotate 90°</button><button class="btn" type="button" data-act="stFull">Use whole photo</button><span class="spacer"></span><button class="btn" type="button" data-act="close">Cancel</button><button class="btn pri" type="button" data-act="stSave">Save</button></div></div>`);
   $('#modal-root .sheet').style.width = 'min(900px, 100%)';
   layoutStraighten(); stPreview();
   const stage = $('#st-stage');
@@ -2920,8 +2925,9 @@ function stPreview() { const out = warpCard(ST.src, ST.quad, 250, 350); $('#st-o
 Object.assign(A, {
   straighten: el => openStraighten(el.dataset.id, el.dataset.side || 'front'),
   stSide: el => { if (el.dataset.v !== ST.side) openStraighten(ST.card.id, el.dataset.v); },
-  stAuto: () => { const q = detectCardQuad(ST.bmp); if (!q) return toast('Couldn\'t find the card edges. Drag the dots by hand.'); ST.quad = portraitQuad(orderQuad(q)); if (S.settings.toploader) ST.quad = snapInside(ST.src, ST.quad); drawHandles(); stPreview(); },
-  stSnap: () => { ST.quad = snapInside(ST.src, ST.quad); drawHandles(); stPreview(); },
+  stAuto: () => { const r = findCardCorners(ST.bmp, { toploader: !!S.settings.toploader }); if (!r) return toast('Couldn\'t find the card edges. Drag the dots by hand.'); ST.quad = r.quad; drawHandles(); stPreview(); toast(cornersOK(r) ? 'Corners found' : 'Corners found. Low contrast here, so give them a quick check.'); },
+  stSnap: () => { const r = refineCorners(ST.bmp, ST.quad, { toploader: true }); ST.quad = r.quad; drawHandles(); stPreview(); },
+  stFit: () => { const r = refineCorners(ST.bmp, ST.quad, {}); ST.quad = r.quad; drawHandles(); stPreview(); toast('Snapped to the nearest card edges'); },
   stRotate: () => { ST.quad = [ST.quad[3], ST.quad[0], ST.quad[1], ST.quad[2]]; drawHandles(); stPreview(); },
   stFull: () => { const w = ST.bmp.width, h = ST.bmp.height; ST.quad = [[0, 0], [w, 0], [w, h], [0, h]]; drawHandles(); stPreview(); },
   stSave: async el => {
@@ -2934,6 +2940,148 @@ Object.assign(A, {
     await save('cards', c, { quiet: true }); onChange('cards'); closeModal(); toast('Photo straightened');
   },
 });
+
+/* --- precise corners: fit each edge, then choose the 4 edges that make a real card shape ------------------
+   A standard card is 2.5 x 3.5 in (ratio 1.4). The rough outline only gets us close; this finds the true
+   edge on each side from where the colour changes, fits a straight line through it (ignoring glare, shadows
+   and the rounded corners), and when a side has several edges (shadow, top loader rim, printed border) it
+   keeps the set of four whose shape is closest to a real card. */
+const CARD_RATIO = 3.5 / 2.5;
+function samplerOf(P) {
+  const { w, h, data } = P;
+  return (x, y) => { // bilinear RGB
+    if (x < 0 || y < 0 || x > w - 1.001 || y > h - 1.001) return null;
+    const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, i = (y0 * w + x0) * 4, j = i + w * 4;
+    const o = [0, 0, 0]; for (let c = 0; c < 3; c++) o[c] = (data[i + c] * (1 - fx) + data[i + 4 + c] * fx) * (1 - fy) + (data[j + c] * (1 - fx) + data[j + 4 + c] * fx) * fy;
+    return o;
+  };
+}
+function fitLine(pts, ws) { // weighted total least squares
+  let W = 0, mx = 0, my = 0; pts.forEach((p, i) => { const w = ws ? ws[i] : 1; W += w; mx += p[0] * w; my += p[1] * w; }); mx /= W; my /= W;
+  let sxx = 0, syy = 0, sxy = 0; pts.forEach((p, i) => { const w = ws ? ws[i] : 1, X = p[0] - mx, Y = p[1] - my; sxx += w * X * X; syy += w * Y * Y; sxy += w * X * Y; });
+  const th = 0.5 * Math.atan2(2 * sxy, sxx - syy); return { mx, my, dx: Math.cos(th), dy: Math.sin(th) };
+}
+const lineDist = (L, p) => Math.abs((p[0] - L.mx) * L.dy - (p[1] - L.my) * L.dx);
+function meetLines(l1, l2) { const det = l1.dx * l2.dy - l1.dy * l2.dx; if (Math.abs(det) < 1e-6) return null; const t = ((l2.mx - l1.mx) * l2.dy - (l2.my - l1.my) * l2.dx) / det; return [l1.mx + l1.dx * t, l1.my + l1.dy * t]; }
+/* real width:height of a photographed rectangle, undoing perspective (Zhang & He, "Whiteboard scanning", 2004).
+   Corners in order TL, TR, BR, BL; (u0, v0) is the photo centre. Falls back to side lengths when the view is nearly flat. */
+function trueAspect(q, u0, v0) {
+  const m1 = [q[0][0], q[0][1], 1], m2 = [q[1][0], q[1][1], 1], m3 = [q[3][0], q[3][1], 1], m4 = [q[2][0], q[2][1], 1];
+  const cr = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const k2 = dot(cr(m1, m4), m3) / dot(cr(m2, m4), m3), k3 = dot(cr(m1, m4), m2) / dot(cr(m3, m4), m2);
+  const n2 = m2.map((v, i) => k2 * v - m1[i]), n3 = m3.map((v, i) => k3 * v - m1[i]);
+  const len = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  const simple = ((len(q[0], q[1]) + len(q[3], q[2])) / 2) / ((len(q[0], q[3]) + len(q[1], q[2])) / 2);
+  const den = n2[2] * n3[2];
+  if (Math.abs(den) < 1e-9) return simple;
+  const f2 = -((n2[0] * n3[0] - (n2[0] * n3[2] + n2[2] * n3[0]) * u0 + n2[2] * n3[2] * u0 * u0) + (n2[1] * n3[1] - (n2[1] * n3[2] + n2[2] * n3[1]) * v0 + n2[2] * n3[2] * v0 * v0)) / den;
+  if (!(f2 > 0)) return simple;
+  const f = Math.sqrt(f2);
+  const nrm = n => { const x = (n[0] - u0 * n[2]) / f, y = (n[1] - v0 * n[2]) / f; return x * x + y * y + n[2] * n[2]; };
+  const r = Math.sqrt(nrm(n2) / nrm(n3)); // width / height
+  return isFinite(r) && r > 0.2 && r < 5 ? r : simple;
+}
+/* edge lines near one side of the rough quad. Each has: support (share of the side it covers), strength,
+   sharpness (a card's cut edge is crisp; shadows and wood grain are gradual) and how far outward it sits. */
+function sideCandidates(px, A, B, ctr, bandOut, bandIn) {
+  const dx = B[0] - A[0], dy = B[1] - A[1], Ls = Math.hypot(dx, dy) || 1; let nx = -dy / Ls, ny = dx / Ls;
+  const mid = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2]; if ((mid[0] - ctr[0]) * nx + (mid[1] - ctr[1]) * ny < 0) { nx = -nx; ny = -ny; } // normal points outward
+  const peaks = []; const N = 72;
+  for (let k = 0; k < N; k++) {
+    const t = 0.12 + 0.76 * k / (N - 1); const P = [A[0] + dx * t, A[1] + dy * t];
+    const prof = []; for (let s = -bandIn; s <= bandOut; s++) prof.push(px(P[0] + nx * s, P[1] + ny * s));
+    const g = new Array(prof.length).fill(0); for (let s = 1; s < prof.length - 1; s++) { const a = prof[s - 1], b = prof[s + 1]; g[s] = a && b ? Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) / 2 : 0; }
+    let mxg = 0; for (let s = 4; s < prof.length - 4; s++) mxg = Math.max(mxg, g[s]);
+    for (let s = 4; s < prof.length - 4; s++) if (g[s] > 4 && g[s] >= mxg * 0.12 && g[s] >= g[s - 1] && g[s] > g[s + 1]) {
+      const den = g[s - 1] - 2 * g[s] + g[s + 1]; const sub = den ? Math.max(-0.5, Math.min(0.5, 0.5 * (g[s - 1] - g[s + 1]) / den)) : 0;
+      const off = s - bandIn + sub; const sharp = g[s] / Math.max(1, (g[s - 4] + g[s + 4]) / 2);
+      peaks.push({ x: P[0] + nx * off, y: P[1] + ny * off, w: g[s], k, sharp });
+    }
+  }
+  const cands = []; let pool = peaks.slice(); let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let round = 0; round < 5 && pool.length > 10; round++) {
+    let best = null;
+    for (let it = 0; it < 260; it++) {
+      const p = pool[(rnd() * pool.length) | 0], q = pool[(rnd() * pool.length) | 0]; if (p === q || Math.abs(p.k - q.k) < 8) continue;
+      const L = { mx: p.x, my: p.y, dx: q.x - p.x, dy: q.y - p.y }; const n = Math.hypot(L.dx, L.dy); L.dx /= n; L.dy /= n;
+      if (Math.abs(L.dx * dx / Ls + L.dy * dy / Ls) < 0.985) continue; // must run along the side
+      const seen = new Map(); for (const r of pool) if (lineDist(L, [r.x, r.y]) < 1.5) { const cur = seen.get(r.k); if (!cur || r.w > cur) seen.set(r.k, r.w); }
+      let sc = 0; seen.forEach(v => { sc += Math.min(v, 40); });
+      if (!best || sc > best.sc) best = { L, sc, n: seen.size };
+    }
+    if (!best || best.n < N * 0.28) break;
+    let inl = pool.filter(r => lineDist(best.L, [r.x, r.y]) < 1.5);
+    let L = fitLine(inl.map(r => [r.x, r.y]), inl.map(r => r.w));
+    for (let k2 = 0; k2 < 2; k2++) { const i2 = pool.filter(r => lineDist(L, [r.x, r.y]) < 1.1); if (i2.length >= 8) { inl = i2; L = fitLine(inl.map(r => [r.x, r.y]), inl.map(r => r.w)); } }
+    const ks = new Set(inl.map(r => r.k));
+    const sharps = inl.map(r => r.sharp).sort((a, b) => a - b), sharp = sharps[sharps.length >> 1] || 0;
+    const strength = inl.reduce((a, r) => a + r.w, 0) / Math.max(1, inl.length);
+    const out = (L.mx - mid[0]) * nx + (L.my - mid[1]) * ny;
+    const near = cands.find(c => Math.abs(c.out - out) < Math.max(4, Ls * 0.006));
+    const cand = { L, support: ks.size / N, strength, sharp, out };
+    if (!near) cands.push(cand); else if (cand.support * cand.strength > near.support * near.strength) Object.assign(near, cand);
+    pool = pool.filter(r => lineDist(L, [r.x, r.y]) > 2.5);
+  }
+  return cands;
+}
+/* is this fit trustworthy, or should the person check it? */
+const cornersOK = r => !!r && r.confidence >= 0.6 && Math.abs(r.aspect - CARD_RATIO) / CARD_RATIO <= 0.022;
+function findCardCorners(bmp, opts = {}) {
+  const D = detectCardQuads(bmp); if (!D.cards.length) return null;
+  const rough = D.cards.slice().sort((a, b) => b.hgt - a.hgt)[0].quad;
+  return refineCorners(bmp, rough, opts);
+}
+const flatAspect = q => { const d = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]); return (d(q[1], q[2]) + d(q[3], q[0])) / (d(q[0], q[1]) + d(q[2], q[3])); };
+// how far from a rectangle: the worst corner's difference from 90 degrees
+const skewDeg = q => Math.max(...[0, 1, 2, 3].map(i => { const a = q[(i + 3) % 4], b = q[i], c = q[(i + 1) % 4]; const v1 = [a[0] - b[0], a[1] - b[1]], v2 = [c[0] - b[0], c[1] - b[1]]; const cos = (v1[0] * v2[0] + v1[1] * v2[1]) / (Math.hypot(...v1) * Math.hypot(...v2)); return Math.abs(Math.acos(Math.max(-1, Math.min(1, cos))) * 180 / Math.PI - 90); }));
+function refineCorners(bmp, rough, opts = {}) {
+  const long = Math.max(...[0, 1, 2, 3].map(i => Math.hypot(rough[(i + 1) % 4][0] - rough[i][0], rough[(i + 1) % 4][1] - rough[i][1])));
+  const k = Math.min(1, 1100 / long); const P = bitmapPixels(bmp, Math.max(bmp.width, bmp.height) * k); const s = P.k;
+  const px = samplerOf(P); let q = orderQuad(rough.map(p => [p[0] * s, p[1] * s])); let conf = 0, aspect = 0;
+  const u0 = P.w / 2, v0 = P.h / 2;
+  for (let pass = 0; pass < 2; pass++) {
+    const ctr = [q.reduce((a, p) => a + p[0], 0) / 4, q.reduce((a, p) => a + p[1], 0) / 4];
+    const size = Math.max(...[0, 1, 2, 3].map(i => Math.hypot(q[(i + 1) % 4][0] - q[i][0], q[(i + 1) % 4][1] - q[i][1])));
+    const wide = opts.flat ? 0.02 : 0.12; // a scanner already finds the card closely; a phone photo can be further off
+    const bo = Math.round(size * (pass === 0 ? wide : 0.025)), bi = Math.round(size * (pass === 0 ? (opts.flat ? 0.02 : 0.1) : 0.025));
+    let sides = [0, 1, 2, 3].map(i => sideCandidates(px, q[i], q[(i + 1) % 4], ctr, bo, bi));
+    if (sides.some(c => !c.length)) break;
+    const CRISP = 1.35; // shadows and wood grain fade over many pixels; a card's cut edge doesn't
+    sides = sides.map(c => c.filter(x => x.support >= 0.3).sort((a, b) => b.out - a.out).slice(0, 5));
+    if (sides.some(c => !c.length)) break;
+    // rank crisp edges from the outside in, treating edges within 1.5% of the card size as one feature (a top loader rim has two)
+    const crispRank = sides.map(c => { let r = -1, lastOut = null; return c.map(x => { if (x.sharp < CRISP) return -1; if (lastOut === null || lastOut - x.out > size * 0.015) r++; lastOut = x.out; return r; }); });
+    const maxS = sides.map(c => Math.max(...c.map(x => Math.min(x.strength, 40) * x.support)));
+    let best = null;
+    const pick = (i, chosen) => {
+      if (i === 4) {
+        const quad = [0, 1, 2, 3].map(j => meetLines(chosen[(j + 3) % 4].L, chosen[j].L)); if (quad.some(p => !p)) return;
+        const cross = [0, 1, 2, 3].map(j => { const p = quad[j], n1 = quad[(j + 1) % 4], n2 = quad[(j + 2) % 4]; return (n1[0] - p[0]) * (n2[1] - n1[1]) - (n1[1] - p[1]) * (n2[0] - n1[0]); });
+        if (!(cross.every(c => c > 0) || cross.every(c => c < 0))) return;
+        const oq = orderQuad(quad); let r = opts.flat ? flatAspect(oq) : trueAspect(oq, u0, v0); r = Math.max(r, 1 / r);
+        let sc = 0;
+        chosen.forEach((c, j) => {
+          sc += 0.5 * Math.min(c.strength, 40) * c.support / maxS[j] + 0.35 * Math.min(c.sharp, 4) / 4;
+          const cr = crispRank[j][sides[j].indexOf(c)];
+          if (pass > 0) { const nearest = sides[j].reduce((a, x) => (Math.abs(x.out) < Math.abs(a.out) ? x : a)); if (c === nearest) sc += 0.8; } // fine-tune: stay on the edge already chosen
+          else if (opts.toploader) { const outer = sides[j].find((x, k) => crispRank[j][k] === 0); const rel = outer ? (outer.out - c.out) / size : 0; if (cr === 1 && rel > 0.012 && rel < 0.17 && (sides[j].findIndex((x, k) => crispRank[j][k] === 1) === sides[j].indexOf(c))) sc += 0.8; else if (cr === 0 && sides[j].filter((x, k) => crispRank[j][k] >= 0).length === 1) sc += 0.3; }
+          else if (cr === 0) sc += 0.8; // the outermost crisp edge is the card's own edge
+        });
+        sc -= 10 * Math.abs(r - CARD_RATIO) / CARD_RATIO; // must be shaped like a 2.5 x 3.5 card
+        if (opts.flat) sc -= 0.6 * skewDeg(oq); // flat on the glass: a card is a true rectangle, no perspective
+        if (!best || sc > best.sc) best = { sc, quad: oq, r, chosen: chosen.slice() };
+        return;
+      }
+      for (const c of sides[i]) { chosen.push(c); pick(i + 1, chosen); chosen.pop(); }
+    };
+    pick(0, []);
+    if (!best) break;
+    q = best.quad; aspect = best.r;
+    // how sure: every side a long, crisp edge, and the shape a true 2.5 x 3.5
+    conf = Math.min(...best.chosen.map(c => Math.min(1, c.support / 0.8) * Math.min(1, c.sharp / 2.5))) * Math.max(0, 1 - Math.abs(best.r - CARD_RATIO) / CARD_RATIO * 8) * (opts.flat ? Math.max(0, 1 - skewDeg(best.quad) / 3) : 1);
+  }
+  return { quad: orderQuad(q.map(p => [p[0] / s, p[1] / s])), confidence: conf, aspect };
+}
 
 /* Recent sales (comps): record what a card has actually sold for on the market, then show the average of the
    last N sales. Sales come from a screenshot of eBay sold listings (read on this device), pasted text, or by hand. */
@@ -3170,8 +3318,11 @@ function parseCardBack(backText, frontText = '') {
   const cands = [];
   const scan = (arr, off) => {
     arr.forEach((l, i) => { const nm = nameFromLine(l); if (nm) cands.push({ name: nm, i: i + off }); });
-    const singles = arr.map((l, i) => ({ w: l.replace(/^[^A-Za-z]+|[^A-Za-z.]+$/g, ''), i })).filter(o => /^[A-Z][A-Z.'\-]{1,14}$/.test(o.w) && !BACK_STOP.has(o.w.toLowerCase()) && !STOP.has(o.w.toLowerCase()) && TEAMS[titleCase(o.w)] === undefined);
-    for (const a of singles) for (const b of singles) if (b.i > a.i && b.i - a.i <= 3) cands.push({ name: titleCase(a.w) + ' ' + titleCase(b.w), i: a.i + off + 0.5, first: a.w, last: b.w });
+    const parts = arr.map((l, i) => ({ w: l.replace(/^[^A-Za-z]+|[^A-Za-z.]+$/g, '').replace(/\s+/g, ' '), i })).filter(o => {
+      const ws = o.w.split(' '); if (!ws.length || ws.length > 2) return false;
+      return ws.every(x => /^[A-Z][A-Z.'\-]{0,24}$/.test(x) && !BACK_STOP.has(x.toLowerCase()) && !STOP.has(x.toLowerCase().replace(/\./g, '')) && TEAMS[titleCase(x)] === undefined) && o.w.replace(/[^A-Z]/g, '').length >= 2;
+    });
+    for (const a of parts) for (const b of parts) if (b.i > a.i && b.i - a.i <= 3 && (a.w + ' ' + b.w).split(' ').length <= 4) cands.push({ name: titleCase(a.w) + ' ' + titleCase(b.w), i: a.i + off + 0.5 });
   };
   scan(lines.slice(0, 18), 0); scan(fl.slice(0, 14), 100);
   // a name is usually followed by the position/team line
@@ -3187,7 +3338,8 @@ function parseCardBack(backText, frontText = '') {
 
 /* real player names (NBA, MLB incl. prospects, NFL) to fix misreads like "EFF HORNACEK" */
 const PN = { idx: null, loading: null };
-const nkey = s => String(s || '').toUpperCase().replace(/[^A-Z ]/g, '').trim();
+const fold = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const nkey = s => fold(s).toUpperCase().replace(/[^A-Z ]/g, '').trim();
 const SUFFIX = /^(JR|SR|II|III|IV|V)$/;
 function splitName(full) { const w = nkey(full).split(/\s+/).filter(Boolean); while (w.length > 2 && SUFFIX.test(w[w.length - 1])) w.pop(); return { first: w.slice(0, -1).join(' '), last: w[w.length - 1] || '' }; }
 async function loadPlayerNames() {
@@ -3203,23 +3355,39 @@ async function loadPlayerNames() {
   })();
   return PN.loading;
 }
+const sfx = s => { const m = String(s || '').toUpperCase().match(/\b(JR|SR|II|III|IV)\b\.?\s*$/); return m ? m[1] : ''; };
+/* best dictionary match for the name candidates; returns { full, score, exact } or null.
+   score 0 = letter-for-letter match; each misread letter adds 1 (first name) or 1.5 (last name) */
 function matchPlayer(cands, sport) {
   const idx = PN.idx || {}; const pools = sport && idx[sport] ? [idx[sport]] : Object.values(idx); if (!pools.length) return null;
-  let best = null;
-  for (let ci = 0; ci < Math.min(cands.length, 8); ci++) {
-    const { first, last } = splitName(cands[ci]); if (!first || last.length < 3) continue;
+  let best = null, second = null;
+  const consider = o => { if (!best || o.score < best.score) { if (best && best.full !== o.full) second = best; best = o; } else if (o.full !== best.full && (!second || o.score < second.score)) second = o; };
+  for (let ci = 0; ci < Math.min(cands.length, 10); ci++) {
+    const raw = cands[ci]; const { first, last } = splitName(raw); if (!first || last.length < 3) continue; const want = sfx(raw);
     for (const m of pools) {
       let hits = m.get(last) ? [[last, 0]] : [];
       if (!hits.length && last.length >= 5) { const max = last.length >= 8 ? 2 : 1; for (const k of m.keys()) { if (Math.abs(k.length - last.length) > max || k[0] !== last[0]) continue; const d = lev(k, last, max); if (d <= max) hits.push([k, d]); } }
       for (const [k, dl] of hits) for (const full of m.get(k)) {
         const f = splitName(full).first; const df = lev(f, first, 4); const allow = Math.max(1, Math.floor(f.length * 0.34));
         if (df > allow) continue;
-        const score = df + dl * 1.5 + ci * 0.6 + (full.length > 22 ? 0.1 : 0) + (/\b(Jr|Sr|II|III)\b\.?$/.test(full) ? 0.3 : 0);
-        if (!best || score < best.score) best = { full, score };
+        const have = sfx(full); const sfxCost = want === have ? 0 : want && !have ? 0.2 : 0.6;
+        consider({ full, score: df + dl * 1.5 + ci * 0.15 + sfxCost, exact: df === 0 && dl === 0, sfxWant: want, sfxHave: have });
       }
     }
   }
-  return best && best.score <= 3 ? best.full : null;
+  if (!best || best.score > 3) return null;
+  let full = fold(best.full);
+  if (best.sfxWant && !best.sfxHave) full += best.sfxWant === 'JR' || best.sfxWant === 'SR' ? ` ${best.sfxWant[0]}${best.sfxWant[1].toLowerCase()}.` : ` ${best.sfxWant}`; // card says Jr., list doesn't
+  const gap = second ? second.score - best.score : 9;
+  return { full, score: best.score, exact: best.exact, gap };
+}
+/* how sure: "high" only for an exact letter-for-letter match on the right sport, or a near match that two reads agree on */
+function nameConfidence(m, agree) {
+  if (!m) return 'low';
+  if (m.exact && m.gap >= 0.5) return 'high';
+  if (m.score <= 1.2 && agree) return 'high';
+  if (m.score <= 2) return 'medium';
+  return 'low';
 }
 if (typeof module !== 'undefined') module.exports = { parseCardBack };
 
@@ -3311,7 +3479,13 @@ FORMS.batchGo = async f => {
       for (let i = 0; i < F2.cards.length; i++) {
         const c = F2.cards[i]; const it = { id: 'b' + uid(), sheet: s, row: c.row, col: c.col, fields: null, loose: !!c.whole };
         let fq = c.quad, bq = pairs[i] ? pairs[i].quad : null;
-        if (BS.opts.toploader) { if (!fs.src) fs.src = bitmapPixels(fs.bmp, 3400); if (!c.whole) fq = snapInside(fs.src, fq); if (bq && !pairs[i].whole) { if (!bs.src) bs.src = bitmapPixels(bs.bmp, 3400); bq = snapInside(bs.src, bq); } }
+        // lock onto the exact card edges (best fit to a 2.5 x 3.5 card); flag fits that need a look
+        let fit = null;
+        if (!c.whole) { fit = refineCorners(fs.bmp, fq, { toploader: BS.opts.toploader, flat: mode !== 'photos' }); fq = fit.quad; }
+        if (bq && !pairs[i].whole) { const bf = refineCorners(bs.bmp, bq, { toploader: BS.opts.toploader, flat: mode !== 'photos' }); bq = bf.quad; it.backCheck = !cornersOK(bf); }
+        it.cornerCheck = c.whole || !cornersOK(fit) || !!it.backCheck;
+        const edge = (q, bm) => q && q.some(p => p[0] < bm.width * 0.004 || p[1] < bm.height * 0.004 || p[0] > bm.width * 0.996 || p[1] > bm.height * 0.996);
+        it.offEdge = mode !== 'photos' && (edge(fq, fs.bmp) || (bq && edge(bq, bs.bmp))); // part of the card is outside the scanned area
         it.f = await cardImages(fs, fq); it.b = bq ? await cardImages(bs, bq) : null;
         BS.items.push(it);
       }
@@ -3322,14 +3496,29 @@ FORMS.batchGo = async f => {
     await loadPlayerNames();
     for (let i = 0; i < BS.items.length; i++) {
       const it = BS.items[i]; let bt = '', ft = '';
+      const pr = (p, label) => prog(`${label === 'Reading text' ? 'Reading' : label} card ${i + 1} of ${BS.items.length}`, 0.4 + (i + (p || 0)) / BS.items.length * 0.6);
+      let m = null, conf = 'low';
       if (BS.opts.read) {
-        const pr = (p, label) => prog(`${label === 'Reading text' ? 'Reading' : label} card ${i + 1} of ${BS.items.length}`, 0.4 + (i + (p || 0)) / BS.items.length * 0.6);
+        // pass 1: back, sparse text
         if (it.b) bt = (await readImageText(it.b.warped, pr, '11')).text;
-        const pre = parseCardBack(bt);
-        if (!pre.player || !it.b) ft = (await readImageText(it.f.warped, pr, '11')).text;
+        let c = parseCardBack(bt); m = matchPlayer(c.cands, c.sport); conf = nameConfidence(m, false);
+        // pass 2: back again as one block of text; two reads naming the same player confirms it
+        if (conf !== 'high' && it.b) {
+          const bt2 = (await readImageText(it.b.warped, pr, '6')).text; const c2 = parseCardBack(bt2); const m2 = matchPlayer(c2.cands, c.sport || c2.sport);
+          const agree = m && m2 && m.full === m2.full;
+          if (agree) { conf = nameConfidence(m, true); } else if (m2 && (!m || m2.score < m.score)) { m = m2; conf = nameConfidence(m2, false); bt = bt + '\n' + bt2; }
+        }
+        // pass 3: the front (nameplate)
+        if (conf !== 'high') {
+          ft = (await readImageText(it.f.warped, pr, '11')).text;
+          const cf = parseCardBack('', ft); const mf = matchPlayer(cf.cands, (parseCardBack(bt).sport) || cf.sport);
+          if (m && mf && m.full === mf.full) conf = nameConfidence(m, true);
+          else if (mf && (!m || mf.score < m.score)) { m = mf; conf = nameConfidence(mf, false); }
+        }
       }
       it.text = bt; it.fields = parseCardBack(bt, ft);
-      const pm = matchPlayer(it.fields.cands, it.fields.sport); if (pm) { it.fields.player = pm; it.fields.matched = true; }
+      if (m) { it.fields.player = m.full; it.fields.matched = true; }
+      it.fields.conf = BS.opts.read ? conf : '';
     }
     renderBatchReview();
   } catch (e) { console.error(e); sheet.innerHTML = `${mhead('Stopped')}<p>${esc(e.message)}</p><div class="sheet-foot"><button class="btn" data-act="close" type="button">Close</button><button class="btn pri" type="button" data-act="batch">Try again</button></div>`; }
@@ -3339,10 +3528,10 @@ const blobURL = b => { if (!bsURL.has(b)) bsURL.set(b, URL.createObjectURL(b)); 
 function renderBatchReview() {
   const n = BS.items.length; const pickups = S.pickups.filter(p => !p.purged).sort((a, b) => b.date.localeCompare(a.date));
   const row = (it, i) => { const c = it.fields;
-    return `<fieldset data-bi="${i}" class="bs-item"><legend>Card ${i + 1}</legend>${it.loose ? '<div class="warn" style="margin-bottom:8px">Couldn\'t find this card\'s edges, so the whole photo was used. Use Straighten on the card page after saving.</div>' : ''}
+    return `<fieldset data-bi="${i}" class="bs-item${c.conf && c.conf !== 'high' ? ' bs-unsure' : ''}"><legend>Card ${i + 1}</legend>${it.offEdge && !it.loose ? '<div class="warn" style="margin-bottom:8px">This card runs off the edge of the scan, so part of it is cut off. Move it in from the edge of the glass and rescan, or fix it later with Straighten.</div>' : it.cornerCheck && !it.loose ? '<div class="warn" style="margin-bottom:8px">Corners may be slightly off on this one. Check it with Straighten after saving.</div>' : ''}${it.loose ? '<div class="warn" style="margin-bottom:8px">Couldn\'t find this card\'s edges, so the whole photo was used. Use Straighten on the card page after saving.</div>' : ''}
     <div class="bs-grid"><div class="bs-imgs"><img src="${blobURL(it.f.warped)}" alt="Front ${i + 1}">${it.b ? `<img src="${blobURL(it.b.warped)}" alt="Back ${i + 1}">` : '<div class="bs-noback">No back</div>'}</div>
     <div class="fgrid">
-      ${field(c.matched ? 'Player ✓ matched' : c.player ? 'Player · check name' : 'Player', `<input data-k="player" value="${esc(c.player)}" list="dl-bpl">`)}${field('Year', `<input data-k="year" value="${esc(c.year)}" inputmode="numeric">`)}
+      ${field(c.conf === 'high' ? 'Player ✓ Confirmed' : c.conf === 'medium' ? 'Player · Check' : c.conf === 'low' ? 'Player · Not sure' : 'Player', `<input data-k="player" value="${esc(c.player)}" list="dl-bpl" class="${c.conf === 'low' ? 'bs-low' : c.conf === 'medium' ? 'bs-mid' : ''}">`)}${field('Year', `<input data-k="year" value="${esc(c.year)}" inputmode="numeric">`)}
       ${field('Brand', `<input data-k="brand" value="${esc(c.brand)}" list="dl-bbr">`)}${field('Set', `<input data-k="set" value="${esc(c.set)}" list="dl-bset">`)}
       ${field('Card #', `<input data-k="number" value="${esc(c.number)}">`)}${field('Parallel', `<input data-k="parallel" value="${esc(c.parallel)}" placeholder="Base">`)}
       ${field('Sport', `<select data-k="sport">${opts(SPORTS, c.sport, '—')}</select>`)}${field('Team', `<input data-k="team" value="${esc(c.team)}">`)}
@@ -3355,7 +3544,9 @@ function renderBatchReview() {
   const all = S.cards.filter(live);
   const common = k => { const cnt = {}; BS.items.forEach(it => { const v = it.fields[k]; if (v) cnt[v] = (cnt[v] || 0) + 1; }); const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]; return top && top[1] >= Math.max(2, n * 0.5) ? top[0] : ''; };
   $('#modal-root .sheet').style.width = 'min(980px, 100%)';
+  const unsure = BS.items.filter(it => it.fields.conf && it.fields.conf !== 'high').length, sure = BS.items.filter(it => it.fields.conf === 'high').length;
   $('#modal-root .sheet').innerHTML = `<form data-form="batchSave">${mhead(`Found ${n} card${n === 1 ? '' : 's'}`)}
+  ${BS.opts.read ? `<div class="row"><span class="pill st-in_stock">${sure} confirmed</span>${unsure ? `<span class="pill st-listed">${unsure} to check</span><label class="chk"><input type="checkbox" id="bs-only"> Show only cards to check</label>` : '<span class="muted">Every player name was confirmed.</span>'}</div>` : ''}
   ${BS.merged ? `<div class="warn">${BS.merged} spot${BS.merged > 1 ? 's' : ''} looked like cards touching each other and ${BS.merged > 1 ? 'were' : 'was'} skipped. Leave a small gap between cards and scan those again.</div>` : ''}
   <fieldset><legend>Same for every card</legend><div class="fgrid">
     ${field('Date bought', `<input type="date" name="date" value="${today()}">`)}${field('Bought on', inp('platform', '', 'list="dl-platforms" placeholder="Card show, eBay…"'))}
@@ -3375,6 +3566,7 @@ function bsCollect() { // remember typed values before any re-render
   const f = $('#modal-root form'); BS.shared = f ? Object.fromEntries(new FormData(f)) : {};
 }
 function bsRestoreShared() { const f = $('#modal-root form'); if (!f || !BS.shared) return; Object.entries(BS.shared).forEach(([k, v]) => { const el = f.elements[k]; if (el && el.type !== 'checkbox') el.value = v; }); }
+document.addEventListener('change', e => { if (e.target.id === 'bs-only') $$('.bs-item').forEach(f => { f.hidden = e.target.checked && !f.classList.contains('bs-unsure'); }); });
 Object.assign(A, {
   batch: () => openBatch(),
   bsMode: el => openBatch(el.dataset.v),
@@ -3419,6 +3611,137 @@ FORMS.batchSave = async f => {
   onChange('cards'); closeModal(false); toast(`Added ${ids.length} cards`);
   if (fd.get('labels') === 'on') { LB.tab = 'cards'; LB.sel = new Set(ids); location.hash = '#/labels'; } else { Object.assign(F, { q: '', status: 'active', sort: 'new' }); location.hash = '#/inv'; }
 };
+
+/* Scan a receipt for cards that are already in inventory: read it, match each line to a card,
+   and update price, shipping, tax, fees, date, platform, seller and order number. */
+const RM = { focus: null, files: [], text: '', parsed: null, items: [] };
+
+function itemCardScore(item, c) {
+  if (!c || !live(c)) return 0;
+  const p = item.card || parseCardTitle(item.title || '');
+  const last = s => fold(s || '').toLowerCase().trim().split(/\s+/).pop() || '';
+  const title = fold(item.title || '').toLowerCase();
+  let sc = 0;
+  if (p.player && c.player && last(p.player) === last(c.player)) sc += 4;
+  else if (c.player && last(c.player).length > 2 && title.includes(last(c.player))) sc += 3;
+  if (p.number && c.number && ckey(p.number) === ckey(c.number)) sc += 2;
+  if (p.year && c.year && String(p.year) === String(c.year)) sc += 1;
+  if (p.set && c.set && ckey(p.set) === ckey(c.set)) sc += 1;
+  if (p.parallel && c.parallel && ckey(p.parallel) === ckey(c.parallel)) sc += 1;
+  if (p.brand && c.brand && ckey(p.brand) === ckey(c.brand)) sc += 0.5;
+  return sc;
+}
+function suggestCards(item, focusId) {
+  return S.cards.filter(live).map(c => ({ c, sc: itemCardScore(item, c) + (c.id === focusId ? 0.75 : 0) })).filter(o => o.sc >= 2.5).sort((a, b) => b.sc - a.sc).slice(0, 6);
+}
+function openCardReceipt(cardId) {
+  RM.focus = cardId; RM.files = []; const c = cardById(cardId);
+  openModal(`<div>${mhead('Scan receipt for this card')}
+  <p class="muted" style="margin:0">${esc(c.code)} · ${esc(cardFull(c))}. Dugout reads the receipt and fills in what you paid, shipping, tax, fees, date, seller and order number. You'll see the changes before anything is saved.</p>
+  <div class="fgrid" style="margin-top:12px">${field('Take a photo', `<input type="file" id="rm-snap" accept="image/*" capture="environment">`)}${field('Or choose screenshots / photos', `<input type="file" id="rm-files" accept="image/*" multiple>`)}</div>
+  <small class="muted">One receipt with several of your cards on it? They can all be matched in the next step.</small></div>`, { narrow: true });
+}
+async function runCardReceipt(files) {
+  RM.files = files; const sheet = $('#modal-root .sheet');
+  sheet.innerHTML = `${mhead('Reading receipt')}<div class="calc"><div><span id="rm-step">Starting</span><b id="rm-pct">0%</b></div></div>`;
+  const texts = [];
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const r = await readImageText(files[i], (p, label) => { const a = $('#rm-step'), b = $('#rm-pct'); if (a) a.textContent = label + (files.length > 1 ? ` · ${i + 1} of ${files.length}` : ''); if (b && p !== null) b.textContent = Math.round(((i + p) / files.length) * 100) + '%'; });
+      texts.push(r.text);
+    }
+  } catch (e) { sheet.innerHTML = `${mhead('Couldn\'t read that')}<p>${esc(e.message)}</p><div class="sheet-foot"><button class="btn" data-act="close" type="button">Close</button></div>`; return; }
+  RM.text = texts.join('\n');
+  RM.parsed = enrichFromInventory(parseReceipt(RM.text));
+  const p = RM.parsed;
+  let items = p.items.filter(it => it.title || it.price !== null);
+  if (!items.length) items = [{ title: 'Whole receipt', qty: 1, price: p.subtotal ?? (p.total !== null ? r2(p.total - (p.shipping || 0) - (p.tax || 0) - (p.fees || 0)) : null), card: parseCardTitle('') }];
+  // match: the chosen card takes the line that fits it best (or the only line); other lines get their best inventory match
+  const scores = items.map(it => itemCardScore(it, cardById(RM.focus)));
+  const focusIdx = items.length === 1 ? 0 : scores.indexOf(Math.max(...scores));
+  RM.items = items.map((it, i) => {
+    const sugg = suggestCards(it, RM.focus).filter(o => o.c.id !== RM.focus || i === focusIdx);
+    const match = i === focusIdx ? RM.focus : (sugg[0] && sugg[0].sc >= 4 ? sugg[0].c.id : '');
+    return Object.assign({}, it, { sugg, match });
+  });
+  renderCardReceipt();
+}
+function rmShares(fd) {
+  const rows = RM.items.map((it, i) => ({ i, match: fd.get('m' + i) || '', price: num(fd.get('p' + i)), qty: Math.max(1, parseInt(fd.get('q' + i), 10) || 1) }));
+  const used = rows.filter(r => r.match);
+  const extra = { ship: num(fd.get('shipping')), tax: num(fd.get('tax')), fees: num(fd.get('fees')) };
+  const split = fd.get('split') === 'on';
+  // costs on a receipt belong to the whole order; give each matched card its share by price
+  const allPrices = rows.map(r => r.price || 0); const allSum = allPrices.reduce((a, b) => a + b, 0);
+  const share = (k, r) => !split ? (used[0] && used[0].i === r.i ? extra[k] : 0) : allSum ? r2(extra[k] * (r.price || 0) / allSum) : r2(extra[k] / Math.max(1, rows.length));
+  return used.map(r => ({ ...r, ship: share('ship', r), tax: share('tax', r), fees: share('fees', r) }));
+}
+function renderCardReceipt() {
+  const p = RM.parsed; const focus = cardById(RM.focus);
+  const opt = (it, i) => {
+    const list = [];
+    if (focus) list.push([focus.id, `This card · ${focus.code} ${cardName(focus)}`]);
+    it.sugg.forEach(o => { if (o.c.id !== RM.focus) list.push([o.c.id, `${o.c.code} ${cardName(o.c)} · ${cardSet(o.c)}`]); });
+    return `<select name="m${i}">${opts(list, it.match, 'Not in my inventory (skip)')}</select>`;
+  };
+  $('#modal-root .sheet').style.width = 'min(860px, 100%)';
+  $('#modal-root .sheet').innerHTML = `<form data-form="rmApply">${mhead('Match receipt to cards')}
+  <details><summary class="muted" style="cursor:pointer">Text read from the receipt</summary><pre class="bs-text">${esc(RM.text)}</pre></details>
+  <fieldset><legend>Order</legend><div class="fgrid">
+    ${field('Date', `<input type="date" name="date" value="${esc(p.date || (focus.buy && focus.buy.date) || today())}">`)}${field('Platform', `<input name="platform" value="${esc(p.platform || (focus.buy && focus.buy.platform) || '')}" list="dl-platforms">`)}
+    ${field('Seller', `<input name="seller" value="${esc(p.seller)}">`)}${field('Order #', `<input name="orderNo" value="${esc(p.orderNo || (focus.buy && focus.buy.order) || '')}">`)}
+    ${field('Shipping', `<input name="shipping" value="${p.shipping ?? ''}" inputmode="decimal">`)}${field('Tax', `<input name="tax" value="${p.tax ?? ''}" inputmode="decimal">`)}
+    ${field('Fees', `<input name="fees" value="${p.fees ?? ''}" inputmode="decimal">`)}${field('Order total', `<input name="total" value="${p.total ?? ''}" inputmode="decimal">`)}
+  </div><label class="chk"><input type="checkbox" name="split" checked> Split shipping, tax and fees across the lines by price</label></fieldset>
+  <fieldset><legend>Lines on the receipt</legend>
+    <div class="tablewrap"><table class="t"><thead><tr><th>On the receipt</th><th>Qty</th><th>Price (line total)</th><th>Match to</th></tr></thead><tbody>
+    ${RM.items.map((it, i) => `<tr><td style="white-space:normal;min-width:180px">${esc(it.title || '—')}</td><td><input name="q${i}" value="${Math.max(1, +it.qty || 1)}" inputmode="numeric" style="width:52px"></td><td><input name="p${i}" value="${it.price ?? ''}" inputmode="decimal" style="width:96px"></td><td>${opt(it, i)}</td></tr>`).join('')}
+    </tbody></table></div></fieldset>
+  <fieldset><legend>What will change</legend><div id="rm-preview"></div></fieldset>
+  ${platformList()}
+  <div class="sheet-foot"><button class="btn" type="button" data-act="close">Cancel</button><button class="btn pri" type="submit">Update cards + attach receipt</button></div></form>`;
+  const f = $('#modal-root form'); const upd = () => rmPreview(f); f.addEventListener('input', upd); f.addEventListener('change', upd); upd();
+}
+function rmPreview(f) {
+  const fd = new FormData(f); const rows = rmShares(fd); const box = $('#rm-preview');
+  if (!rows.length) { box.innerHTML = '<div class="empty">No lines matched to a card yet.</div>'; return; }
+  const dupes = rows.map(r => r.match).filter((m, i, a) => a.indexOf(m) !== i);
+  box.innerHTML = (dupes.length ? '<div class="warn">Two lines are matched to the same card. Their prices will be added together.</div>' : '') + rows.map(r => {
+    const c = cardById(r.match); const b = c.buy || {}; const same = rows.filter(x => x.match === r.match);
+    const nq = same.reduce((a, x) => a + x.qty, 0); const nb = { price: r2(same.reduce((a, x) => a + x.price, 0)), ship: r2(same.reduce((a, x) => a + x.ship, 0)), tax: r2(same.reduce((a, x) => a + x.tax, 0)), fees: r2(same.reduce((a, x) => a + x.fees, 0)) };
+    if (same[0] !== r) return '';
+    const ch = (lbl, a, z, fmt = money) => (String(a ?? '') === String(z ?? '') ? '' : `<div class="li"><span class="grow">${lbl}</span><span class="num muted">${a === undefined || a === '' ? '—' : fmt(a)}</span><span>→</span><b class="num">${fmt(z)}</b></div>`);
+    const before = unitCost(c); const after = (nb.price + nb.ship + nb.tax + nb.fees + num(c.extraCost)) / nq;
+    return `<div style="margin-bottom:8px"><b>${esc(c.code)} · ${esc(cardName(c))}</b><div class="list">
+      ${ch('Quantity bought', b.qty || 1, nq, v => v)}${ch('Price paid', b.price, nb.price)}${ch('Shipping', b.ship, nb.ship)}${ch('Tax', b.tax, nb.tax)}${ch('Fees', b.fees, nb.fees)}
+      ${ch('Date', b.date, fd.get('date'), v => fmtDate(v))}${ch('Platform', b.platform, String(fd.get('platform') || '').trim(), v => esc(v || '—'))}${ch('Order #', b.order, String(fd.get('orderNo') || '').trim(), v => esc(v || '—'))}
+      <div class="li"><span class="grow">Cost per card</span><span class="num muted">${money(before)}</span><span>→</span><b class="num">${money(after)}</b></div></div></div>`;
+  }).join('');
+}
+FORMS.rmApply = async f => {
+  const fd = new FormData(f); const rows = rmShares(fd); if (!rows.length) return toast('Match at least one line to a card');
+  const date = fd.get('date') || today(), platform = String(fd.get('platform') || '').trim(), order = String(fd.get('orderNo') || '').trim(), seller = String(fd.get('seller') || '').trim();
+  const ids = [...new Set(rows.map(r => r.match))];
+  for (const id of ids) {
+    const c = cardById(id); const old = structuredClone(c.buy || {}); const same = rows.filter(x => x.match === id);
+    const nq = same.reduce((a, x) => a + x.qty, 0); if ((+c.qty || 0) === (+old.qty || 1)) c.qty = nq; // nothing sold yet: in-hand count follows the receipt
+    c.buy = Object.assign(c.buy || {}, { qty: nq, date, platform: platform || old.platform || '', order: order || old.order || '',
+      price: r2(same.reduce((a, x) => a + x.price, 0)), ship: r2(same.reduce((a, x) => a + x.ship, 0)), tax: r2(same.reduce((a, x) => a + x.tax, 0)), fees: r2(same.reduce((a, x) => a + x.fees, 0)) });
+    if (seller && !String(c.notes || '').includes(seller)) c.notes = [c.notes, 'Seller: ' + seller].filter(Boolean).join('\n');
+    await save('cards', c, { quiet: true });
+    const changes = ['qty', 'price', 'ship', 'tax', 'fees', 'date', 'platform', 'order'].filter(k => String(old[k] ?? '') !== String(c.buy[k] ?? '')).map(k => ({ f: 'Purchase ' + k, from: String(old[k] ?? ''), to: String(c.buy[k] ?? '') }));
+    if (changes.length) await logTxn({ cardId: id, type: 'edit', date: today(), changes, note: 'From receipt' });
+    // the original buy entry and any sale profit follow the corrected cost
+    const buyT = S.txns.find(t => t.cardId === id && t.type === 'buy' && !t.purged); if (buyT) { buyT.amount = r2(c.buy.price + c.buy.ship + c.buy.tax + c.buy.fees); buyT.qty = nq; buyT.date = date; buyT.platform = c.buy.platform; await save('txns', buyT, { quiet: true }); }
+    for (const t of S.txns.filter(t => t.cardId === id && ['sell', 'trade', 'writeoff'].includes(t.type) && !t.purged)) { t.cost = r2(unitCost(c) * (t.qty || 1)); t.profit = r2(num(t.net) - t.cost); await save('txns', t, { quiet: true }); }
+  }
+  for (let i = 0; i < RM.files.length; i++) await saveReceipt(RM.files[i], { date, amount: i === 0 ? num(fd.get('total')) : 0, note: [platform, seller, order && '#' + order].filter(Boolean).join(' · '), cardIds: ids, text: i === 0 ? RM.text : '' });
+  onChange('cards'); closeModal(); toast(`Updated ${ids.length} card${ids.length > 1 ? 's' : ''} from the receipt`);
+};
+A.cardReceipt = el => openCardReceipt(el.dataset.id);
+document.addEventListener('change', e => {
+  if (e.target.id === 'rm-snap' || e.target.id === 'rm-files') { const files = [...e.target.files].filter(f => f.type.startsWith('image/') || /\.(heic|jpe?g|png|webp)$/i.test(f.name)); if (files.length) runCardReceipt(files); else toast('Choose a photo or screenshot'); }
+});
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
 async function loadDemo() {
