@@ -215,6 +215,18 @@ table.t { border-collapse: collapse; width: 100%; font-size: .9rem; }
 .c3d-full .c3d-canvas { aspect-ratio: auto; height: 100%; border-radius: 0; background: radial-gradient(ellipse at 50% 45%, #232a33, #000 80%); }
 @media (max-width: 760px) { .photo-col .c3d { width: min(100%, 360px); align-self: center; } }
 
+/* straighten editor */
+.st-wrap { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.st-stage { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; max-width: 100%; }
+.st-stage canvas#st-img { display: block; border-radius: 6px; max-width: 100%; }
+.st-stage svg { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.st-h { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; border: 3px solid #fff; background: var(--acc-base); padding: 0; box-shadow: 0 0 0 2px rgba(0,0,0,.5); cursor: grab; touch-action: none; }
+.st-h::after { content: ""; position: absolute; inset: -12px; } /* bigger touch target */
+#st-loupe { position: absolute; width: 140px; height: 140px; pointer-events: none; border-radius: 50%; box-shadow: 0 6px 20px rgba(0,0,0,.5); }
+.st-prev { display: flex; flex-direction: column; gap: 6px; }
+.st-prev canvas { width: 200px; height: 280px; max-width: 100%; border-radius: 8px; border: 1px solid var(--line); }
+@media (max-width: 700px) { .st-prev canvas { width: 140px; height: 196px; } }
+
 /* toast */
 #toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 90; display: flex; flex-direction: column; gap: 8px; align-items: center; width: min(520px, calc(100% - 32px)); pointer-events: none; }
 .toast { background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 9px; font-weight: 600; display: flex; gap: 12px; align-items: center; pointer-events: auto; box-shadow: 0 6px 20px rgba(0,0,0,.35); }
@@ -379,7 +391,7 @@ async function fileDel(id) {
 async function fileIds() { const k = DB.db ? await idb.keys('files') : []; return new Set([...k, ...memFiles.keys()]); }
 function referencedFileIds() {
   const ids = new Set();
-  S.cards.forEach(c => { if (!c.purged) { c.front && ids.add(c.front); c.back && ids.add(c.back); } });
+  S.cards.forEach(c => { if (!c.purged) ['front', 'back', 'frontOrig', 'backOrig'].forEach(k => c[k] && ids.add(c[k])); });
   S.receipts.forEach(r => { if (!r.purged && r.fileId) ids.add(r.fileId); });
   S.expenses.forEach(x => { if (!x.purged && x.fileId) ids.add(x.fileId); });
   S.pickups.forEach(p => { if (!p.purged && p.photo) ids.add(p.photo); });
@@ -612,8 +624,8 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = v => { const n = parseFloat(String(v ?? '').replace(/[$,]/g, '')); return isFinite(n) ? n : 0; };
 const r2 = n => Math.round(n * 100) / 100;
-function money(n, sign) { n = +n || 0; const s = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); return (n < 0 ? '-' : sign && n > 0 ? '+' : '') + '$' + s; }
-function money0(n, sign) { n = +n || 0; const s = Math.round(Math.abs(n)).toLocaleString('en-US'); return (n < 0 ? '-' : sign && n > 0 ? '+' : '') + '$' + s; }
+function money(n, sign) { n = +n || 0; if (Math.abs(n) < 0.005) n = 0; const s = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); return (n < 0 ? '-' : sign && n > 0 ? '+' : '') + '$' + s; }
+function money0(n, sign) { n = +n || 0; if (Math.abs(n) < 0.5) n = 0; const s = Math.round(Math.abs(n)).toLocaleString('en-US'); return (n < 0 ? '-' : sign && n > 0 ? '+' : '') + '$' + s; }
 const pct = n => isFinite(n) && n !== null ? (n > 0 ? '+' : '') + Math.round(n * 100) + '%' : '—';
 const cls = n => n > 0.004 ? 'pos' : n < -0.004 ? 'neg' : '';
 const fmtDate = d => d ? new Date(d.slice(0, 10) + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
@@ -928,6 +940,7 @@ V.card = id => {
     <div class="photo-col">
       <div class="c3d" data-card3d="${c.id}"><div class="c3d-stage">${art(c, 'front')}</div>
         <div class="row c3d-ctl"><button class="btn sm" data-act="c3dFlip" type="button">Flip</button><button class="btn sm" data-act="c3dReset" type="button">Reset</button><button class="btn sm" data-act="c3dFull" data-id="${c.id}" type="button">Full screen</button>
+        ${c.front || c.back ? `<button class="btn sm" data-act="straighten" data-id="${c.id}" data-side="${c.front ? 'front' : 'back'}" type="button">Straighten</button>` : ''}
         ${c.front ? `<button class="btn sm ghost" data-act="viewPhoto" data-id="${c.id}" data-side="front" type="button">Front photo</button>` : ''}${c.back ? `<button class="btn sm ghost" data-act="viewPhoto" data-id="${c.id}" data-side="back" type="button">Back photo</button>` : ''}</div>
         <small class="muted c3d-hint">Drag or swipe to turn it · double-tap to flip${c.front ? '' : ' · add photos to see the real card'}</small></div>
       <div class="row" style="align-items:flex-end"><div class="qrbox" data-qr="${esc(cardQR(c))}"></div><div style="display:flex;flex-direction:column;gap:6px"><span class="code">${esc(c.code)}</span><button class="btn sm" data-act="labelOne" data-id="${c.id}" type="button">Print label</button></div></div>
@@ -1019,7 +1032,8 @@ function openCardForm(id, preset = {}) {
   </fieldset>
   <fieldset><legend>Photos</legend><div class="fgrid">
     ${field('Front photo', `<input type="file" name="front" accept="image/*">`)}${field('Back photo', `<input type="file" name="back" accept="image/*">`)}
-  </div><label class="chk"><input type="checkbox" name="autocrop" checked> Auto-crop to the card (shoot it on a plain, contrasting surface)</label>
+  </div><label class="chk"><input type="checkbox" name="autocrop" checked> Auto-straighten and crop to the card (shoot it on a plain, contrasting surface)</label>
+  <label class="chk"><input type="checkbox" name="toploader" ${S.settings.toploader ? 'checked' : ''}> Card is in a top loader or sleeve</label>
   <small class="muted">Front and back photos build the 3D card on its page.${c.front || c.back ? ' Choosing a new photo replaces the current one.' : ''}</small></fieldset>
   <fieldset><legend>Purchase</legend><div class="fgrid">
     ${field('Date purchased', `<input type="date" name="b_date" value="${esc(b.date || today())}">`)}
@@ -1070,9 +1084,16 @@ async function submitCard(f) {
   c.qty = old ? Math.max(0, parseInt(fd.get('qty'), 10) || 0) : c.buy.qty;
   const newVal = fd.get('value') === '' ? (old ? old.value : 0) : num(fd.get('value'));
   if (!old || num(old.value) !== newVal) { c.value = newVal; c.priceHistory = [...(c.priceHistory || []), { date: today(), value: newVal }]; c.priceUpdated = today(); }
+  const tl = fd.get('toploader') === 'on'; if (!!S.settings.toploader !== tl) { S.settings.toploader = tl; await saveSettings(); } // remembered for next time
   for (const side of ['front', 'back']) {
     const file = fd.get(side);
-    if (file && file.size) { if (c[side]) await fileDel(c[side]); const img = fd.get('autocrop') === 'on' ? await autoCropCard(file) : file; c[side] = await fileSave(await compressImage(img), file.name); }
+    if (file && file.size) {
+      for (const k of [side, side + 'Orig']) if (c[k]) await fileDel(c[k]);
+      const r = await processCardPhoto(file, fd.get('autocrop') === 'on', fd.get('toploader') === 'on');
+      c[side + 'Orig'] = await fileSave(r.orig, file.name);
+      c[side] = r.out === r.orig ? c[side + 'Orig'] : await fileSave(await compressImage(r.out), side + '.jpg');
+      c[side + 'Quad'] = r.quad ? r.quad.map(p => [Math.round(p[0]), Math.round(p[1])]) : null;
+    }
   }
   await save('cards', c, { quiet: true });
   if (!old) await logTxn({ cardId: c.id, type: 'buy', date: c.buy.date, qty: c.buy.qty, amount: r2(c.buy.price + c.buy.ship + c.buy.tax + c.buy.fees), platform: c.buy.platform });
@@ -1383,7 +1404,7 @@ const FORMS = {
   filterName: async f => { S.settings.savedFilters.push({ name: String(new FormData(f).get('name')).trim(), f: Object.assign({}, F) }); await saveSettings(); closeModal(); toast('Filter saved'); },
 };
 async function purgeCard(c) {
-  for (const k of ['front', 'back']) if (c[k]) await fileDel(c[k]);
+  for (const k of ['front', 'back', 'frontOrig', 'backOrig']) if (c[k]) await fileDel(c[k]);
   const keep = { id: c.id, code: c.code, purged: true, createdAt: c.createdAt };
   Object.keys(c).forEach(k => delete c[k]); Object.assign(c, keep);
   await save('cards', c, { quiet: true });
@@ -2531,6 +2552,216 @@ async function autoCropCard(file) {
     return await new Promise(r => out.toBlob(bl => r(bl || file), 'image/jpeg', 0.9));
   } catch (e) { return file; }
 }
+
+/* Straighten card photos: find the card's four corners, then flatten it to an exact 2.5 x 3.5 rectangle
+   (perspective correction), so the 3D card shows the card square-on. Corners can be dragged by hand. */
+const OUT_W = 1000, OUT_H = 1400;
+
+async function bitmapOf(blob) { return createImageBitmap(blob, { imageOrientation: 'from-image' }); }
+function bitmapPixels(bmp, maxSide) {
+  const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(bmp.width * k)); cv.height = Math.max(1, Math.round(bmp.height * k));
+  const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(bmp, 0, 0, cv.width, cv.height);
+  return { k, w: cv.width, h: cv.height, data: g.getImageData(0, 0, cv.width, cv.height).data, canvas: cv };
+}
+
+/* --- corner detection ---------------------------------------------------- */
+function detectCardQuad(bmp) {
+  const { k, w, h, data } = bitmapPixels(bmp, 480); const n = w * h;
+  const px = i => [data[i * 4], data[i * 4 + 1], data[i * 4 + 2]];
+  // background colour = median of a thin frame around the photo
+  const bpx = []; const b = Math.max(2, Math.round(Math.min(w, h) * 0.025));
+  for (let x = 0; x < w; x += 2) for (let y = 0; y < b; y++) bpx.push(px(y * w + x), px((h - 1 - y) * w + x));
+  for (let y = 0; y < h; y += 2) for (let x = 0; x < b; x++) bpx.push(px(y * w + x), px(y * w + w - 1 - x));
+  const med = [0, 1, 2].map(c => { const v = bpx.map(p => p[c]).sort((a, z) => a - z); return v[v.length >> 1]; });
+  // distance from background, then an automatic (Otsu) threshold
+  const dist = new Uint8Array(n); const hist = new Uint32Array(256);
+  for (let i = 0; i < n; i++) { const p = px(i); const d = Math.min(255, Math.round(Math.hypot(p[0] - med[0], p[1] - med[1], p[2] - med[2]) / 1.5)); dist[i] = d; hist[d]++; }
+  let sum = 0; for (let t = 0; t < 256; t++) sum += t * hist[t];
+  let wB = 0, sB = 0, best = 0, thr = 40;
+  for (let t = 0; t < 256; t++) { wB += hist[t]; if (!wB) continue; const wF = n - wB; if (!wF) break; sB += t * hist[t]; const mB = sB / wB, mF = (sum - sB) / wF; const v = wB * wF * (mB - mF) ** 2; if (v > best) { best = v; thr = t; } }
+  thr = Math.max(18, Math.min(thr, 48));
+  const mask = new Uint8Array(n); for (let i = 0; i < n; i++) mask[i] = dist[i] > thr ? 1 : 0;
+  // close small gaps (glare, dark print near the edge) with one dilate + erode
+  const morph = (src, on) => { const out = new Uint8Array(n); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let v = on ? 0 : 1; for (let dy = -1; dy <= 1 && v !== (on ? 1 : 0); dy++) for (let dx = -1; dx <= 1; dx++) { const yy = y + dy, xx = x + dx; const s = yy < 0 || yy >= h || xx < 0 || xx >= w ? 0 : src[yy * w + xx]; if (on ? s : !s) { v = on ? 1 : 0; break; } } out[y * w + x] = v; } return out; };
+  const edged = morph(morph(mask, true), false);
+  // everything the background can't reach from the photo's edge is card (fills dark areas inside the card)
+  const outside = new Uint8Array(n); const fl = [];
+  for (let x = 0; x < w; x++) fl.push(x, (h - 1) * w + x); for (let y = 0; y < h; y++) fl.push(y * w, y * w + w - 1);
+  while (fl.length) { const i = fl.pop(); if (outside[i] || edged[i]) continue; outside[i] = 1; const x = i % w, y = (i / w) | 0; if (x > 0) fl.push(i - 1); if (x < w - 1) fl.push(i + 1); if (y > 0) fl.push(i - w); if (y < h - 1) fl.push(i + w); }
+  const closed = new Uint8Array(n); for (let i = 0; i < n; i++) closed[i] = outside[i] ? 0 : 1;
+  // largest connected region = the card
+  const lab = new Int32Array(n).fill(-1); let bestId = -1, bestSize = 0; const stack = [];
+  for (let s = 0; s < n; s++) {
+    if (!closed[s] || lab[s] !== -1) continue;
+    let size = 0; stack.push(s); lab[s] = s;
+    while (stack.length) { const i = stack.pop(); size++; const x = i % w, y = (i / w) | 0; for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1]) if (j >= 0 && closed[j] && lab[j] === -1) { lab[j] = s; stack.push(j); } }
+    if (size > bestSize) { bestSize = size; bestId = s; }
+  }
+  if (bestSize < n * 0.06) return null;
+  // edge pixels of that region
+  const pts = [];
+  for (let i = 0; i < n; i++) { if (lab[i] !== bestId) continue; const x = i % w, y = (i / w) | 0; if (x === 0 || y === 0 || x === w - 1 || y === h - 1 || lab[i - 1] !== bestId || lab[i + 1] !== bestId || lab[i - w] !== bestId || lab[i + w] !== bestId) pts.push([x, y]); }
+  // rough corners: extreme points along the diagonals
+  const ext = f => pts.reduce((a, p) => (f(p) > f(a) ? p : a), pts[0]);
+  let c = [ext(p => -p[0] - p[1]), ext(p => p[0] - p[1]), ext(p => p[0] + p[1]), ext(p => p[1] - p[0])];
+  // refine: fit a straight line to each side (skipping the rounded corners), then intersect neighbours
+  const diag = Math.hypot(w, h); const lines = [];
+  for (let s = 0; s < 4; s++) {
+    const a = c[s], z = c[(s + 1) % 4]; const dx = z[0] - a[0], dy = z[1] - a[1]; const L = Math.hypot(dx, dy) || 1; const ux = dx / L, uy = dy / L;
+    const near = pts.filter(p => { const t = ((p[0] - a[0]) * ux + (p[1] - a[1]) * uy) / L; const d = Math.abs((p[0] - a[0]) * uy - (p[1] - a[1]) * ux); return t > 0.12 && t < 0.88 && d < diag * 0.03; });
+    if (near.length < 12) { lines.push(null); continue; }
+    const mx = near.reduce((q, p) => q + p[0], 0) / near.length, my = near.reduce((q, p) => q + p[1], 0) / near.length;
+    let sxx = 0, syy = 0, sxy = 0; for (const p of near) { const X = p[0] - mx, Y = p[1] - my; sxx += X * X; syy += Y * Y; sxy += X * Y; }
+    const th = 0.5 * Math.atan2(2 * sxy, sxx - syy); lines.push({ mx, my, dx: Math.cos(th), dy: Math.sin(th) });
+  }
+  const meet = (l1, l2) => { const det = l1.dx * l2.dy - l1.dy * l2.dx; if (Math.abs(det) < 1e-6) return null; const t = ((l2.mx - l1.mx) * l2.dy - (l2.my - l1.my) * l2.dx) / det; return [l1.mx + l1.dx * t, l1.my + l1.dy * t]; };
+  const refined = c.map((p, i) => { const l1 = lines[(i + 3) % 4], l2 = lines[i]; const q = l1 && l2 ? meet(l1, l2) : null; return q && Math.hypot(q[0] - p[0], q[1] - p[1]) < diag * 0.08 ? q : p; });
+  // a card-like shape covers most of its bounding quad; otherwise give up and let the person place corners
+  const area = Math.abs(refined.reduce((a, p, i) => { const q = refined[(i + 1) % 4]; return a + p[0] * q[1] - q[0] * p[1]; }, 0) / 2);
+  if (area < n * 0.06 || bestSize / area < 0.75) return null;
+  return refined.map(p => [p[0] / k, p[1] / k]);
+}
+
+/* --- perspective warp --------------------------------------------------- */
+function homography(dst, src) { // maps dst (u,v) -> src (x,y)
+  const A = [], B = [];
+  for (let i = 0; i < 4; i++) {
+    const [u, v] = dst[i], [x, y] = src[i];
+    A.push([u, v, 1, 0, 0, 0, -u * x, -v * x]); B.push(x);
+    A.push([0, 0, 0, u, v, 1, -u * y, -v * y]); B.push(y);
+  }
+  for (let i = 0; i < 8; i++) { // Gaussian elimination with partial pivoting
+    let m = i; for (let r = i + 1; r < 8; r++) if (Math.abs(A[r][i]) > Math.abs(A[m][i])) m = r;
+    [A[i], A[m]] = [A[m], A[i]]; [B[i], B[m]] = [B[m], B[i]];
+    for (let r = i + 1; r < 8; r++) { const f = A[r][i] / A[i][i]; for (let c = i; c < 8; c++) A[r][c] -= f * A[i][c]; B[r] -= f * B[i]; }
+  }
+  const hh = new Array(8); for (let i = 7; i >= 0; i--) { let s = B[i]; for (let c = i + 1; c < 8; c++) s -= A[i][c] * hh[c]; hh[i] = s / A[i][i]; }
+  return hh;
+}
+function warpCard(src, quad, ow = OUT_W, oh = OUT_H) {
+  const { w, h, data } = src; const s = src.k;
+  const q = quad.map(p => [p[0] * s, p[1] * s]);
+  const H = homography([[0, 0], [ow, 0], [ow, oh], [0, oh]], q);
+  const out = document.createElement('canvas'); out.width = ow; out.height = oh;
+  const g = out.getContext('2d'); const im = g.createImageData(ow, oh); const o = im.data;
+  for (let v = 0; v < oh; v++) for (let u = 0; u < ow; u++) {
+    const uu = u + 0.5, vv = v + 0.5; const Wd = H[6] * uu + H[7] * vv + 1;
+    let x = (H[0] * uu + H[1] * vv + H[2]) / Wd - 0.5, y = (H[3] * uu + H[4] * vv + H[5]) / Wd - 0.5;
+    x = Math.max(0, Math.min(w - 1.001, x)); y = Math.max(0, Math.min(h - 1.001, y));
+    const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0; const i00 = (y0 * w + x0) * 4, i10 = i00 + 4, i01 = i00 + w * 4, i11 = i01 + 4; const oi = (v * ow + u) * 4;
+    for (let c = 0; c < 3; c++) o[oi + c] = (data[i00 + c] * (1 - fx) + data[i10 + c] * fx) * (1 - fy) + (data[i01 + c] * (1 - fx) + data[i11 + c] * fx) * fy;
+    o[oi + 3] = 255;
+  }
+  g.putImageData(im, 0, 0); return out;
+}
+/* top loader mode: inside the holder's outline, find the card's own edges and move the corners to them */
+function snapInside(src, quad) {
+  const W = 500, H = 700; const cv = warpCard(src, quad, W, H); const d = cv.getContext('2d').getImageData(0, 0, W, H).data;
+  const gray = new Float32Array(W * H); for (let i = 0; i < W * H; i++) gray[i] = d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114;
+  const G = (x, y) => gray[y * W + x];
+  const prof = (len, other, f) => { const e = new Float32Array(len); for (let r = 1; r < len - 1; r++) { let s = 0, c = 0; for (let t = Math.round(other * 0.15); t < other * 0.85; t += 2) { s += f(r, t); c++; } e[r] = s / c; } return e; };
+  const rowE = prof(H, W, (r, x) => Math.abs(G(x, r + 1) - G(x, r - 1))), colE = prof(W, H, (c, y) => Math.abs(G(c + 1, y) - G(c - 1, y)));
+  const find = (E, len, fromEnd) => { // first strong edge moving inward, skipping the holder's own rim
+    const a = Math.round(len * 0.017), z = Math.round(len * 0.16); let mx = 0; const at = i => E[fromEnd ? len - 1 - i : i];
+    for (let i = a; i <= z; i++) mx = Math.max(mx, at(i));
+    if (mx < 6) return null;
+    for (let i = a; i <= z; i++) { // first edge peak (local maximum) that is at least half as strong as the strongest
+      const v = at(i); if (v > mx * 0.5 && v >= at(i - 1) && v >= at(i + 1)) return fromEnd ? len - 1 - i : i;
+    }
+    return null;
+  };
+  const t = find(rowE, H, false), b = find(rowE, H, true), l = find(colE, W, false), r = find(colE, W, true);
+  if ([t, b, l, r].some(v => v === null)) return quad;
+  const Hm = homography([[0, 0], [W, 0], [W, H], [0, H]], quad);
+  const map = (u, v) => { const k = Hm[6] * u + Hm[7] * v + 1; return [(Hm[0] * u + Hm[1] * v + Hm[2]) / k, (Hm[3] * u + Hm[4] * v + Hm[5]) / k]; };
+  return [map(l, t), map(r, t), map(r, b), map(l, b)];
+}
+const canvasBlob = cv => new Promise(r => cv.toBlob(r, 'image/jpeg', 0.92));
+/* order four points as top-left, top-right, bottom-right, bottom-left */
+function orderQuad(p) { const c = [p.reduce((a, q) => a + q[0], 0) / 4, p.reduce((a, q) => a + q[1], 0) / 4]; const s = [...p].sort((a, b) => Math.atan2(a[1] - c[1], a[0] - c[0]) - Math.atan2(b[1] - c[1], b[0] - c[0])); let i = 0, m = Infinity; s.forEach((q, j) => { if (q[0] + q[1] < m) { m = q[0] + q[1]; i = j; } }); return [...s.slice(i), ...s.slice(0, i)]; }
+/* portrait output: if the card was shot sideways, start the corners on a short side */
+function portraitQuad(q) { const top = Math.hypot(q[1][0] - q[0][0], q[1][1] - q[0][1]), side = Math.hypot(q[3][0] - q[0][0], q[3][1] - q[0][1]); return top > side * 1.15 ? [q[3], q[0], q[1], q[2]] : q; }
+
+/* used when a photo is added: keep the original, save a straightened copy */
+async function processCardPhoto(file, auto, toploader) {
+  const orig = await compressImage(file, 2400, 0.9);
+  if (!auto) return { orig, out: orig, quad: null };
+  try {
+    const bmp = await bitmapOf(orig); const q = detectCardQuad(bmp);
+    if (q) { const src = bitmapPixels(bmp, 2400); let quad = portraitQuad(orderQuad(q)); if (toploader) quad = snapInside(src, quad); return { orig, out: await canvasBlob(warpCard(src, quad)), quad }; }
+  } catch (e) { console.warn('straighten failed', e); }
+  return { orig, out: await autoCropCard(orig), quad: null };
+}
+
+/* --- corner editor ------------------------------------------------------- */
+const ST = { card: null, side: 'front', bmp: null, quad: null, view: null, src: null };
+async function openStraighten(cardId, side = 'front') {
+  const c = cardById(cardId); ST.card = c; ST.side = side;
+  const fileId = c[side + 'Orig'] || c[side]; if (!fileId) return toast('Add a ' + side + ' photo first');
+  const f = await fileGet(fileId); if (!f) return toast('Photo missing on this device');
+  ST.bmp = await bitmapOf(f.blob); ST.src = bitmapPixels(ST.bmp, 2400);
+  if (c[side + 'Quad'] && c[side + 'Orig']) ST.quad = c[side + 'Quad'].map(p => p.slice());
+  else { const q = detectCardQuad(ST.bmp); ST.quad = q ? portraitQuad(orderQuad(q)) : defaultQuad(); if (q && S.settings.toploader) ST.quad = snapInside(ST.src, ST.quad); }
+  openModal(`<div>${mhead('Straighten photo')}
+    <div class="row"><div class="seg">${['front', 'back'].map(s => `<button type="button" data-act="stSide" data-v="${s}" class="${s === side ? 'on' : ''}" ${c[s] ? '' : 'disabled'}>${s === 'front' ? 'Front' : 'Back'}</button>`).join('')}</div>
+      <small class="muted">Drag the 4 dots onto the card's corners (inside the top loader, if it's in one).</small></div>
+    <div class="st-wrap"><div class="st-stage" id="st-stage"><canvas id="st-img"></canvas><svg id="st-svg"></svg>${[0, 1, 2, 3].map(i => `<button type="button" class="st-h" data-h="${i}" aria-label="Corner ${i + 1}"></button>`).join('')}<canvas id="st-loupe" width="140" height="140" hidden></canvas></div>
+      <div class="st-prev"><span class="muted" style="font:600 .72rem var(--display);letter-spacing:.08em;text-transform:uppercase">Result</span><canvas id="st-out" width="250" height="350"></canvas></div></div>
+    <div class="sheet-foot"><button class="btn" type="button" data-act="stAuto">Auto-detect</button><button class="btn" type="button" data-act="stSnap">Snap inside top loader</button><button class="btn" type="button" data-act="stRotate">Rotate 90°</button><button class="btn" type="button" data-act="stFull">Use whole photo</button><span class="spacer"></span><button class="btn" type="button" data-act="close">Cancel</button><button class="btn pri" type="button" data-act="stSave">Save</button></div></div>`);
+  $('#modal-root .sheet').style.width = 'min(900px, 100%)';
+  layoutStraighten(); stPreview();
+  const stage = $('#st-stage');
+  let drag = null;
+  stage.addEventListener('pointerdown', e => { const hnd = e.target.closest('.st-h'); if (!hnd) return; e.preventDefault(); drag = +hnd.dataset.h; hnd.setPointerCapture(e.pointerId); });
+  stage.addEventListener('pointermove', e => {
+    if (drag === null) return; const r = $('#st-img').getBoundingClientRect(); const s = ST.view.scale;
+    const x = Math.max(0, Math.min(ST.bmp.width, (e.clientX - r.left) / s)), y = Math.max(0, Math.min(ST.bmp.height, (e.clientY - r.top) / s));
+    ST.quad[drag] = [x, y]; drawHandles(); drawLoupe(x, y, e.clientX - r.left, e.clientY - r.top);
+  });
+  const end = () => { if (drag === null) return; drag = null; $('#st-loupe').hidden = true; stPreview(); };
+  stage.addEventListener('pointerup', end); stage.addEventListener('pointercancel', end);
+}
+const defaultQuad = () => { const w = ST.bmp.width, h = ST.bmp.height; return [[w * .1, h * .1], [w * .9, h * .1], [w * .9, h * .9], [w * .1, h * .9]]; };
+function layoutStraighten() {
+  const cv = $('#st-img'); const stage = $('#st-stage'); const maxW = stage.parentElement.clientWidth - (innerWidth > 700 ? 280 : 0); const maxH = Math.min(innerHeight * 0.62, 640);
+  const s = Math.min(maxW / ST.bmp.width, maxH / ST.bmp.height); ST.view = { scale: s };
+  cv.width = Math.round(ST.bmp.width * s * Math.min(2, devicePixelRatio || 1)); cv.height = Math.round(ST.bmp.height * s * Math.min(2, devicePixelRatio || 1));
+  cv.style.width = Math.round(ST.bmp.width * s) + 'px'; cv.style.height = Math.round(ST.bmp.height * s) + 'px';
+  cv.getContext('2d').drawImage(ST.bmp, 0, 0, cv.width, cv.height);
+  const svg = $('#st-svg'); svg.setAttribute('width', cv.style.width); svg.setAttribute('height', cv.style.height);
+  drawHandles();
+}
+function drawHandles() {
+  const s = ST.view.scale; const q = ST.quad;
+  $$('.st-h').forEach((h, i) => { h.style.left = q[i][0] * s + 'px'; h.style.top = q[i][1] * s + 'px'; });
+  $('#st-svg').innerHTML = `<polygon points="${q.map(p => p[0] * s + ',' + p[1] * s).join(' ')}" fill="rgba(255,176,0,.12)" stroke="var(--acc-base)" stroke-width="2"/><line x1="${q[0][0] * s}" y1="${q[0][1] * s}" x2="${q[1][0] * s}" y2="${q[1][1] * s}" stroke="#fff" stroke-width="3"/>`;
+}
+function drawLoupe(x, y, sx, sy) {
+  const L = $('#st-loupe'); L.hidden = false; const g = L.getContext('2d'); const z = 70 / ST.view.scale / 3;
+  g.clearRect(0, 0, 140, 140); g.save(); g.beginPath(); g.arc(70, 70, 68, 0, Math.PI * 2); g.clip();
+  g.drawImage(ST.bmp, x - z, y - z, z * 2, z * 2, 0, 0, 140, 140); g.restore();
+  g.strokeStyle = '#ffb000'; g.lineWidth = 3; g.beginPath(); g.arc(70, 70, 68, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.moveTo(70, 52); g.lineTo(70, 88); g.moveTo(52, 70); g.lineTo(88, 70); g.stroke();
+  L.style.left = Math.max(0, sx - 70) + 'px'; L.style.top = Math.max(0, sy - 170) + 'px';
+}
+function stPreview() { const out = warpCard(ST.src, ST.quad, 250, 350); $('#st-out').getContext('2d').drawImage(out, 0, 0); }
+Object.assign(A, {
+  straighten: el => openStraighten(el.dataset.id, el.dataset.side || 'front'),
+  stSide: el => { if (el.dataset.v !== ST.side) openStraighten(ST.card.id, el.dataset.v); },
+  stAuto: () => { const q = detectCardQuad(ST.bmp); if (!q) return toast('Couldn\'t find the card edges. Drag the dots by hand.'); ST.quad = portraitQuad(orderQuad(q)); if (S.settings.toploader) ST.quad = snapInside(ST.src, ST.quad); drawHandles(); stPreview(); },
+  stSnap: () => { ST.quad = snapInside(ST.src, ST.quad); drawHandles(); stPreview(); },
+  stRotate: () => { ST.quad = [ST.quad[3], ST.quad[0], ST.quad[1], ST.quad[2]]; drawHandles(); stPreview(); },
+  stFull: () => { const w = ST.bmp.width, h = ST.bmp.height; ST.quad = [[0, 0], [w, 0], [w, h], [0, h]]; drawHandles(); stPreview(); },
+  stSave: async el => {
+    el.disabled = true; el.textContent = 'Saving…';
+    const c = cardById(ST.card.id); const side = ST.side;
+    if (!c[side + 'Orig']) c[side + 'Orig'] = c[side]; // keep the untouched photo so it can be re-straightened later
+    const blob = await canvasBlob(warpCard(ST.src, ST.quad));
+    if (c[side] && c[side] !== c[side + 'Orig']) await fileDel(c[side]);
+    c[side] = await fileSave(blob, side + '.jpg'); c[side + 'Quad'] = ST.quad.map(p => [Math.round(p[0]), Math.round(p[1])]);
+    await save('cards', c, { quiet: true }); onChange('cards'); closeModal(); toast('Photo straightened');
+  },
+});
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
 async function loadDemo() {
