@@ -290,6 +290,32 @@ details.crit .tablewrap { border: 0; border-top: 1px solid var(--line); border-r
   #print-root .psheet { break-after: page; page-break-after: always; }
   #print-root .psheet:last-child { break-after: auto; page-break-after: auto; }
 }
+
+/* receipt lot picker */
+.rm-lot { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 8px; }
+.rm-lothead { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+.rm-lottools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rm-lottools label { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+.rm-lottools input[type=search] { flex: 1 1 200px; min-width: 0; }
+.rm-lotlist { max-height: 260px; overflow: auto; display: grid; gap: 2px; }
+.rm-lotc { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; cursor: pointer; white-space: normal; }
+.rm-lotc.on { background: color-mix(in srgb, var(--acc) 12%, transparent); }
+.rm-lotc .grow { flex: 1; min-width: 0; }
+.rm-lotc .rm-amt { width: 86px; }
+.rm-lotc[hidden] { display: none; }
+@media (max-width: 640px) {
+  .rm-lines thead { display: none; }
+  .rm-lines, .rm-lines tbody { display: block; }
+  .rm-lines tr { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .rm-lines tr[hidden] { display: none; }
+  .rm-lines td { display: block; padding: 0 !important; border: 0 !important; min-width: 0 !important; white-space: normal !important; }
+  .rm-lot, .rm-lotlist, .rm-lotc { min-width: 0; max-width: 100%; }
+  .rm-lotc small.num { display: none; }
+  .rm-lines td:first-child, .rm-lines td:last-child, .rm-lines tr.rm-lotrow td { grid-column: 1 / -1; }
+  .rm-lines input, .rm-lines select { width: 100% !important; }
+  .rm-lines .rm-lotc input[type=checkbox] { width: auto !important; }
+  .rm-lines .rm-lotc .rm-amt { width: 80px !important; }
+}
 </style>
 <div id="app"></div>
 <div id="modal-root"></div>
@@ -758,7 +784,7 @@ function shell() {
       <div class="brand"><i></i>DUGOUT</div>
       <nav>${NAV.map(n => n === '-' ? '<div class="sep"></div>' : `<a href="#/${n[0]}" data-nav="${n[0]}">${n[1]}</a>`).join('')}</nav>
       <div class="foot">
-        <span class="muted" style="color:inherit;opacity:.6">Version 1.10 · receipts for existing cards</span>
+        <span class="muted" style="color:inherit;opacity:.6">Version 1.11 · split lots from receipts</span>
         <span id="sync-status">${esc(Sync.status || (syncCfg() ? 'Sync ready' : 'Saved on this device'))}</span>
         <div class="row"><button class="btn sm" data-act="theme" type="button">Light / dark</button>${syncCfg() ? '<button class="btn sm" data-act="syncNow" type="button">Sync</button>' : ''}</div>
       </div>
@@ -3661,27 +3687,97 @@ async function runCardReceipt(files) {
   const focusIdx = items.length === 1 ? 0 : scores.indexOf(Math.max(...scores));
   RM.items = items.map((it, i) => {
     const sugg = suggestCards(it, RM.focus).filter(o => o.c.id !== RM.focus || i === focusIdx);
-    const match = i === focusIdx ? RM.focus : (sugg[0] && sugg[0].sc >= 4 ? sugg[0].c.id : '');
+    let match = i === focusIdx ? RM.focus : (sugg[0] && sugg[0].sc >= 4 ? sugg[0].c.id : '');
+    if (lotCount(it.title) || /\blot\b|\bbundle\b/i.test(it.title || '')) match = '__lot'; // one price for several cards
     return Object.assign({}, it, { sugg, match });
   });
   renderCardReceipt();
+}
+const LOT = '__lot';
+const lotCount = t => { const m = String(t || '').match(/\blot\s*of\s*(\d{1,3})\b|\b(\d{1,3})\s*(?:-|\s)?(?:card|cards)\b(?!\s*#)/i); const n = m ? +(m[1] || m[2]) : 0; return n > 1 ? n : 0; };
+// split an amount into parts by weight, to the cent, so the parts always add back up exactly
+function splitCents(total, weights) {
+  const cents = Math.round((+total || 0) * 100); const W = weights.reduce((a, b) => a + b, 0);
+  if (!weights.length) return [];
+  const w = W > 0 ? weights : weights.map(() => 1); const WW = W > 0 ? W : weights.length;
+  const raw = w.map(x => cents * x / WW); const out = raw.map(Math.floor); let left = cents - out.reduce((a, b) => a + b, 0);
+  raw.map((x, k) => [x - Math.floor(x), k]).sort((a, b) => b[0] - a[0]).forEach(([, k]) => { if (left > 0) { out[k]++; left--; } });
+  return out.map(c => c / 100);
+}
+// the cards picked for a lot line and how its price divides between them
+function lotParts(fd, i, price) {
+  const ids = fd.getAll('l' + i).filter(id => cardById(id)); const method = fd.get('lm' + i) || 'even';
+  if (!ids.length) return { ids, method, prices: [], weights: [] };
+  let weights = ids.map(() => 1), note = '';
+  if (method === 'value') { weights = ids.map(id => Math.max(0, num(cardById(id).value))); if (!weights.some(x => x > 0)) { weights = ids.map(() => 1); note = 'None of these cards has a current value yet, so the lot is split evenly.'; } else if (weights.some(x => !x)) note = 'Cards with no current value get $0 of the lot. Add a value to them or use another split.'; }
+  if (method === 'custom') { const typed = ids.map(id => num(fd.get(`la${i}_${id}`))); const sum = r2(typed.reduce((a, b) => a + b, 0)); return { ids, method, weights: typed, prices: typed.map(r2), typedSum: sum, left: r2(price - sum) }; }
+  return { ids, method, weights, prices: splitCents(price, weights), note };
 }
 function rmShares(fd) {
   const rows = RM.items.map((it, i) => ({ i, match: fd.get('m' + i) || '', price: num(fd.get('p' + i)), qty: Math.max(1, parseInt(fd.get('q' + i), 10) || 1) }));
   const used = rows.filter(r => r.match);
   const extra = { ship: num(fd.get('shipping')), tax: num(fd.get('tax')), fees: num(fd.get('fees')) };
   const split = fd.get('split') === 'on';
-  // costs on a receipt belong to the whole order; give each matched card its share by price
-  const allPrices = rows.map(r => r.price || 0); const allSum = allPrices.reduce((a, b) => a + b, 0);
-  const share = (k, r) => !split ? (used[0] && used[0].i === r.i ? extra[k] : 0) : allSum ? r2(extra[k] * (r.price || 0) / allSum) : r2(extra[k] / Math.max(1, rows.length));
-  return used.map(r => ({ ...r, ship: share('ship', r), tax: share('tax', r), fees: share('fees', r) }));
+  // costs on a receipt belong to the whole order; each line gets its share by price (lines you skip keep theirs)
+  const allSum = rows.reduce((a, r) => a + (r.price || 0), 0);
+  const lineShare = (k, r) => !split ? (used[0] && used[0].i === r.i ? extra[k] : 0) : allSum ? r2(extra[k] * (r.price || 0) / allSum) : r2(extra[k] / Math.max(1, rows.length));
+  const out = [];
+  for (const r of used) {
+    const ship = lineShare('ship', r), tax = lineShare('tax', r), fees = lineShare('fees', r);
+    if (r.match !== LOT) { out.push({ ...r, ship, tax, fees }); continue; }
+    // a lot: the line's price, shipping, tax and fees divide across its cards the same way
+    const L = lotParts(fd, r.i, r.price); if (!L.ids.length) continue;
+    const w = L.method === 'custom' ? L.prices : L.weights;
+    const sh = splitCents(ship, w), tx = splitCents(tax, w), fe = splitCents(fees, w);
+    L.ids.forEach((id, k) => out.push({ i: r.i, lot: true, match: id, price: L.prices[k], qty: Math.max(1, +((cardById(id).buy || {}).qty) || 1), ship: sh[k], tax: tx[k], fees: fe[k] }));
+  }
+  return out;
 }
+// problems that should stop the update
+function rmProblems(fd) {
+  for (let i = 0; i < RM.items.length; i++) {
+    if (fd.get('m' + i) !== LOT) continue;
+    const L = lotParts(fd, i, num(fd.get('p' + i)));
+    if (!L.ids.length) return `Line ${i + 1} is a lot: tick the cards that were in it.`;
+    if (L.method === 'custom' && Math.abs(L.left) >= 0.01) return `Line ${i + 1}: the amounts add up to ${money(L.typedSum)}, but the line is ${money(num(fd.get('p' + i)))}.`;
+  }
+  return '';
+}
+function lotListHTML(i) {
+  const it = RM.items[i]; const first = [RM.focus, ...it.sugg.map(o => o.c.id)];
+  const cards = S.cards.filter(live).sort((a, b) => { const fa = first.indexOf(a.id), fb = first.indexOf(b.id); if (fa !== fb) return (fa < 0 ? 999 : fa) - (fb < 0 ? 999 : fb); return String(b.createdAt || '').localeCompare(String(a.createdAt || '')); });
+  const takenElsewhere = RM.items.some((x, j) => j !== i && $(`[name=m${j}]`) && $(`[name=m${j}]`).value === RM.focus);
+  return cards.map(c => `<label class="rm-lotc" data-q="${esc(ckey([c.code, c.player, cardSet(c), c.number, c.parallel].join(' ')))}"><input type="checkbox" name="l${i}" value="${c.id}"${c.id === RM.focus && !takenElsewhere ? ' checked' : ''}><span class="grow"><b>${esc(cardName(c))}</b> <small class="muted">${esc(c.code || '')} · ${esc(cardSet(c))}${c.parallel ? ' · ' + esc(c.parallel) : ''}</small></span><small class="muted num">${c.value ? 'value ' + money(c.value) : ''}</small><input class="rm-amt" name="la${i}_${c.id}" inputmode="decimal" placeholder="0.00" hidden><b class="num rm-share" data-share="${i}_${c.id}"></b></label>`).join('');
+}
+// show/hide lot pickers to match the selects; build each picker the first time it opens
+function rmSync(f) {
+  const fd = new FormData(f);
+  RM.items.forEach((it, i) => {
+    const tr = $(`#modal-root tr.rm-lotrow[data-i="${i}"]`); if (!tr) return;
+    const on = fd.get('m' + i) === LOT; tr.hidden = !on; if (!on) return;
+    const list = tr.querySelector('.rm-lotlist'); if (!tr.dataset.built) { list.innerHTML = lotListHTML(i); tr.dataset.built = '1'; }
+    const fd2 = new FormData(f); const price = num(fd2.get('p' + i)); const L = lotParts(fd2, i, price); const custom = L.method === 'custom';
+    tr.querySelectorAll('.rm-lotc').forEach(lab => { const cb = lab.querySelector('[type=checkbox]'); const amt = lab.querySelector('.rm-amt'); amt.hidden = !(custom && cb.checked); lab.classList.toggle('on', cb.checked); const k = L.ids.indexOf(cb.value); lab.querySelector('.rm-share').textContent = k >= 0 && !custom ? money(L.prices[k]) : ''; });
+    const want = lotCount(it.title);
+    const bits = [`${L.ids.length} card${L.ids.length === 1 ? '' : 's'} picked`];
+    if (want) bits.push(`receipt says ${want}`);
+    if (custom && L.ids.length) bits.push(Math.abs(L.left) < 0.01 ? 'amounts add up' : L.left > 0 ? `${money(L.left)} left to assign` : `${money(-L.left)} over the line price`);
+    else if (L.ids.length) bits.push(`${money(price)} split ${L.method === 'value' ? 'by current value' : 'evenly'}`);
+    tr.querySelector('.rm-lotinfo').innerHTML = esc(bits.join(' · ')) + (want && want !== L.ids.length ? ' <span class="neg">(count doesn\'t match)</span>' : '') + (L.note ? `<div class="muted" style="margin-top:4px">${esc(L.note)}</div>` : '');
+  });
+}
+document.addEventListener('input', e => {
+  const i = e.target.dataset && e.target.dataset.lotsearch; if (i === undefined) return;
+  const q = ckey(e.target.value);
+  e.target.closest('tr').querySelectorAll('.rm-lotc').forEach(l => { l.hidden = !!q && !l.dataset.q.includes(q) && !l.querySelector('[type=checkbox]').checked; });
+});
 function renderCardReceipt() {
   const p = RM.parsed; const focus = cardById(RM.focus);
   const opt = (it, i) => {
     const list = [];
     if (focus) list.push([focus.id, `This card · ${focus.code} ${cardName(focus)}`]);
     it.sugg.forEach(o => { if (o.c.id !== RM.focus) list.push([o.c.id, `${o.c.code} ${cardName(o.c)} · ${cardSet(o.c)}`]); });
+    list.push([LOT, 'Split across several cards (lot)…']);
     return `<select name="m${i}">${opts(list, it.match, 'Not in my inventory (skip)')}</select>`;
   };
   $('#modal-root .sheet').style.width = 'min(860px, 100%)';
@@ -3694,32 +3790,39 @@ function renderCardReceipt() {
     ${field('Fees', `<input name="fees" value="${p.fees ?? ''}" inputmode="decimal">`)}${field('Order total', `<input name="total" value="${p.total ?? ''}" inputmode="decimal">`)}
   </div><label class="chk"><input type="checkbox" name="split" checked> Split shipping, tax and fees across the lines by price</label></fieldset>
   <fieldset><legend>Lines on the receipt</legend>
-    <div class="tablewrap"><table class="t"><thead><tr><th>On the receipt</th><th>Qty</th><th>Price (line total)</th><th>Match to</th></tr></thead><tbody>
-    ${RM.items.map((it, i) => `<tr><td style="white-space:normal;min-width:180px">${esc(it.title || '—')}</td><td><input name="q${i}" value="${Math.max(1, +it.qty || 1)}" inputmode="numeric" style="width:52px"></td><td><input name="p${i}" value="${it.price ?? ''}" inputmode="decimal" style="width:96px"></td><td>${opt(it, i)}</td></tr>`).join('')}
+    <div class="tablewrap"><table class="t rm-lines"><thead><tr><th>On the receipt</th><th>Qty</th><th>Price (line total)</th><th>Match to</th></tr></thead><tbody>
+    ${RM.items.map((it, i) => `<tr><td style="white-space:normal;min-width:180px">${esc(it.title || '—')}</td><td><input name="q${i}" value="${Math.max(1, +it.qty || 1)}" inputmode="numeric" style="width:52px"></td><td><input name="p${i}" value="${it.price ?? ''}" inputmode="decimal" style="width:96px"></td><td>${opt(it, i)}</td></tr>
+    <tr class="rm-lotrow" data-i="${i}" hidden><td colspan="4"><div class="rm-lot">
+      <div class="rm-lothead"><b>Cards in this lot</b><span class="rm-lotinfo muted"></span></div>
+      <div class="rm-lottools"><label>Split the price <select name="lm${i}">${opts([['even', 'Evenly'], ['value', 'By current value'], ['custom', 'Type each amount']], 'even')}</select></label><input type="search" data-lotsearch="${i}" placeholder="Search your cards (name, set, code)"></div>
+      <div class="rm-lotlist"></div>
+      <small class="muted">Shipping, tax and fees for this line are split the same way.</small>
+    </div></td></tr>`).join('')}
     </tbody></table></div></fieldset>
   <fieldset><legend>What will change</legend><div id="rm-preview"></div></fieldset>
   ${platformList()}
   <div class="sheet-foot"><button class="btn" type="button" data-act="close">Cancel</button><button class="btn pri" type="submit">Update cards + attach receipt</button></div></form>`;
-  const f = $('#modal-root form'); const upd = () => rmPreview(f); f.addEventListener('input', upd); f.addEventListener('change', upd); upd();
+  const f = $('#modal-root form'); const upd = () => { rmSync(f); rmPreview(f); }; f.addEventListener('input', upd); f.addEventListener('change', upd); upd();
 }
 function rmPreview(f) {
-  const fd = new FormData(f); const rows = rmShares(fd); const box = $('#rm-preview');
-  if (!rows.length) { box.innerHTML = '<div class="empty">No lines matched to a card yet.</div>'; return; }
+  const fd = new FormData(f); const rows = rmShares(fd); const box = $('#rm-preview'); const prob = rmProblems(fd);
+  if (!rows.length) { box.innerHTML = prob ? `<div class="warn">${esc(prob)}</div>` : '<div class="empty">No lines matched to a card yet.</div>'; return; }
   const dupes = rows.map(r => r.match).filter((m, i, a) => a.indexOf(m) !== i);
-  box.innerHTML = (dupes.length ? '<div class="warn">Two lines are matched to the same card. Their prices will be added together.</div>' : '') + rows.map(r => {
+  box.innerHTML = (prob ? `<div class="warn" style="margin-bottom:8px">${esc(prob)}</div>` : '') + (dupes.length ? '<div class="warn">Two lines are matched to the same card. Their prices will be added together.</div>' : '') + rows.map(r => {
     const c = cardById(r.match); const b = c.buy || {}; const same = rows.filter(x => x.match === r.match);
     const nq = same.reduce((a, x) => a + x.qty, 0); const nb = { price: r2(same.reduce((a, x) => a + x.price, 0)), ship: r2(same.reduce((a, x) => a + x.ship, 0)), tax: r2(same.reduce((a, x) => a + x.tax, 0)), fees: r2(same.reduce((a, x) => a + x.fees, 0)) };
     if (same[0] !== r) return '';
     const ch = (lbl, a, z, fmt = money) => (String(a ?? '') === String(z ?? '') ? '' : `<div class="li"><span class="grow">${lbl}</span><span class="num muted">${a === undefined || a === '' ? '—' : fmt(a)}</span><span>→</span><b class="num">${fmt(z)}</b></div>`);
     const before = unitCost(c); const after = (nb.price + nb.ship + nb.tax + nb.fees + num(c.extraCost)) / nq;
-    return `<div style="margin-bottom:8px"><b>${esc(c.code)} · ${esc(cardName(c))}</b><div class="list">
+    return `<div style="margin-bottom:8px"><b>${esc(c.code)} · ${esc(cardName(c))}</b>${r.lot ? ' <span class="pill">from lot</span>' : ''}<div class="list">
       ${ch('Quantity bought', b.qty || 1, nq, v => v)}${ch('Price paid', b.price, nb.price)}${ch('Shipping', b.ship, nb.ship)}${ch('Tax', b.tax, nb.tax)}${ch('Fees', b.fees, nb.fees)}
       ${ch('Date', b.date, fd.get('date'), v => fmtDate(v))}${ch('Platform', b.platform, String(fd.get('platform') || '').trim(), v => esc(v || '—'))}${ch('Order #', b.order, String(fd.get('orderNo') || '').trim(), v => esc(v || '—'))}
       <div class="li"><span class="grow">Cost per card</span><span class="num muted">${money(before)}</span><span>→</span><b class="num">${money(after)}</b></div></div></div>`;
   }).join('');
 }
 FORMS.rmApply = async f => {
-  const fd = new FormData(f); const rows = rmShares(fd); if (!rows.length) return toast('Match at least one line to a card');
+  const fd = new FormData(f); const prob = rmProblems(fd); if (prob) return toast(prob);
+  const rows = rmShares(fd); if (!rows.length) return toast('Match at least one line to a card');
   const date = fd.get('date') || today(), platform = String(fd.get('platform') || '').trim(), order = String(fd.get('orderNo') || '').trim(), seller = String(fd.get('seller') || '').trim();
   const ids = [...new Set(rows.map(r => r.match))];
   for (const id of ids) {
