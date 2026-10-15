@@ -438,7 +438,7 @@ async function fileDel(id) {
 async function fileIds() { const k = DB.db ? await idb.keys('files') : []; return new Set([...k, ...memFiles.keys()]); }
 function referencedFileIds() {
   const ids = new Set();
-  S.cards.forEach(c => { if (!c.purged) ['front', 'back', 'frontOrig', 'backOrig', 'slabLabel'].forEach(k => c[k] && ids.add(c[k])); });
+  S.cards.forEach(c => { if (!c.purged) ['front', 'back', 'frontOrig', 'backOrig', 'slabLabel', 'slabLabelBack'].forEach(k => c[k] && ids.add(c[k])); });
   S.receipts.forEach(r => { if (!r.purged && r.fileId) ids.add(r.fileId); });
   S.expenses.forEach(x => { if (!x.purged && x.fileId) ids.add(x.fileId); });
   S.pickups.forEach(p => { if (!p.purged && p.photo) ids.add(p.photo); });
@@ -792,7 +792,7 @@ function shell() {
       <div class="brand"><i></i>DUGOUT</div>
       <nav>${NAV.map(n => n === '-' ? '<div class="sep"></div>' : `<a href="#/${n[0]}" data-nav="${n[0]}">${n[1]}</a>`).join('')}</nav>
       <div class="foot">
-        <span class="muted" style="color:inherit;opacity:.6">Version 1.12 · real slab labels + top loader sheets</span>
+        <span class="muted" style="color:inherit;opacity:.6">Version 1.13 · slab backs + touching top loaders</span>
         <span id="sync-status">${esc(Sync.status || (syncCfg() ? 'Sync ready' : 'Saved on this device'))}</span>
         <div class="row"><button class="btn sm" data-act="theme" type="button">Light / dark</button>${syncCfg() ? '<button class="btn sm" data-act="syncNow" type="button">Sync</button>' : ''}</div>
       </div>
@@ -1195,9 +1195,10 @@ async function submitCard(f) {
     const file = fd.get(side);
     if (file && file.size) {
       for (const k of [side, side + 'Orig']) if (c[k]) await fileDel(c[k]);
-      const slab = side === 'front' && SLAB_PICK.has(file) ? await SLAB_PICK.get(file) : null; // slab photo: real label + card cut out of it
+      const slab = SLAB_PICK.has(file) ? await SLAB_PICK.get(file) : null; // slab photo: real label + card cut out of it
       const r = slab && slab.label ? slab : await processCardPhoto(file, fd.get('autocrop') === 'on', fd.get('toploader') === 'on');
       if (side === 'front') { if (c.slabLabel) await fileDel(c.slabLabel); c.slabLabel = r.label ? await fileSave(r.label, 'label.jpg') : ''; c.slabLabelAspect = r.labelAspect || 0; }
+      else { if (c.slabLabelBack) await fileDel(c.slabLabelBack); c.slabLabelBack = r.label ? await fileSave(r.label, 'label-back.jpg') : ''; }
       c[side + 'Orig'] = await fileSave(r.orig, file.name);
       c[side] = r.out === r.orig ? c[side + 'Orig'] : await fileSave(await compressImage(r.out), side + '.jpg');
       c[side + 'Quad'] = r.quad ? r.quad.map(p => [Math.round(p[0]), Math.round(p[1])]) : null;
@@ -1514,7 +1515,7 @@ const FORMS = {
   filterName: async f => { S.settings.savedFilters.push({ name: String(new FormData(f).get('name')).trim(), f: Object.assign({}, F) }); await saveSettings(); closeModal(); toast('Filter saved'); },
 };
 async function purgeCard(c) {
-  for (const k of ['front', 'back', 'frontOrig', 'backOrig', 'slabLabel']) if (c[k]) await fileDel(c[k]);
+  for (const k of ['front', 'back', 'frontOrig', 'backOrig', 'slabLabel', 'slabLabelBack']) if (c[k]) await fileDel(c[k]);
   const keep = { id: c.id, code: c.code, purged: true, createdAt: c.createdAt };
   Object.keys(c).forEach(k => delete c[k]); Object.assign(c, keep);
   await save('cards', c, { quiet: true });
@@ -2555,12 +2556,13 @@ async function mountCard3D(host, c) {
   ];
   let zoomBase = 8.9;
   if (c.graded) {
-    let labImg = null; if (c.slabLabel) { try { const u = await fileURL(c.slabLabel); if (u) labImg = await loadImg(u); } catch (e) {} }
+    const imgOf = async id => { if (!id) return null; try { const u = await fileURL(id); return u ? await loadImg(u) : null; } catch (e) { return null; } };
+    const [labImg, labBackImg] = await Promise.all([imgOf(c.slabLabel), imgOf(c.slabLabelBack)]);
     const labH = labImg ? Math.max(0.5, Math.min(1.05, 2.9 / (c.slabLabelAspect || labImg.width / labImg.height))) : 0.67; const labY = 2.455 - labH / 2; // the real label keeps its own shape
     const cardY = -0.42, slab = slabParts(3.3, 5.35, 0.42, 0.18), lab = slabParts(2.9, labH, 0.012, 0.04);
     parts.forEach(p => { p.off = [0, cardY, 0]; });
     const labTex = glTex(G, labImg ? labelTexture(labImg) : genLabel(c));
-    parts.push({ m: glMesh(G, lab.front), tex: labTex, shine: 30, spec: .2, holo: 0, off: [0, labY, 0.02] }, { m: glMesh(G, lab.back), color: [.95, .95, .93], shine: 20, spec: .1, off: [0, labY, 0.02] });
+    parts.push({ m: glMesh(G, lab.front), tex: labTex, shine: 30, spec: .2, holo: 0, off: [0, labY, 0.02] }, labBackImg ? { m: glMesh(G, lab.back), tex: glTex(G, labelTexture(labBackImg)), shine: 30, spec: .2, holo: 0, off: [0, labY, 0.02] } : { m: glMesh(G, lab.back), color: [.95, .95, .93], shine: 20, spec: .1, off: [0, labY, 0.02] });
     parts.push({ m: glMesh(G, slab.edge), color: [.92, .96, 1], alpha: .45, shine: 90, spec: .9, holo: 0, off: [0, 0, 0], glass: true },
       { m: glMesh(G, slab.back), color: [.92, .96, 1], alpha: .1, shine: 120, spec: .8, holo: 0, off: [0, 0, 0], glass: true },
       { m: glMesh(G, slab.front), color: [.92, .96, 1], alpha: .12, shine: 120, spec: 1, holo: 0, off: [0, 0, 0], glass: true });
@@ -2892,7 +2894,18 @@ function detectCardQuads(bmp) {
   const good = f => f && f.fill >= 0.72 && f.ratio >= 1.08 && f.ratio <= 2.1;
   const fits = regs.map(r => ({ r, f: quadFromRegion(r) }));
   const singles = fits.filter(o => o.f && o.f.fill >= 0.85 && o.f.ratio >= 1.2 && o.f.ratio <= 1.65).map(o => o.r.size).sort((a, b) => a - b);
-  const typical = singles.length ? singles[singles.length >> 1] : 0;
+  let typical = singles.length >= 3 ? singles[singles.length >> 1] : 0; // a lone 'single' can be two loaders side by side, which look the same
+  if (!typical) { // every card touches another (top loaders side by side): learn how big one card is
+    // split what comes apart, then pick the card size that makes every piece a whole number of cards
+    const sizes = []; for (const { r, f } of fits) { if (good(f)) { sizes.push(f.area); continue; } splitDeep(M, regs, r, 0, good).forEach(g => g.area && sizes.push(g.area)); }
+    let best = null;
+    for (const s0 of sizes) for (let d = 1; d <= 4; d++) {
+      const t = s0 / d; if (t < M.n * 0.015 || t > M.n * 0.3) continue;
+      let err = 0, cnt = 0; for (const s1 of sizes) { const k = Math.max(1, Math.round(s1 / t)); err += Math.abs(s1 / t - k); cnt += k; }
+      const sc = err + 0.06 * cnt; if (!best || sc < best.sc) best = { sc, t };
+    }
+    if (best) typical = best.t;
+  }
   const quads = []; let merged = 0;
   for (const { r, f } of fits) {
     const k = typical ? Math.round(r.size / typical) : 1;
@@ -4146,10 +4159,10 @@ function parseSlabLabel(text, graderHint) {
 }
 
 /* ---------- card page: "Use slab label" ---------- */
-const SL = { id: null, res: null };
+const SL = { id: null, res: null, back: null };
 async function openSlabRead(id) {
   const c = cardById(id); const fid = c.frontOrig || c.front; if (!fid) return toast('Add a front photo of the slab first');
-  SL.id = id; SL.res = null;
+  SL.id = id; SL.res = null; SL.back = null;
   openModal(`<div>${mhead('Reading the slab')}<div class="calc"><div><span id="sl-step">Finding the card and label</span><b id="sl-pct"></b></div></div></div>`, { narrow: true });
   let res = null;
   try {
@@ -4157,6 +4170,8 @@ async function openSlabRead(id) {
     await loadPlayerNames().catch(() => {});
     res = await processSlabPhoto(blob, { orig: blob, onProgress: (p, label) => { const a = $('#sl-step'), b = $('#sl-pct'); if (a) a.textContent = label === 'Reading text' ? 'Reading the label' : label; if (b && p !== null) b.textContent = Math.round(p * 100) + '%'; } });
   } catch (e) { console.warn(e); }
+  const bid = c.backOrig || c.back; // the back of the slab: its own label back and the card's back
+  if (res && res.label && bid) { try { const a = $('#sl-step'); if (a) a.textContent = 'Finding the back label'; const rec = await fileGet(bid); if (rec && rec.blob) { const b = await processSlabPhoto(rec.blob, { orig: rec.blob, read: false }); if (b && b.label) SL.back = b; } } catch (e) { console.warn(e); } }
   const sheet = $('#modal-root .sheet'); if (!sheet) return;
   if (!res || !res.label) { sheet.innerHTML = `${mhead('Couldn\'t find the label')}<p>Dugout couldn't find a grading label above the card in this photo. Use a straight-on photo or scan of the whole slab, with the label at the top.</p><div class="sheet-foot"><button class="btn" data-act="close" type="button">Close</button></div>`; return; }
   SL.res = res; renderSlabRead();
@@ -4164,7 +4179,8 @@ async function openSlabRead(id) {
 const SLAB_FIELDS = [['gradeCo', 'Grader'], ['grade', 'Grade'], ['cert', 'Cert #'], ['year', 'Year'], ['brand', 'Brand'], ['set', 'Set'], ['player', 'Player'], ['number', 'Card #'], ['parallel', 'Parallel']];
 function renderSlabRead() {
   const c = cardById(SL.id); const res = SL.res; const info = res.info || {};
-  const u1 = URL.createObjectURL(res.out), u2 = URL.createObjectURL(res.label);
+  const u1 = URL.createObjectURL(res.out), u2 = URL.createObjectURL(res.label); const bk = SL.back;
+  const u3 = bk && URL.createObjectURL(bk.label), u4 = bk && URL.createObjectURL(bk.out);
   const rows = SLAB_FIELDS.map(([k, lbl]) => {
     const v = String(info[k] || '').trim(); const cur = String(c[k] || '').trim(); if (!v || ckey(v) === ckey(cur)) return '';
     const on = ['gradeCo', 'grade', 'cert', 'year', 'number'].includes(k) || !cur; // the label is the record for grade, cert, year and number; names and sets fill blanks unless you tick them (wording differs between label and card)
@@ -4172,7 +4188,8 @@ function renderSlabRead() {
   }).join('');
   $('#modal-root .sheet').innerHTML = `<form data-form="slabApply">${mhead('Slab label')}
     <div class="sl-prev"><figure><img src="${u2}" alt="Grading label from the photo, cleaned up"><figcaption>Label for the 3D slab</figcaption></figure>
-    <figure class="sl-card"><img src="${u1}" alt="Card cut out of the slab photo"><figcaption>Card face</figcaption></figure></div>
+    <figure class="sl-card"><img src="${u1}" alt="Card cut out of the slab photo"><figcaption>Card front</figcaption></figure></div>
+    ${bk ? `<div class="sl-prev"><figure><img src="${u3}" alt="Back of the grading label, cleaned up"><figcaption>Back of the label</figcaption></figure><figure class="sl-card"><img src="${u4}" alt="Card back cut out of the slab photo"><figcaption>Card back</figcaption></figure></div>` : `<small class="muted">${c.back || c.backOrig ? 'No label found on the back photo, so the slab back stays plain.' : 'Add a back photo of the slab to put the back of the label on the 3D slab too.'}</small>`}
     ${res.check ? '<div class="warn">The card\'s edges were hard to find in this photo. Check them with Straighten afterwards.</div>' : ''}
     <fieldset><legend>Read from the label</legend>${rows ? `<div class="list">${rows}</div><small class="muted">Ticked fields will be updated. Edit any value before saving.</small>` : '<div class="empty">Everything on the label already matches this card.</div>'}
     ${info.sub ? `<small class="muted">Subgrades: ${esc(info.sub)}</small>` : ''}</fieldset>
@@ -4185,11 +4202,19 @@ FORMS.slabApply = async f => {
   c.front = await fileSave(await compressImage(res.out), 'front.jpg'); c.frontQuad = res.quad.map(p => [Math.round(p[0]), Math.round(p[1])]);
   if (c.slabLabel) await fileDel(c.slabLabel);
   c.slabLabel = await fileSave(res.label, 'label.jpg'); c.slabLabelAspect = res.labelAspect; c.graded = true; c.condition = '';
+  const bk = SL.back;
+  if (bk) {
+    if (c.back && c.back !== c.backOrig) await fileDel(c.back);
+    if (!c.backOrig) c.backOrig = c.back;
+    c.back = await fileSave(await compressImage(bk.out), 'back.jpg'); c.backQuad = bk.quad.map(p => [Math.round(p[0]), Math.round(p[1])]);
+    if (c.slabLabelBack) await fileDel(c.slabLabelBack);
+    c.slabLabelBack = await fileSave(bk.label, 'label-back.jpg');
+  }
   const changes = [];
   for (const [k, lbl] of SLAB_FIELDS) if (fd.get('f_' + k) === 'on') { const v = String(fd.get('v_' + k) || '').trim(); if (v && v !== String(c[k] || '')) { changes.push({ f: lbl, from: String(c[k] || ''), to: v }); c[k] = v; } }
   if (res.info && res.info.sub && !String(c.notes || '').includes(res.info.sub)) c.notes = [c.notes, 'Subgrades: ' + res.info.sub].filter(Boolean).join('\n');
   await save('cards', c, { quiet: true });
-  changes.push({ f: 'Slab label', from: old.slabLabel ? 'old' : '', to: 'from photo' });
+  changes.push({ f: 'Slab label', from: old.slabLabel ? 'old' : '', to: bk ? 'front and back from photos' : 'from photo' });
   await logTxn({ cardId: c.id, type: 'edit', date: today(), changes, note: 'From slab label' });
   closeModal(); onChange('cards'); toast('Slab label added'); route();
 };
@@ -4198,9 +4223,17 @@ A.slabRead = el => openSlabRead(el.dataset.id);
 /* ---------- card form: fill the grade from a slab photo as soon as it's picked ---------- */
 const SLAB_PICK = new WeakMap(); // file -> processing promise, reused when the form is saved
 document.addEventListener('change', async e => {
-  const inpEl = e.target; if (inpEl.name !== 'front' || !inpEl.closest('form[data-form="card"]')) return;
+  const inpEl = e.target; if (!['front', 'back'].includes(inpEl.name) || !inpEl.closest('form[data-form="card"]')) return;
   const f = inpEl.closest('form'); const file = inpEl.files && inpEl.files[0]; if (!file) return;
   if (f.querySelector('[name=autocrop]') && !f.querySelector('[name=autocrop]').checked) return;
+  if (inpEl.name === 'back') { // back of a slab: label back + card back, nothing to read
+    const job = processSlabPhoto(file, { read: false }).catch(err => { console.warn(err); return null; }); SLAB_PICK.set(file, job);
+    const res = await job; if (!f.isConnected || !res || !res.label) return;
+    const note = f.querySelector('#slab-note-b') || (() => { const d = document.createElement('div'); d.id = 'slab-note-b'; d.className = 'calc'; inpEl.closest('fieldset').append(d); return d; })();
+    note.innerHTML = '<div><span>Back of the slab found. The back of the label goes on the 3D slab too.</span></div>';
+    const g = f.querySelector('[name=graded][value=graded]'); if (g && !g.checked) { g.checked = true; g.dispatchEvent(new Event('change', { bubbles: true })); }
+    return;
+  }
   const note = f.querySelector('#slab-note') || (() => { const d = document.createElement('div'); d.id = 'slab-note'; d.className = 'calc'; inpEl.closest('fieldset').append(d); return d; })();
   note.innerHTML = '<div><span>Checking for a grading label…</span></div>';
   const job = (async () => { await loadPlayerNames().catch(() => {}); return processSlabPhoto(file, { onProgress: (p, label) => { if (label === 'Reading text') note.innerHTML = `<div><span>Reading the label</span><b>${p === null ? '' : Math.round(p * 100) + '%'}</b></div>`; } }); })().catch(err => { console.warn(err); return null; });
@@ -4214,7 +4247,7 @@ document.addEventListener('change', async e => {
   if (info.gradeCo && GRADERS.includes(info.gradeCo)) set('gradeCo', info.gradeCo, true);
   set('grade', info.grade, true); set('cert', info.cert, true);
   ['player', 'year', 'brand', 'set', 'number', 'parallel'].forEach(k => set(k, info[k], false));
-  note.innerHTML = `<div><span>Slab found. The real label goes on the 3D slab${filled.length ? '; filled in ' + esc(filled.join(', ')) : ''}.</span></div>`;
+  note.innerHTML = `<div><span>Slab found. The real label goes on the 3D slab${filled.length ? '; filled in ' + esc(filled.join(', ')) : ''}. Add the back of the slab as the back photo to show the label's back too.</span></div>`;
 });
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
