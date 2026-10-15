@@ -316,6 +316,14 @@ details.crit .tablewrap { border: 0; border-top: 1px solid var(--line); border-r
   .rm-lines .rm-lotc input[type=checkbox] { width: auto !important; }
   .rm-lines .rm-lotc .rm-amt { width: 80px !important; }
 }
+
+/* slab label sheet */
+.sl-prev { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: 12px; align-items: start; margin-bottom: 10px; }
+.sl-prev figure { margin: 0; display: grid; gap: 4px; min-width: 0; }
+.sl-prev img { width: 100%; border-radius: 8px; border: 1px solid var(--line); display: block; }
+.sl-prev figcaption { font-size: .8rem; color: var(--muted); }
+.sl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 520px) { .sl-prev { grid-template-columns: 1fr; } .sl-prev .sl-card { max-width: 50%; } }
 </style>
 <div id="app"></div>
 <div id="modal-root"></div>
@@ -430,7 +438,7 @@ async function fileDel(id) {
 async function fileIds() { const k = DB.db ? await idb.keys('files') : []; return new Set([...k, ...memFiles.keys()]); }
 function referencedFileIds() {
   const ids = new Set();
-  S.cards.forEach(c => { if (!c.purged) ['front', 'back', 'frontOrig', 'backOrig'].forEach(k => c[k] && ids.add(c[k])); });
+  S.cards.forEach(c => { if (!c.purged) ['front', 'back', 'frontOrig', 'backOrig', 'slabLabel'].forEach(k => c[k] && ids.add(c[k])); });
   S.receipts.forEach(r => { if (!r.purged && r.fileId) ids.add(r.fileId); });
   S.expenses.forEach(x => { if (!x.purged && x.fileId) ids.add(x.fileId); });
   S.pickups.forEach(p => { if (!p.purged && p.photo) ids.add(p.photo); });
@@ -784,7 +792,7 @@ function shell() {
       <div class="brand"><i></i>DUGOUT</div>
       <nav>${NAV.map(n => n === '-' ? '<div class="sep"></div>' : `<a href="#/${n[0]}" data-nav="${n[0]}">${n[1]}</a>`).join('')}</nav>
       <div class="foot">
-        <span class="muted" style="color:inherit;opacity:.6">Version 1.11 · split lots from receipts</span>
+        <span class="muted" style="color:inherit;opacity:.6">Version 1.12 · real slab labels + top loader sheets</span>
         <span id="sync-status">${esc(Sync.status || (syncCfg() ? 'Sync ready' : 'Saved on this device'))}</span>
         <div class="row"><button class="btn sm" data-act="theme" type="button">Light / dark</button>${syncCfg() ? '<button class="btn sm" data-act="syncNow" type="button">Sync</button>' : ''}</div>
       </div>
@@ -1037,7 +1045,7 @@ V.card = id => {
     <div class="photo-col">
       <div class="c3d" data-card3d="${c.id}"><div class="c3d-stage">${art(c, 'front')}</div>
         <div class="row c3d-ctl"><button class="btn sm" data-act="c3dFlip" type="button">Flip</button><button class="btn sm" data-act="c3dReset" type="button">Reset</button><button class="btn sm" data-act="c3dFull" data-id="${c.id}" type="button">Full screen</button>
-        ${c.front || c.back ? `<button class="btn sm" data-act="straighten" data-id="${c.id}" data-side="${c.front ? 'front' : 'back'}" type="button">Straighten</button>` : ''}
+        ${c.front || c.back ? `<button class="btn sm" data-act="straighten" data-id="${c.id}" data-side="${c.front ? 'front' : 'back'}" type="button">Straighten</button>` : ''}${c.front && (c.graded || c.slabLabel) ? `<button class="btn sm" data-act="slabRead" data-id="${c.id}" type="button">${c.slabLabel ? 'Re-read slab label' : 'Use slab label'}</button>` : ''}
         ${c.front ? `<button class="btn sm ghost" data-act="viewPhoto" data-id="${c.id}" data-side="front" type="button">Front photo</button>` : ''}${c.back ? `<button class="btn sm ghost" data-act="viewPhoto" data-id="${c.id}" data-side="back" type="button">Back photo</button>` : ''}</div>
         <small class="muted c3d-hint">Drag or swipe to turn it · double-tap to flip${c.front ? '' : ' · add photos to see the real card'}</small></div>
       <div class="row" style="align-items:flex-end"><div class="qrbox" data-qr="${esc(cardQR(c))}"></div><div style="display:flex;flex-direction:column;gap:6px"><span class="code">${esc(c.code)}</span><button class="btn sm" data-act="labelOne" data-id="${c.id}" type="button">Print label</button></div></div>
@@ -1052,7 +1060,7 @@ V.card = id => {
       <section class="panel"><h2>Card</h2><div class="kv">
         ${kv('Player', c.player)}${kv('Card #', c.number)}${kv('Brand', c.brand)}${kv('Set / series', c.set)}${kv('Year', c.year)}${kv('Sport', c.sport)}${kv('Team', c.team)}${kv('Parallel', c.parallel || 'Base')}${kv('Serial #', c.serial)}
         ${kv('Rookie', c.rookie ? 'Yes' : 'No')}${kv('Autograph', c.auto ? 'Yes' : 'No')}${kv('Patch / memo', c.patch ? 'Yes' : 'No')}
-        ${kv('Graded', c.graded ? 'Yes' : 'Raw')}${c.graded ? kv('Grading co.', c.gradeCo) + kv('Grade', c.grade) : kv('Condition', c.condition)}
+        ${kv('Graded', c.graded ? 'Yes' : 'Raw')}${c.graded ? kv('Grading co.', c.gradeCo) + kv('Grade', c.grade) + (c.cert ? kv('Cert #', c.gradeCo === 'PSA' ? `<a href="https://www.psacard.com/cert/${encodeURIComponent(c.cert)}" target="_blank" rel="noopener">${esc(c.cert)} ↗</a>` : esc(c.cert), true) : '') : kv('Condition', c.condition)}
         ${kv('Quantity in hand', c.qty)}${kv('Storage', loc ? `<a href="#/box/${loc.id}">${esc(loc.code)} · ${esc(loc.name)}</a>` : '—', true)}
       </div>${c.notes ? `<div><span class="muted" style="font:600 .72rem var(--display);letter-spacing:.08em;text-transform:uppercase">Notes</span><p style="margin:2px 0 0;white-space:pre-wrap">${esc(c.notes)}</p></div>` : ''}</section>
       <section class="panel"><h2>Purchase</h2><div class="kv">
@@ -1103,7 +1111,7 @@ const platformList = () => `<datalist id="dl-platforms">${uniq([...PLATFORMS, ..
 const dl = (id, vals) => `<datalist id="${id}">${uniq(vals).map(v => `<option value="${esc(v)}">`).join('')}</datalist>`;
 
 /* ---------- card form ---------- */
-const CARD_FIELDS = ['player', 'number', 'brand', 'set', 'year', 'sport', 'team', 'parallel', 'serial', 'condition', 'gradeCo', 'grade', 'notes', 'listingUrl', 'locationId'];
+const CARD_FIELDS = ['player', 'number', 'brand', 'set', 'year', 'sport', 'team', 'parallel', 'serial', 'condition', 'gradeCo', 'grade', 'cert', 'notes', 'listingUrl', 'locationId'];
 function openCardForm(id, preset = {}) {
   const c = id ? structuredClone(cardById(id)) : Object.assign({ buy: { date: today(), qty: 1 }, status: 'in_stock', sport: '' }, preset);
   const b = c.buy || {}; const all = S.cards.filter(live);
@@ -1126,7 +1134,7 @@ function openCardForm(id, preset = {}) {
   <fieldset><legend>Grading</legend>
     <div class="row"><label class="chk"><input type="radio" name="graded" value="raw" ${!c.graded ? 'checked' : ''}> Raw</label><label class="chk"><input type="radio" name="graded" value="graded" ${c.graded ? 'checked' : ''}> Graded</label></div>
     <div class="fgrid" id="g-raw" ${c.graded ? 'hidden' : ''}>${field('Raw condition', `<select name="condition">${opts(CONDITIONS, c.condition, '—')}</select>`)}</div>
-    <div class="fgrid" id="g-yes" ${c.graded ? '' : 'hidden'}>${field('Grading company', `<select name="gradeCo">${opts(GRADERS, c.gradeCo, 'Choose…')}</select>`)}${field('Grade', inp('grade', c.grade, 'placeholder="10, 9.5…" inputmode="decimal"'))}</div>
+    <div class="fgrid" id="g-yes" ${c.graded ? '' : 'hidden'}>${field('Grading company', `<select name="gradeCo">${opts(GRADERS, c.gradeCo, 'Choose…')}</select>`)}${field('Grade', inp('grade', c.grade, 'placeholder="10, 9.5…" inputmode="decimal"'))}${field('Cert #', inp('cert', c.cert, 'inputmode="numeric" autocomplete="off"'))}</div>
   </fieldset>
   <fieldset><legend>Photos</legend><div class="fgrid">
     ${field('Front photo', `<input type="file" name="front" accept="image/*">`)}${field('Back photo', `<input type="file" name="back" accept="image/*">`)}
@@ -1176,7 +1184,7 @@ async function submitCard(f) {
   CARD_FIELDS.forEach(k => { c[k] = String(fd.get(k) ?? '').trim(); });
   c.rookie = fd.get('rookie') === 'on'; c.auto = fd.get('auto') === 'on'; c.patch = fd.get('patch') === 'on';
   c.graded = fd.get('graded') === 'graded';
-  if (!c.graded) { c.gradeCo = ''; c.grade = ''; } else c.condition = '';
+  if (!c.graded) { c.gradeCo = ''; c.grade = ''; c.cert = ''; } else c.condition = '';
   c.buy = Object.assign(c.buy || {}, { date: fd.get('b_date') || today(), platform: String(fd.get('b_platform') || '').trim(), qty: Math.max(1, parseInt(fd.get('b_qty'), 10) || 1), price: num(fd.get('b_price')), ship: num(fd.get('b_ship')), tax: num(fd.get('b_tax')), fees: num(fd.get('b_fees')), order: String(fd.get('b_order') || '').trim(), pickupId: fd.get('b_pickup') || '' });
   c.status = fd.get('status') || 'in_stock';
   c.qty = old ? Math.max(0, parseInt(fd.get('qty'), 10) || 0) : c.buy.qty;
@@ -1187,7 +1195,9 @@ async function submitCard(f) {
     const file = fd.get(side);
     if (file && file.size) {
       for (const k of [side, side + 'Orig']) if (c[k]) await fileDel(c[k]);
-      const r = await processCardPhoto(file, fd.get('autocrop') === 'on', fd.get('toploader') === 'on');
+      const slab = side === 'front' && SLAB_PICK.has(file) ? await SLAB_PICK.get(file) : null; // slab photo: real label + card cut out of it
+      const r = slab && slab.label ? slab : await processCardPhoto(file, fd.get('autocrop') === 'on', fd.get('toploader') === 'on');
+      if (side === 'front') { if (c.slabLabel) await fileDel(c.slabLabel); c.slabLabel = r.label ? await fileSave(r.label, 'label.jpg') : ''; c.slabLabelAspect = r.labelAspect || 0; }
       c[side + 'Orig'] = await fileSave(r.orig, file.name);
       c[side] = r.out === r.orig ? c[side + 'Orig'] : await fileSave(await compressImage(r.out), side + '.jpg');
       c[side + 'Quad'] = r.quad ? r.quad.map(p => [Math.round(p[0]), Math.round(p[1])]) : null;
@@ -1197,7 +1207,7 @@ async function submitCard(f) {
   await save('cards', c, { quiet: true });
   if (!old) await logTxn({ cardId: c.id, type: 'buy', date: c.buy.date, qty: c.buy.qty, amount: r2(c.buy.price + c.buy.ship + c.buy.tax + c.buy.fees), platform: c.buy.platform });
   else {
-    const labels = { player: 'Player', number: 'Card #', brand: 'Brand', set: 'Set', year: 'Year', sport: 'Sport', team: 'Team', parallel: 'Parallel', serial: 'Serial', grade: 'Grade', gradeCo: 'Grader', condition: 'Condition', status: 'Status', qty: 'Qty', locationId: 'Box' };
+    const labels = { player: 'Player', number: 'Card #', brand: 'Brand', set: 'Set', year: 'Year', sport: 'Sport', team: 'Team', parallel: 'Parallel', serial: 'Serial', grade: 'Grade', gradeCo: 'Grader', cert: 'Cert #', condition: 'Condition', status: 'Status', qty: 'Qty', locationId: 'Box' };
     const changes = Object.keys(labels).filter(k => String(old[k] ?? '') !== String(c[k] ?? '')).map(k => ({ f: labels[k], from: k === 'locationId' ? (locById(old[k]) || {}).code : String(old[k] ?? ''), to: k === 'locationId' ? (locById(c[k]) || {}).code : String(c[k] ?? '') }));
     ['price', 'ship', 'tax', 'fees', 'qty', 'date', 'platform'].forEach(k => { if (String((old.buy || {})[k] ?? '') !== String(c.buy[k] ?? '')) changes.push({ f: 'Purchase ' + k, from: String((old.buy || {})[k] ?? ''), to: String(c.buy[k]) }); });
     if (changes.length) await logTxn({ cardId: c.id, type: 'edit', date: today(), changes });
@@ -1504,7 +1514,7 @@ const FORMS = {
   filterName: async f => { S.settings.savedFilters.push({ name: String(new FormData(f).get('name')).trim(), f: Object.assign({}, F) }); await saveSettings(); closeModal(); toast('Filter saved'); },
 };
 async function purgeCard(c) {
-  for (const k of ['front', 'back', 'frontOrig', 'backOrig']) if (c[k]) await fileDel(c[k]);
+  for (const k of ['front', 'back', 'frontOrig', 'backOrig', 'slabLabel']) if (c[k]) await fileDel(c[k]);
   const keep = { id: c.id, code: c.code, purged: true, createdAt: c.createdAt };
   Object.keys(c).forEach(k => delete c[k]); Object.assign(c, keep);
   await save('cards', c, { quiet: true });
@@ -2026,11 +2036,11 @@ async function prepForOCR(file) {
   g.putImageData(im, 0, 0);
   return cv;
 }
-async function readImageText(file, onProgress, psm = '6') {
+async function readImageText(file, onProgress, psm = '6', opts = {}) {
   OCR.progress = m => { if (m.status === 'recognizing text') onProgress && onProgress(m.progress, 'Reading text'); else if (/load|initializ/.test(m.status)) onProgress && onProgress(null, m.status.includes('language') ? 'Downloading text reader (first time only)' : 'Starting text reader'); };
   const w = await ocrWorker();
   await w.setParameters({ tessedit_pageseg_mode: String(psm) }); // 6 = one block (receipts), 11 = sparse text (card backs)
-  const canvas = await prepForOCR(file);
+  const canvas = opts.raw ? await plainCanvas(file) : await prepForOCR(file); // printed labels read best as-is
   const { data } = await w.recognize(canvas);
   return { text: cleanOCR(data.text || ''), confidence: Math.round(data.confidence || 0) };
 }
@@ -2400,6 +2410,16 @@ document.addEventListener('change', e => {
   if (e.target.id === 'sr-snap' || e.target.id === 'sr-files') { const files = [...e.target.files].filter(f => f.type.startsWith('image/') || /\.(heic|jpe?g|png|webp)$/i.test(f.name)); if (files.length) runScan(files); else toast('Choose a photo or screenshot'); }
 });
 
+// grayscale only, enlarged when small: for clean printed text such as grading labels
+async function plainCanvas(file) {
+  const bmp = await createImageBitmap(file); const k = Math.max(1, Math.min(2.5, 1600 / bmp.width));
+  const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+  const g = cv.getContext('2d', { willReadFrequently: true }); g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, 0, cv.width, cv.height);
+  const im = g.getImageData(0, 0, cv.width, cv.height); const d = im.data;
+  for (let i = 0; i < d.length; i += 4) { const y = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; d[i] = d[i + 1] = d[i + 2] = y; }
+  g.putImageData(im, 0, 0); return cv;
+}
+
 /* 3D card viewer: builds a real card (rounded corners, thickness, front + back photos) in WebGL,
    with a clear slab for graded cards. Drag or swipe on any axis, double-tap to flip, pinch or scroll to zoom. */
 const V3 = { live: new Set() };
@@ -2507,6 +2527,7 @@ function genBack(c) {
   g.fillStyle = '#6b6252'; g.font = '600 22px Barlow, Arial, sans-serif'; g.fillText('No back photo yet', 42, H - 60);
   return cv;
 }
+function labelTexture(img) { const cv = document.createElement('canvas'); cv.width = Math.min(2048, img.width); cv.height = Math.round(cv.width * img.height / img.width); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); return cv; }
 function genLabel(c) {
   const W = 1000, H = 230, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
   g.fillStyle = '#f7f7f4'; g.fillRect(0, 0, W, H); g.strokeStyle = '#b8202c'; g.lineWidth = 10; g.strokeRect(5, 5, W - 10, H - 10);
@@ -2534,10 +2555,12 @@ async function mountCard3D(host, c) {
   ];
   let zoomBase = 8.9;
   if (c.graded) {
-    const cardY = -0.42, slab = slabParts(3.3, 5.35, 0.42, 0.18), lab = slabParts(2.9, 0.67, 0.012, 0.04);
+    let labImg = null; if (c.slabLabel) { try { const u = await fileURL(c.slabLabel); if (u) labImg = await loadImg(u); } catch (e) {} }
+    const labH = labImg ? Math.max(0.5, Math.min(1.05, 2.9 / (c.slabLabelAspect || labImg.width / labImg.height))) : 0.67; const labY = 2.455 - labH / 2; // the real label keeps its own shape
+    const cardY = -0.42, slab = slabParts(3.3, 5.35, 0.42, 0.18), lab = slabParts(2.9, labH, 0.012, 0.04);
     parts.forEach(p => { p.off = [0, cardY, 0]; });
-    const labTex = glTex(G, genLabel(c));
-    parts.push({ m: glMesh(G, lab.front), tex: labTex, shine: 30, spec: .2, holo: 0, off: [0, 2.12, 0.02] }, { m: glMesh(G, lab.back), color: [.95, .95, .93], shine: 20, spec: .1, off: [0, 2.12, 0.02] });
+    const labTex = glTex(G, labImg ? labelTexture(labImg) : genLabel(c));
+    parts.push({ m: glMesh(G, lab.front), tex: labTex, shine: 30, spec: .2, holo: 0, off: [0, labY, 0.02] }, { m: glMesh(G, lab.back), color: [.95, .95, .93], shine: 20, spec: .1, off: [0, labY, 0.02] });
     parts.push({ m: glMesh(G, slab.edge), color: [.92, .96, 1], alpha: .45, shine: 90, spec: .9, holo: 0, off: [0, 0, 0], glass: true },
       { m: glMesh(G, slab.back), color: [.92, .96, 1], alpha: .1, shine: 120, spec: .8, holo: 0, off: [0, 0, 0], glass: true },
       { m: glMesh(G, slab.front), color: [.92, .96, 1], alpha: .12, shine: 120, spec: 1, holo: 0, off: [0, 0, 0], glass: true });
@@ -2745,6 +2768,70 @@ function splitRegion(M, regs, r) {
   while (front.length) { const nf = []; for (const i of front) { const x = i % bw; for (const j of [x > 0 ? i - 1 : -1, x < bw - 1 ? i + 1 : -1, i - bw, i + bw]) if (j >= 0 && j < bw * bh && base[j] && seeds[j] === -1) { seeds[j] = seeds[i]; nf.push(j); } } front = nf; }
   return [...new Set(seeds)].filter(id => id >= 0).map(id => regionFromLocal(seeds, bw, bh, bx0, by0, id));
 }
+/* split a blob again and again until every piece is one card (top loaders touching corner to corner chain several cards together) */
+function splitDeep(M, regs, r, typical, good) {
+  const { w } = M; const [bx0, by0, bx1, by1] = r.box; const bw = bx1 - bx0 + 1, bh = by1 - by0 + 1;
+  const base = new Uint8Array(bw * bh); for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) base[y * bw + x] = regs.lab[(y + by0) * w + x + bx0] === r.id ? 1 : 0;
+  const out = [];
+  const visit = (mask, mw, mh, ox, oy, depth) => {
+    const reg = regionFromLocal(mask, mw, mh, ox, oy, 1); const f = quadFromRegion(reg); const k = typical ? Math.round(reg.size / typical) : 1;
+    if (k <= 0) return;
+    if (good(f) && k <= 1) { out.push(f); return; }
+    if (depth >= 5) return;
+    // erode until it breaks into pieces, then grow each piece back inside the blob
+    let cur = mask, seeds = null;
+    for (let it = 0; it < 60 && !seeds; it++) {
+      const nx = new Uint8Array(mw * mh);
+      for (let y = 1; y < mh - 1; y++) for (let x = 1; x < mw - 1; x++) { const i = y * mw + x; nx[i] = cur[i] && cur[i - 1] && cur[i + 1] && cur[i - mw] && cur[i + mw] ? 1 : 0; }
+      cur = nx;
+      const lab = new Int32Array(mw * mh).fill(-1); const comps = []; const st = [];
+      for (let s0 = 0; s0 < mw * mh; s0++) { if (!cur[s0] || lab[s0] !== -1) continue; let sz = 0; st.push(s0); lab[s0] = comps.length; while (st.length) { const i = st.pop(); sz++; const x = i % mw; for (const j of [x > 0 ? i - 1 : -1, x < mw - 1 ? i + 1 : -1, i - mw, i + mw]) if (j >= 0 && j < mw * mh && cur[j] && lab[j] === -1) { lab[j] = comps.length; st.push(j); } } comps.push(sz); }
+      const big = comps.map((sz, i) => [sz, i]).filter(([sz]) => sz > Math.max(60, (typical || 0) * 0.08));
+      if (big.length >= 2) { const keep = new Set(big.map(b => b[1])); seeds = new Int32Array(mw * mh).fill(-1); for (let i = 0; i < mw * mh; i++) if (lab[i] >= 0 && keep.has(lab[i])) seeds[i] = lab[i]; }
+      if (!comps.length) break;
+    }
+    if (!seeds) { // won't break apart: peel thin attachments (a strip of top loader rim), then it's one card or a clean row of cards side by side
+      for (const st of [0, 3, 6, 10, 'core']) {
+        const t = st === 'core' ? coreLocal(mask, mw, mh, ox, oy) : st ? trimLocal(mask, mw, mh, ox, oy, st) : reg; const q = t && quadFromRegion(t); if (!q) continue;
+        const kk = typical ? Math.max(1, Math.round(t.size / typical)) : 1;
+        if (kk === 1 && good(q)) { out.push(q); return; }
+        if (kk >= 2 && q.fill >= 0.85 && q.fill <= 1.1 && skewDeg(orderQuad(q.quad)) < 6) { const parts = splitQuad(q.quad, kk); if (parts.every(pq => { const a = Math.hypot(pq[1][0] - pq[0][0], pq[1][1] - pq[0][1]), b = Math.hypot(pq[3][0] - pq[0][0], pq[3][1] - pq[0][1]); const r = Math.max(a, b) / Math.min(a, b); return r > 1.15 && r < 1.75; })) { parts.forEach(pq => out.push({ quad: pq })); return; } }
+      }
+      return;
+    }
+    let front = []; for (let i = 0; i < mw * mh; i++) if (seeds[i] >= 0) front.push(i);
+    while (front.length) { const nf = []; for (const i of front) { const x = i % mw; for (const j of [x > 0 ? i - 1 : -1, x < mw - 1 ? i + 1 : -1, i - mw, i + mw]) if (j >= 0 && j < mw * mh && mask[j] && seeds[j] === -1) { seeds[j] = seeds[i]; nf.push(j); } } front = nf; }
+    for (const id of new Set(seeds)) {
+      if (id < 0) continue;
+      let x0 = mw, y0 = mh, x1 = -1, y1 = -1; for (let i = 0; i < mw * mh; i++) if (seeds[i] === id) { const x = i % mw, y = (i / mw) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      const pw = x1 - x0 + 3, ph = y1 - y0 + 3; const pm = new Uint8Array(pw * ph); // 1px empty border so erosion works at the edges
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (seeds[y * mw + x] === id) pm[(y - y0 + 1) * pw + (x - x0 + 1)] = 1;
+      visit(pm, pw, ph, ox + x0 - 1, oy + y0 - 1, depth + 1);
+    }
+  };
+  visit(base, bw, bh, bx0, by0, 0);
+  return out;
+}
+// the solid body of a blob: rows and columns that are mostly filled (drops long thin tails such as a neighbour's top loader rim)
+function coreLocal(base, bw, bh, ox, oy) {
+  const rows = new Array(bh).fill(0); for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) rows[y] += base[y * bw + x];
+  const rmax = Math.max(...rows); const ry = rows.map((v, y) => v >= rmax * 0.5 ? y : -1).filter(y => y >= 0); if (!ry.length) return null;
+  const y0 = ry[0], y1 = ry[ry.length - 1];
+  const cols = new Array(bw).fill(0); for (let y = y0; y <= y1; y++) for (let x = 0; x < bw; x++) cols[x] += base[y * bw + x];
+  const cmax = Math.max(...cols); const cx = cols.map((v, x) => v >= cmax * 0.5 ? x : -1).filter(x => x >= 0); const x0 = cx[0], x1 = cx[cx.length - 1];
+  const o = new Uint8Array(bw * bh); for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) o[y * bw + x] = base[y * bw + x];
+  return regionFromLocal(o, bw, bh, ox, oy, 1);
+}
+function trimLocal(base, bw, bh, ox, oy, steps) {
+  const N = bw * bh; let cur = base;
+  for (let it = 0; it < steps; it++) { const nx = new Uint8Array(N); for (let y = 1; y < bh - 1; y++) for (let x = 1; x < bw - 1; x++) { const i = y * bw + x; nx[i] = cur[i] && cur[i - 1] && cur[i + 1] && cur[i - bw] && cur[i + bw] ? 1 : 0; } cur = nx; }
+  const lab = new Int32Array(N).fill(-1); let best = -1, bestSz = 0; const st = [];
+  for (let s0 = 0; s0 < N; s0++) { if (!cur[s0] || lab[s0] !== -1) continue; let sz = 0; st.push(s0); lab[s0] = s0; while (st.length) { const i = st.pop(); sz++; const x = i % bw; for (const j of [x > 0 ? i - 1 : -1, x < bw - 1 ? i + 1 : -1, i - bw, i + bw]) if (j >= 0 && j < N && cur[j] && lab[j] === -1) { lab[j] = s0; st.push(j); } } if (sz > bestSz) { bestSz = sz; best = s0; } }
+  if (best < 0) return null;
+  const o = new Int32Array(N).fill(-1); let front = []; for (let i = 0; i < N; i++) if (lab[i] === best) { o[i] = 0; front.push(i); }
+  for (let it = 0; it <= steps && front.length; it++) { const nf = []; for (const i of front) { const x = i % bw; for (const j of [x > 0 ? i - 1 : -1, x < bw - 1 ? i + 1 : -1, i - bw, i + bw]) if (j >= 0 && j < N && base[j] && o[j] === -1) { o[j] = 0; nf.push(j); } } front = nf; }
+  return regionFromLocal(o, bw, bh, ox, oy, 0);
+}
 /* a card snagged by thin lines (top loader rims, scanner edge shadows): peel a few pixels off, keep the biggest piece, grow it back */
 function trimRegion(M, regs, r, steps) {
   const { w } = M; const [bx0, by0, bx1, by1] = r.box; const bw = bx1 - bx0 + 1, bh = by1 - by0 + 1; const N = bw * bh;
@@ -2812,9 +2899,9 @@ function detectCardQuads(bmp) {
     if (good(f) && k <= 1) { if (!typical || r.size > typical * 0.35) quads.push(f.quad); continue; }
     if (k <= 0) continue; // a small speck
     if (k === 1) { let t = null; for (const st of [3, 6, 10]) { const g = trimRegion(M, regs, r, st); const q = g && quadFromRegion(g); if (good(q) && (!typical || q.area > typical * 0.6)) { t = q; break; } } if (t) { quads.push(t.quad); continue; } }
-    const parts = splitRegion(M, regs, r).map(quadFromRegion).filter(g => good(g) && (!typical || g.area > typical * 0.5));
-    if (parts.length >= 2) { parts.forEach(g => quads.push(g.quad)); continue; }
-    if (f && f.fill >= 0.88 && k >= 2) { splitQuad(f.quad, k).forEach(q => quads.push(q)); continue; }
+    const parts = splitDeep(M, regs, r, typical, g => good(g) && (!typical || g.area > typical * 0.5));
+    if (parts.length >= 2 || (parts.length === 1 && k <= 1)) { parts.forEach(g => quads.push(g.quad)); continue; }
+    if (f && f.fill >= 0.88 && f.fill <= 1.1 && k >= 2) { splitQuad(f.quad, k).forEach(q => quads.push(q)); continue; }
     merged++;
   }
   const cards = quads.map(q => ({ quad: portraitQuad(orderQuad(q.map(p => [p[0] / M.k, p[1] / M.k]))) }));
@@ -2951,7 +3038,8 @@ function stPreview() { const out = warpCard(ST.src, ST.quad, 250, 350); $('#st-o
 Object.assign(A, {
   straighten: el => openStraighten(el.dataset.id, el.dataset.side || 'front'),
   stSide: el => { if (el.dataset.v !== ST.side) openStraighten(ST.card.id, el.dataset.v); },
-  stAuto: () => { const r = findCardCorners(ST.bmp, { toploader: !!S.settings.toploader }); if (!r) return toast('Couldn\'t find the card edges. Drag the dots by hand.'); ST.quad = r.quad; drawHandles(); stPreview(); toast(cornersOK(r) ? 'Corners found' : 'Corners found. Low contrast here, so give them a quick check.'); },
+  stAuto: () => { const sl = ST.side === 'front' && ST.card && ST.card.slabLabel ? findSlab(ST.bmp) : null; if (sl) { ST.quad = sl.card; drawHandles(); stPreview(); return toast('Card found inside the slab'); }
+    const r = findCardCorners(ST.bmp, { toploader: !!S.settings.toploader }); if (!r) return toast('Couldn\'t find the card edges. Drag the dots by hand.'); ST.quad = r.quad; drawHandles(); stPreview(); toast(cornersOK(r) ? 'Corners found' : 'Corners found. Low contrast here, so give them a quick check.'); },
   stSnap: () => { const r = refineCorners(ST.bmp, ST.quad, { toploader: true }); ST.quad = r.quad; drawHandles(); stPreview(); },
   stFit: () => { const r = refineCorners(ST.bmp, ST.quad, {}); ST.quad = r.quad; drawHandles(); stPreview(); toast('Snapped to the nearest card edges'); },
   stRotate: () => { ST.quad = [ST.quad[3], ST.quad[0], ST.quad[1], ST.quad[2]]; drawHandles(); stPreview(); },
@@ -3052,6 +3140,19 @@ function sideCandidates(px, A, B, ctr, bandOut, bandIn) {
 }
 /* is this fit trustworthy, or should the person check it? */
 const cornersOK = r => !!r && r.confidence >= 0.6 && Math.abs(r.aspect - CARD_RATIO) / CARD_RATIO <= 0.022;
+const quadArea = q => Math.abs(q.reduce((a, p, i) => { const n = q[(i + 1) % 4]; return a + p[0] * n[1] - n[0] * p[1]; }, 0)) / 2;
+/* the card inside a top loader or slab window: look for a card-shaped region inside the outline that was found */
+function insideCard(bmp, quad, opts = {}) {
+  const xs = quad.map(p => p[0]), ys = quad.map(p => p[1]);
+  const W0 = Math.max(...xs) - Math.min(...xs), ins = W0 * (opts.inset || 0.02);
+  const bx0 = Math.max(0, Math.min(...xs) + ins), by0 = Math.max(0, Math.min(...ys) + ins), bx1 = Math.min(bmp.width, Math.max(...xs) - ins), by1 = Math.min(bmp.height, Math.max(...ys) - ins);
+  if (bx1 - bx0 < 40 || by1 - by0 < 40) return null;
+  const cv = document.createElement('canvas'); cv.width = Math.round(bx1 - bx0); cv.height = Math.round(by1 - by0); cv.getContext('2d').drawImage(bmp, -bx0, -by0);
+  const D = detectCardQuads(cv); const box = cv.width * cv.height;
+  const c = D.cards.map(o => { const r = refineCorners(cv, o.quad, { flat: !!opts.flat, wide: opts.flat ? 0.08 : undefined }); return { r, q: r.quad.map(p => [p[0] + bx0, p[1] + by0]), area: quadArea(r.quad) }; })
+    .filter(o => Math.abs(o.r.aspect - CARD_RATIO) / CARD_RATIO < 0.06 && o.area > box * 0.5).sort((a, b) => b.area - a.area)[0];
+  return c ? { quad: c.q, confidence: c.r.confidence, aspect: c.r.aspect } : null;
+}
 function findCardCorners(bmp, opts = {}) {
   const D = detectCardQuads(bmp); if (!D.cards.length) return null;
   const rough = D.cards.slice().sort((a, b) => b.hgt - a.hgt)[0].quad;
@@ -3068,8 +3169,8 @@ function refineCorners(bmp, rough, opts = {}) {
   for (let pass = 0; pass < 2; pass++) {
     const ctr = [q.reduce((a, p) => a + p[0], 0) / 4, q.reduce((a, p) => a + p[1], 0) / 4];
     const size = Math.max(...[0, 1, 2, 3].map(i => Math.hypot(q[(i + 1) % 4][0] - q[i][0], q[(i + 1) % 4][1] - q[i][1])));
-    const wide = opts.flat ? 0.02 : 0.12; // a scanner already finds the card closely; a phone photo can be further off
-    const bo = Math.round(size * (pass === 0 ? wide : 0.025)), bi = Math.round(size * (pass === 0 ? (opts.flat ? 0.02 : 0.1) : 0.025));
+    const wide = opts.wide || (opts.flat ? 0.02 : 0.12); // a scanner already finds the card closely; a phone photo can be further off
+    const bo = Math.round(size * (pass === 0 ? wide : 0.025)), bi = Math.round(size * (pass === 0 ? (opts.wide || (opts.flat ? 0.02 : 0.1)) : 0.025));
     let sides = [0, 1, 2, 3].map(i => sideCandidates(px, q[i], q[(i + 1) % 4], ctr, bo, bi));
     if (sides.some(c => !c.length)) break;
     const CRISP = 1.35; // shadows and wood grain fade over many pixels; a card's cut edge doesn't
@@ -3507,8 +3608,10 @@ FORMS.batchGo = async f => {
         let fq = c.quad, bq = pairs[i] ? pairs[i].quad : null;
         // lock onto the exact card edges (best fit to a 2.5 x 3.5 card); flag fits that need a look
         let fit = null;
-        if (!c.whole) { fit = refineCorners(fs.bmp, fq, { toploader: BS.opts.toploader, flat: mode !== 'photos' }); fq = fit.quad; }
-        if (bq && !pairs[i].whole) { const bf = refineCorners(bs.bmp, bq, { toploader: BS.opts.toploader, flat: mode !== 'photos' }); bq = bf.quad; it.backCheck = !cornersOK(bf); }
+        // in top loaders, find the card inside the plastic first; then lock onto its exact edges
+        const fitIn = (bm, q) => { const inner = BS.opts.toploader ? insideCard(bm, q, { flat: mode !== 'photos' }) : null; return inner && inner.confidence >= 0.3 ? inner : refineCorners(bm, q, { toploader: BS.opts.toploader, flat: mode !== 'photos' }); };
+        if (!c.whole) { fit = fitIn(fs.bmp, fq); fq = fit.quad; }
+        if (bq && !pairs[i].whole) { const bf = fitIn(bs.bmp, bq); bq = bf.quad; it.backCheck = !cornersOK(bf); }
         it.cornerCheck = c.whole || !cornersOK(fit) || !!it.backCheck;
         const edge = (q, bm) => q && q.some(p => p[0] < bm.width * 0.004 || p[1] < bm.height * 0.004 || p[0] > bm.width * 0.996 || p[1] > bm.height * 0.996);
         it.offEdge = mode !== 'photos' && (edge(fq, fs.bmp) || (bq && edge(bq, bs.bmp))); // part of the card is outside the scanned area
@@ -3844,6 +3947,274 @@ FORMS.rmApply = async f => {
 A.cardReceipt = el => openCardReceipt(el.dataset.id);
 document.addEventListener('change', e => {
   if (e.target.id === 'rm-snap' || e.target.id === 'rm-files') { const files = [...e.target.files].filter(f => f.type.startsWith('image/') || /\.(heic|jpe?g|png|webp)$/i.test(f.name)); if (files.length) runCardReceipt(files); else toast('Choose a photo or screenshot'); }
+});
+
+/* Graded slabs: find the card and the grading label in a slab photo, clean up the real label for the
+   3D slab, and read the grade, grader and cert number off it. Everything runs on this device. */
+const SLAB = { CW: 1000 }; // canonical card width used while measuring (card = CW x 1.4 CW)
+
+// map points in the card's own upright frame (0..CW, 0..1.4 CW) to photo pixels
+function cardFrame(cardQuad) {
+  const CW = SLAB.CW, CH = CW * CARD_RATIO;
+  const H = homography([[0, 0], [CW, 0], [CW, CH], [0, CH]], cardQuad);
+  return (u, v) => { const w = H[6] * u + H[7] * v + 1; return [(H[0] * u + H[1] * v + H[2]) / w, (H[3] * u + H[4] * v + H[5]) / w]; };
+}
+// an upright crop of the photo, given a rectangle in the card's frame
+function frameCrop(src, map, x0, y0, x1, y1, scale) {
+  const q = [map(x0, y0), map(x1, y0), map(x1, y1), map(x0, y1)];
+  return warpCard(src, q, Math.max(8, Math.round((x1 - x0) * scale)), Math.max(8, Math.round((y1 - y0) * scale)));
+}
+const lumOf = (d, i) => d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+
+/* Where is the label in the band above the card? Works in the upright band image.
+   PSA labels have a red frame; BGS, SGC and most others are a light label; dark labels fall back to text density. */
+function findLabelRect(band) {
+  const W = band.width, H = band.height; const d = band.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+  const red = new Uint8Array(W * H), light = new Uint8Array(W * H), lum = new Float32Array(W * H);
+  let nRed = 0;
+  for (let p = 0, i = 0; p < W * H; p++, i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2]; const mx = Math.max(r, g, b), mn = Math.min(r, g, b); lum[p] = lumOf(d, i);
+    if (r > 140 && g < 110 && b < 110 && r - g > 60) { red[p] = 1; nRed++; }
+    if (mn > 170 && mx - mn < 40) light[p] = 1;
+  }
+  const grader = nRed > W * H * 0.04 ? 'PSA' : '';
+  const box = (M, rowFrac, colFrac) => {
+    const rows = []; for (let y = 0; y < H; y++) { let s = 0; for (let x = 0; x < W; x++) s += M[y * W + x]; rows.push(s / W); }
+    // longest run of label rows (small gaps allowed)
+    let best = null, st = -1, gap = 0;
+    for (let y = 0; y <= H; y++) {
+      const on = y < H && rows[y] > rowFrac;
+      if (on) { if (st < 0) st = y; gap = 0; } else if (st >= 0 && ++gap > H * 0.04 || (st >= 0 && y === H)) { const en = y - gap; if (!best || en - st > best[1] - best[0]) best = [st, en]; st = -1; gap = 0; }
+    }
+    if (!best || best[1] - best[0] < H * 0.12) return null;
+    const cols = []; for (let x = 0; x < W; x++) { let s = 0; for (let y = best[0]; y <= best[1]; y++) s += M[y * W + x]; cols.push(s / (best[1] - best[0] + 1)); }
+    let x0 = cols.findIndex(v => v > colFrac), x1 = W - 1 - [...cols].reverse().findIndex(v => v > colFrac);
+    if (x0 < 0 || x1 - x0 < W * 0.4) return null;
+    return { x0, x1, y0: best[0], y1: best[1] };
+  };
+  let r = null;
+  if (grader) { // the frame: rows that are mostly red (top and bottom bars), then columns that stay red between them (the sides)
+    const rf = []; for (let y = 0; y < H; y++) { let s = 0; for (let x = 0; x < W; x++) s += red[y * W + x]; rf.push(s / W); }
+    const strong = rf.map((v, y) => v > 0.4 ? y : -1).filter(y => y >= 0);
+    if (strong.length) { const y0 = strong[0], y1 = strong[strong.length - 1];
+      if (y1 - y0 > H * 0.15) { const cf = []; for (let x = 0; x < W; x++) { let s = 0; for (let y = y0; y <= y1; y++) s += red[y * W + x]; cf.push(s / (y1 - y0 + 1)); }
+        const x0 = cf.findIndex(v => v > 0.5), x1 = W - 1 - [...cf].reverse().findIndex(v => v > 0.5);
+        if (x0 >= 0 && x1 - x0 > W * 0.4) r = { x0, x1, y0, y1, src: 'red' }; } }
+  }
+  if (!r) r = box(light, 0.25, 0.05);
+  if (!r) { // dark label: rows and columns full of text edges
+    const ed = new Uint8Array(W * H); for (let y = 0; y < H; y++) for (let x = 1; x < W - 1; x++) if (Math.abs(lum[y * W + x + 1] - lum[y * W + x - 1]) > 40) ed[y * W + x] = 1;
+    r = box(ed, 0.06, 0.02);
+  }
+  if (!r) return null;
+  if (grader && r.src === 'red') return { x0: Math.max(0, r.x0 - 1), x1: Math.min(W - 1, r.x1 + 1), y0: Math.max(0, r.y0 - 1), y1: Math.min(H - 1, r.y1 + 1), grader }; // the red frame is the label's edge
+  // light labels: move each side out to the outermost clear edge (a BGS logo panel sits outside the light area)
+  const colEdge = (x, ya, yb) => { let s = 0; for (let y = ya; y <= yb; y++) s += Math.abs(lum[y * W + Math.min(W - 1, x + 1)] - lum[y * W + Math.max(0, x - 1)]); return s / (yb - ya + 1); };
+  const rowEdge = (y, xa, xb) => { let s = 0; for (let x = xa; x <= xb; x++) s += Math.abs(lum[Math.min(H - 1, y + 1) * W + x] - lum[Math.max(0, y - 1) * W + x]); return s / (xb - xa + 1); };
+  const nearest = (from, to, f) => { const step = to > from ? 1 : -1; const sc = []; for (let t = from; step > 0 ? t <= to : t >= to; t += step) sc.push([t, f(t)]); const mx = Math.max(...sc.map(x => x[1])); const hit = sc.find(x => x[1] >= mx * 0.7); return hit ? hit[0] : from; };
+  const outermost = (from, to, f) => { const step = to > from ? 1 : -1; const sc = []; for (let t = from; step > 0 ? t <= to : t >= to; t += step) sc.push([t, f(t)]); const mx = Math.max(...sc.map(x => x[1])); let pick = from; for (const [t, v] of sc) if (v >= mx * 0.7) pick = t; return pick; };
+  const lw = r.x1 - r.x0, lh = r.y1 - r.y0, cl = (v, n) => Math.max(1, Math.min(n - 2, Math.round(v)));
+  const ya = r.y0 + Math.round(lh * 0.15), yb = r.y1 - Math.round(lh * 0.15);
+  const x0 = outermost(cl(r.x0 + lw * 0.02, W), cl(r.x0 - lw * 0.1, W), x => colEdge(x, ya, yb)), x1 = outermost(cl(r.x1 - lw * 0.02, W), cl(r.x1 + lw * 0.06, W), x => colEdge(x, ya, yb));
+  const xa = x0 + Math.round((x1 - x0) * 0.1), xb = x1 - Math.round((x1 - x0) * 0.1);
+  const y0 = nearest(cl(r.y0 + lh * 0.04, H), cl(r.y0 - lh * 0.22, H), y => rowEdge(y, xa, xb)), y1 = nearest(cl(r.y1 - lh * 0.04, H), cl(r.y1 + lh * 0.2, H), y => rowEdge(y, xa, xb));
+  return { x0, x1, y0, y1, grader };
+}
+
+/* Find the card and the label in a slab photo. Returns null when it doesn't look like a slab. */
+function findSlab(bmp) {
+  const D = detectCardQuads(bmp); if (!D.cards.length) return null;
+  const outer = D.cards.slice().sort((a, b) => b.hgt - a.hgt)[0].quad;
+  const xs = outer.map(p => p[0]), ys = outer.map(p => p[1]);
+  const bx0 = Math.max(0, Math.min(...xs)), bx1 = Math.min(bmp.width, Math.max(...xs)), by0 = Math.max(0, Math.min(...ys)), by1 = Math.min(bmp.height, Math.max(...ys));
+  const src = bitmapPixels(bmp, 2400);
+  // pass 2: the card inside the slab's window
+  let card = null;
+  const ins = (bx1 - bx0) * 0.03;
+  const cv = document.createElement('canvas'); cv.width = Math.max(8, Math.round(bx1 - bx0 - 2 * ins)); cv.height = Math.max(8, Math.round(by1 - by0 - 2 * ins));
+  cv.getContext('2d').drawImage(bmp, -(bx0 + ins), -(by0 + ins));
+  const D2 = detectCardQuads(cv);
+  const cands = D2.cards.map(c => { const r = refineCorners(cv, c.quad, { flat: true }); return { r, q: r.quad.map(p => [p[0] + bx0 + ins, p[1] + by0 + ins]) }; })
+    .filter(o => Math.abs(o.r.aspect - CARD_RATIO) / CARD_RATIO < 0.06 && quadArea(o.q) > (bx1 - bx0) * (by1 - by0) * 0.3)
+    .sort((a, b) => quadArea(b.q) - quadArea(a.q));
+  if (cands.length) card = { quad: cands[0].q, conf: cands[0].r.confidence };
+  if (!card) { // card blends into the insert: place it from the label, using the usual slab layout, then snap to its edges
+    const W = bx1 - bx0, Ht = Math.min(by1 - by0, W * 0.42), k0 = Math.min(1, 900 / W);
+    const tcv = document.createElement('canvas'); tcv.width = Math.round(W * k0); tcv.height = Math.round(Ht * k0);
+    tcv.getContext('2d').drawImage(bmp, bx0, by0, W, Ht, 0, 0, tcv.width, tcv.height); const top = { k: k0 };
+    const L = findLabelRect(tcv); if (!L) return null;
+    const lx0 = bx0 + L.x0 / top.k, lx1 = bx0 + L.x1 / top.k, ly0 = by0 + L.y0 / top.k, ly1 = by0 + L.y1 / top.k; const lw = lx1 - lx0, lh = ly1 - ly0;
+    const lay = L.grader === 'PSA' ? { left: 0.0245, w: 0.936, gap: 0.535 } : { left: 0.07, w: 0.88, gap: 0.51 };
+    const cx0 = lx0 + lw * lay.left, cw = lw * lay.w, cy0 = ly1 + lh * lay.gap, ch = cw * CARD_RATIO;
+    const r = refineCorners(bmp, [[cx0, cy0], [cx0 + cw, cy0], [cx0 + cw, cy0 + ch], [cx0, cy0 + ch]], { flat: true, wide: 0.04 });
+    card = { quad: r.quad, conf: r.confidence * 0.8 };
+  }
+  // the label: look in an upright band above the card, in the card's own frame (handles tilt and perspective)
+  const map = cardFrame(card.quad); const CW = SLAB.CW;
+  const bx = [-0.16 * CW, 1.16 * CW], byr = [-0.62 * CW, -0.01 * CW];
+  const band = frameCrop(src, map, bx[0], byr[0], bx[1], byr[1], 0.5);
+  const L = findLabelRect(band); if (!L) return { card: card.quad, conf: card.conf, label: null };
+  const k = 0.5; const lab = { x0: bx[0] + L.x0 / k, x1: bx[0] + L.x1 / k, y0: byr[0] + L.y0 / k, y1: byr[0] + L.y1 / k };
+  const aspect = (lab.x1 - lab.x0) / (lab.y1 - lab.y0);
+  if (aspect < 2.4 || aspect > 6.5 || lab.x1 - lab.x0 < CW * 0.7) return { card: card.quad, conf: card.conf, label: null };
+  return { card: card.quad, conf: card.conf, label: lab, aspect, grader: L.grader, map, src };
+}
+
+/* Clean up the label like a fresh scan: enlarge, white-balance the paper, deepen the ink, sharpen. */
+function enhanceLabel(cv) {
+  const W = cv.width, H = cv.height; const g = cv.getContext('2d', { willReadFrequently: true }); const im = g.getImageData(0, 0, W, H); const d = im.data; const n = W * H;
+  // paper colour = average of the brightest 8% of pixels
+  const hist = new Uint32Array(256); const L = new Uint8Array(n);
+  for (let p = 0, i = 0; p < n; p++, i += 4) { L[p] = Math.min(255, lumOf(d, i) | 0); hist[L[p]]++; }
+  let acc = 0, thr = 255; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= n * 0.08) { thr = v; break; } }
+  let sr = 0, sg = 0, sb = 0, c = 0; for (let p = 0, i = 0; p < n; p++, i += 4) if (L[p] >= thr) { sr += d[i]; sg += d[i + 1]; sb += d[i + 2]; c++; }
+  const gain = [245 / Math.max(40, sr / c), 245 / Math.max(40, sg / c), 245 / Math.max(40, sb / c)];
+  const lut = new Uint8Array(256); for (let v = 0; v < 256; v++) lut[v] = Math.round(255 * Math.pow(v / 255, 1.25));
+  for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) d[i + k] = lut[Math.min(255, Math.round(d[i + k] * gain[k]))];
+  // unsharp mask (box blur twice ~ gaussian), then a little contrast
+  const blur = new Float32Array(n * 3); for (let p = 0, i = 0; p < n; p++, i += 4) { blur[p * 3] = d[i]; blur[p * 3 + 1] = d[i + 1]; blur[p * 3 + 2] = d[i + 2]; }
+  const R = Math.max(1, Math.round(W / 700)); const tmp = new Float32Array(n * 3);
+  const pass = (a, b, horiz) => { for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (let k = 0; k < 3; k++) { let s = 0, m = 0; for (let t = -R; t <= R; t++) { const xx = horiz ? x + t : x, yy = horiz ? y : y + t; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; s += a[(yy * W + xx) * 3 + k]; m++; } b[(y * W + x) * 3 + k] = s / m; } };
+  for (let it = 0; it < 2; it++) { pass(blur, tmp, true); pass(tmp, blur, false); }
+  for (let p = 0, i = 0; p < n; p++, i += 4) for (let k = 0; k < 3; k++) { let v = d[i + k] + 1.4 * (d[i + k] - blur[p * 3 + k]); v = (v - 128) * 1.12 + 128; d[i + k] = v < 0 ? 0 : v > 255 ? 255 : v; }
+  g.putImageData(im, 0, 0); return cv;
+}
+
+/* Everything for one slab photo: the card face, the cleaned label, and what the label says. */
+async function processSlabPhoto(fileOrBlob, opts = {}) {
+  const orig = opts.orig || await compressImage(fileOrBlob, 2400, 0.92);
+  const bmp = await bitmapOf(orig);
+  const s = findSlab(bmp); if (!s) return null;
+  const src = s.src || bitmapPixels(bmp, 2400);
+  const out = await canvasBlob(warpCard(src, s.card));
+  const res = { orig, out, quad: s.card, check: s.conf < 0.5, label: null, labelAspect: 0, info: null };
+  if (s.label) {
+    const L = s.label; const scale = Math.min(2.2, 2000 / (L.x1 - L.x0)); // about 2x the scan's own resolution
+    const cv = enhanceLabel(frameCrop(src, s.map, L.x0, L.y0, L.x1, L.y1, scale));
+    res.label = await canvasBlob(cv); res.labelAspect = +(cv.width / cv.height).toFixed(3);
+    if (opts.read !== false) { try { res.info = await readSlabText(res.label, s.grader, opts.onProgress); } catch (e) { console.warn('label read failed', e); } }
+  }
+  return res;
+}
+
+/* Read the label: grader, grade, cert number and the card description. */
+async function readSlabText(blob, graderHint, onProgress) {
+  const r = await readImageText(blob, onProgress || (() => {}), '6', { raw: true });
+  return Object.assign(parseSlabLabel(r.text, graderHint), { text: r.text });
+}
+const GRADE_WORDS = 'GEM\\s*-?\\s*MT|GEM\\s*MINT|PRISTINE|BLACK\\s*LABEL|MINT\\+?|NM\\s*-?\\s*MT\\+?|NEAR\\s*MINT|NM|EX\\s*-?\\s*MT|EX|VG\\s*-?\\s*EX|VG|GOOD|FAIR|POOR|PR|FR|AUTHENTIC';
+function parseSlabLabel(text, graderHint) {
+  const raw = String(text || '').replace(/[‘’]/g, "'");
+  const lines = raw.replace(/£/g, '#').split('\n').map(l => l.replace(/^[^A-Za-z0-9#]+/, '').replace(/[\s|]+$/, '').trim()).filter(Boolean); // drop stray marks OCR reads at the label's edges
+  const out = { gradeCo: '', grade: '', gradeWord: '', cert: '', year: '', brand: '', set: '', player: '', number: '', parallel: '', sub: '' };
+  const up = raw.toUpperCase();
+  out.gradeCo = /BECKETT|\bBGS\b|\bBVG\b|\bBCCG\b/.test(up) ? 'BGS' : /\bSGC\b/.test(up) ? 'SGC' : /\bCGC\b/.test(up) ? 'CGC' : /\bTAG\b/.test(up) ? 'TAG' : /\bPSA\b|\bP5A\b/.test(up) ? 'PSA' : graderHint || '';
+  // cert: the longest run of 7-10 digits (OCR sometimes reads O for 0)
+  const certs = (up.replace(/(?<=\d)[O](?=\d)/g, '0').match(/\b\d{7,10}\b/g) || []).sort((a, b) => b.length - a.length);
+  if (certs.length) out.cert = certs[0];
+  // grade: "GEM MT 10" / "MINT 9", the word and number may sit on separate lines
+  const flat = lines.map(l => l.toUpperCase()).join('\n');
+  const gw = flat.match(new RegExp(`(${GRADE_WORDS})\\s*\\n?\\s*(10|[1-9](?:\\.5)?)(?![\\d.])`));
+  if (gw) { out.gradeWord = gw[1].replace(/\s+/g, ' ').trim(); out.grade = gw[2]; }
+  // PSA prints the grade number on its own in the right-hand column
+  const rights = lines.map(l => l.split(/\s{2,}/)).map(p => (p.length > 1 ? p[p.length - 1] : p[0]).replace(/\s/g, ''));
+  if (!out.grade) { const lone = rights.find(l => /^(10|[1-9](\.5)?)$/.test(l)); if (lone) out.grade = lone; }
+  if (!out.gradeWord) { const w = flat.match(new RegExp(`\\b(${GRADE_WORDS})\\b`)); if (w) out.gradeWord = w[1].replace(/\s+/g, ' '); }
+  if (out.gradeWord === 'AUTHENTIC' && !out.grade) out.grade = 'Authentic';
+  // BGS subgrades
+  const sg = k => { const m = up.match(new RegExp(k + '\\s*([0-9.]{1,4})')); return m ? m[1] : ''; };
+  const subs = [['Centering', sg('CENTERING')], ['Corners', sg('CORNERS')], ['Edges', sg('EDGES')], ['Surface', sg('SURFACE')]].filter(x => /^\d+(\.5)?$/.test(x[1]));
+  if (subs.length >= 3) out.sub = subs.map(([a, b]) => `${a} ${b}`).join(' · ');
+  // description: the left column of each line (columns are separated by wide gaps)
+  const skip = new RegExp(`^(${GRADE_WORDS}|\\d{1,2}(\\.5)?|\\d{7,10}|CENTERING|CORNERS|EDGES|SURFACE|BECKETT|PSA|SGC|CGC)\\b`, 'i');
+  const left = lines.filter(l => !/\d{7,10}/.test(l)).map(l => l.split(/\s{2,}/)[0].replace(/[—–]/g, '-').trim()).filter(l => l.length > 2 && /[A-Za-z]{2,}/.test(l) && /[AEIOUY]/i.test(l) && (l.match(/[Il|1!]/g) || []).length < l.length * 0.4 && !skip.test(l) && !/CENTERING|CORNERS|EDGES|SURFACE/i.test(l));
+  const all = lines.join(' ');
+  const num = all.match(/#\s?([A-Z]{0,5}-?\d{1,4}[A-Z]?)\b/i); if (num) out.number = num[1].toUpperCase();
+  const desc = left.map(l => l.replace(/#\s?[A-Z]{0,5}-?\d{1,4}[A-Z]?\b/i, ' ').replace(/\s+/g, ' ').trim()).filter(l => l.length > 2);
+  if (desc.length && /\b(19[0-9]{2}|20[0-3]\d)\b/.test(desc[0])) { // only trust a description that starts with the year, as every label does
+    const y = desc[0].match(/\b(19[0-9]{2}|20[0-3]\d)(?:-(\d{2}))?\b/); if (y) out.year = y[1] + (y[2] ? '-' + y[2] : '');
+    const p = parseCardTitle(desc[0]); out.brand = p.brand; out.set = p.set;
+    if (!out.brand) { const words = desc[0].replace(y ? y[0] : '', '').trim(); out.brand = titleCase(words.split(' ')[0] || ''); out.set = titleCase(words.split(' ').slice(1).join(' ')); }
+    // the player is the line that reads like a name (often the second); check it against the player list
+    const nameLine = desc.slice(1).find(l => /^[A-Z.'\- ]+$/i.test(l) && l.split(' ').length >= 2 && l.split(' ').length <= 5) || '';
+    if (nameLine) { const m = typeof matchPlayer === 'function' ? matchPlayer([nameLine]) : null; out.player = m && m.score <= 1.5 ? m.full : titleCase(nameLine.toLowerCase()); }
+    const rest = desc.slice(1).filter(l => l !== nameLine && !/^(RC|ROOKIE CARD|ROOKIE)$/i.test(l));
+    if (rest.length) out.parallel = titleCase(rest.join(' ').toLowerCase().replace(/\bref\b\.?/g, 'refractor').replace(/\s*-\s*/g, ' ')).replace(/\s+/g, ' ').trim();
+    if (/ROOKIE/i.test(desc[0]) && out.set) out.set = out.set.replace(/\s*rookie card\s*/i, ' ').trim();
+  }
+  return out;
+}
+
+/* ---------- card page: "Use slab label" ---------- */
+const SL = { id: null, res: null };
+async function openSlabRead(id) {
+  const c = cardById(id); const fid = c.frontOrig || c.front; if (!fid) return toast('Add a front photo of the slab first');
+  SL.id = id; SL.res = null;
+  openModal(`<div>${mhead('Reading the slab')}<div class="calc"><div><span id="sl-step">Finding the card and label</span><b id="sl-pct"></b></div></div></div>`, { narrow: true });
+  let res = null;
+  try {
+    const rec = await fileGet(fid); const blob = rec && rec.blob; if (!blob) throw new Error('photo missing');
+    await loadPlayerNames().catch(() => {});
+    res = await processSlabPhoto(blob, { orig: blob, onProgress: (p, label) => { const a = $('#sl-step'), b = $('#sl-pct'); if (a) a.textContent = label === 'Reading text' ? 'Reading the label' : label; if (b && p !== null) b.textContent = Math.round(p * 100) + '%'; } });
+  } catch (e) { console.warn(e); }
+  const sheet = $('#modal-root .sheet'); if (!sheet) return;
+  if (!res || !res.label) { sheet.innerHTML = `${mhead('Couldn\'t find the label')}<p>Dugout couldn't find a grading label above the card in this photo. Use a straight-on photo or scan of the whole slab, with the label at the top.</p><div class="sheet-foot"><button class="btn" data-act="close" type="button">Close</button></div>`; return; }
+  SL.res = res; renderSlabRead();
+}
+const SLAB_FIELDS = [['gradeCo', 'Grader'], ['grade', 'Grade'], ['cert', 'Cert #'], ['year', 'Year'], ['brand', 'Brand'], ['set', 'Set'], ['player', 'Player'], ['number', 'Card #'], ['parallel', 'Parallel']];
+function renderSlabRead() {
+  const c = cardById(SL.id); const res = SL.res; const info = res.info || {};
+  const u1 = URL.createObjectURL(res.out), u2 = URL.createObjectURL(res.label);
+  const rows = SLAB_FIELDS.map(([k, lbl]) => {
+    const v = String(info[k] || '').trim(); const cur = String(c[k] || '').trim(); if (!v || ckey(v) === ckey(cur)) return '';
+    const on = ['gradeCo', 'grade', 'cert', 'year', 'number'].includes(k) || !cur; // the label is the record for grade, cert, year and number; names and sets fill blanks unless you tick them (wording differs between label and card)
+    return `<label class="li sl-row"><input type="checkbox" name="f_${k}" ${on ? 'checked' : ''}><span class="grow">${lbl}</span><span class="muted">${esc(cur || '—')}</span><span>→</span><input name="v_${k}" value="${esc(v)}" style="width:min(220px,45vw)"></label>`;
+  }).join('');
+  $('#modal-root .sheet').innerHTML = `<form data-form="slabApply">${mhead('Slab label')}
+    <div class="sl-prev"><figure><img src="${u2}" alt="Grading label from the photo, cleaned up"><figcaption>Label for the 3D slab</figcaption></figure>
+    <figure class="sl-card"><img src="${u1}" alt="Card cut out of the slab photo"><figcaption>Card face</figcaption></figure></div>
+    ${res.check ? '<div class="warn">The card\'s edges were hard to find in this photo. Check them with Straighten afterwards.</div>' : ''}
+    <fieldset><legend>Read from the label</legend>${rows ? `<div class="list">${rows}</div><small class="muted">Ticked fields will be updated. Edit any value before saving.</small>` : '<div class="empty">Everything on the label already matches this card.</div>'}
+    ${info.sub ? `<small class="muted">Subgrades: ${esc(info.sub)}</small>` : ''}</fieldset>
+    <div class="sheet-foot"><button class="btn" type="button" data-act="close">Cancel</button><button class="btn pri" type="submit">Use this label</button></div></form>`;
+}
+FORMS.slabApply = async f => {
+  const c = cardById(SL.id); const res = SL.res; if (!c || !res) return; const fd = new FormData(f); const old = structuredClone(c);
+  if (c.front && c.front !== c.frontOrig) await fileDel(c.front);
+  if (!c.frontOrig) c.frontOrig = c.front;
+  c.front = await fileSave(await compressImage(res.out), 'front.jpg'); c.frontQuad = res.quad.map(p => [Math.round(p[0]), Math.round(p[1])]);
+  if (c.slabLabel) await fileDel(c.slabLabel);
+  c.slabLabel = await fileSave(res.label, 'label.jpg'); c.slabLabelAspect = res.labelAspect; c.graded = true; c.condition = '';
+  const changes = [];
+  for (const [k, lbl] of SLAB_FIELDS) if (fd.get('f_' + k) === 'on') { const v = String(fd.get('v_' + k) || '').trim(); if (v && v !== String(c[k] || '')) { changes.push({ f: lbl, from: String(c[k] || ''), to: v }); c[k] = v; } }
+  if (res.info && res.info.sub && !String(c.notes || '').includes(res.info.sub)) c.notes = [c.notes, 'Subgrades: ' + res.info.sub].filter(Boolean).join('\n');
+  await save('cards', c, { quiet: true });
+  changes.push({ f: 'Slab label', from: old.slabLabel ? 'old' : '', to: 'from photo' });
+  await logTxn({ cardId: c.id, type: 'edit', date: today(), changes, note: 'From slab label' });
+  closeModal(); onChange('cards'); toast('Slab label added'); route();
+};
+A.slabRead = el => openSlabRead(el.dataset.id);
+
+/* ---------- card form: fill the grade from a slab photo as soon as it's picked ---------- */
+const SLAB_PICK = new WeakMap(); // file -> processing promise, reused when the form is saved
+document.addEventListener('change', async e => {
+  const inpEl = e.target; if (inpEl.name !== 'front' || !inpEl.closest('form[data-form="card"]')) return;
+  const f = inpEl.closest('form'); const file = inpEl.files && inpEl.files[0]; if (!file) return;
+  if (f.querySelector('[name=autocrop]') && !f.querySelector('[name=autocrop]').checked) return;
+  const note = f.querySelector('#slab-note') || (() => { const d = document.createElement('div'); d.id = 'slab-note'; d.className = 'calc'; inpEl.closest('fieldset').append(d); return d; })();
+  note.innerHTML = '<div><span>Checking for a grading label…</span></div>';
+  const job = (async () => { await loadPlayerNames().catch(() => {}); return processSlabPhoto(file, { onProgress: (p, label) => { if (label === 'Reading text') note.innerHTML = `<div><span>Reading the label</span><b>${p === null ? '' : Math.round(p * 100) + '%'}</b></div>`; } }); })().catch(err => { console.warn(err); return null; });
+  SLAB_PICK.set(file, job);
+  const res = await job;
+  if (!f.isConnected) return;
+  if (!res || !res.label) { note.remove(); return; }
+  const info = res.info || {}; const filled = [];
+  const set = (name, v, always) => { const el = f.querySelector(`[name=${name}]`); if (!el || !v) return; if (always || !el.value.trim()) { if (el.value !== v) filled.push(name === 'gradeCo' ? 'grader' : name); el.value = v; } };
+  const g = f.querySelector('[name=graded][value=graded]'); if (g && !g.checked) { g.checked = true; g.dispatchEvent(new Event('change', { bubbles: true })); }
+  if (info.gradeCo && GRADERS.includes(info.gradeCo)) set('gradeCo', info.gradeCo, true);
+  set('grade', info.grade, true); set('cert', info.cert, true);
+  ['player', 'year', 'brand', 'set', 'number', 'parallel'].forEach(k => set(k, info[k], false));
+  note.innerHTML = `<div><span>Slab found. The real label goes on the 3D slab${filled.length ? '; filled in ' + esc(filled.join(', ')) : ''}.</span></div>`;
 });
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
