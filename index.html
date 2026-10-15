@@ -324,6 +324,113 @@ details.crit .tablewrap { border: 0; border-top: 1px solid var(--line); border-r
 .sl-prev figcaption { font-size: .8rem; color: var(--muted); }
 .sl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 @media (max-width: 520px) { .sl-prev { grid-template-columns: 1fr; } .sl-prev .sl-card { max-width: 50%; } }
+
+/* ===== v1.15 layout: Today, slab tiles, card hero, phone tab bar ===== */
+.lbl { font: 600 .74rem var(--display); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.big { font-size: clamp(2.1rem, 5vw, 3.3rem); line-height: 1; white-space: nowrap; color: var(--acc); text-shadow: var(--glow); }
+.spark { display: block; width: 100%; height: auto; overflow: visible; }
+.only-phone { display: none !important; }
+
+/* Today */
+.hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr) minmax(0, .9fr); background: var(--panel); border: 2px solid var(--line); border-radius: 14px; overflow: hidden; }
+.hero > div { padding: 18px 20px; min-width: 0; }
+.hero-main { display: flex; flex-direction: column; gap: 6px; border-right: 2px solid var(--line); }
+.hero .delta { font-weight: 700; }
+.hero-chart { display: flex; align-items: center; }
+.hero-side { display: grid; gap: 10px; align-content: center; border-left: 2px solid var(--line); }
+.hero-side > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.hero-side b { font-size: 1.25rem; }
+.queue { display: grid; gap: 8px; }
+.queue .q { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 10px; text-align: left; white-space: normal; justify-content: flex-start; width: 100%; }
+.queue .q.due { border-left: 4px solid var(--acc); background: color-mix(in srgb, var(--acc) 9%, var(--panel2)); }
+.queue .qn { font: 800 1.9rem var(--display); color: var(--muted); min-width: 2ch; text-align: center; }
+.queue .q.due .qn { color: var(--acc); }
+.queue .ql { display: flex; flex-direction: column; flex: 1; min-width: 0; font-weight: 400; }
+.queue .ql small { color: var(--muted); }
+.queue .qgo { color: var(--muted); font-size: 1.2rem; }
+.movers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.mover { display: grid; gap: 2px; text-decoration: none; color: var(--ink); min-width: 0; }
+.mover .art { border-radius: 8px; border: 1px solid var(--line); margin-bottom: 4px; }
+.mover b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .92rem; }
+.mover small { color: var(--muted); }
+
+/* inventory chips + tiles */
+.chiprow { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.chiprow::-webkit-scrollbar { display: none; }
+.chiprow button { flex: none; border-radius: 99px; padding: 8px 14px; font: 600 .95rem var(--display); letter-spacing: .04em; text-transform: uppercase; }
+.chiprow button b { color: var(--muted); font-weight: 700; }
+.chiprow button[aria-pressed="true"] { background: var(--acc); border-color: var(--acc); color: var(--acc-ink); }
+.chiprow button[aria-pressed="true"] b { color: inherit; opacity: .7; }
+.ctile .tl-photo { position: relative; }
+.ctile.slabbed .tl-photo { background: linear-gradient(#1a1f26, #0b0d10); padding: 8px 10px 0; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid var(--line); }
+.ctile.slabbed .art { border-radius: 5px 5px 0 0; }
+.tl-slab { border-radius: 4px; overflow: hidden; box-shadow: 0 1px 0 rgba(255,255,255,.15) inset, 0 2px 6px rgba(0,0,0,.5); }
+.tl-slab img { width: 100%; display: block; }
+.ctile .ct-money { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: .9rem; }
+.ct-val { font-size: 1.05rem; color: var(--acc); }
+.roi { font: 700 .8rem var(--led); padding: 2px 6px; border-radius: 4px; background: color-mix(in srgb, currentColor 14%, transparent); }
+.ctile .ct-top { margin-top: 4px; }
+
+/* card page */
+.cardhero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 24px; align-items: start; }
+.ch-view .c3d-canvas { aspect-ratio: 5 / 6.2; }
+.ch-view .c3d > .c3d-stage > .art { width: min(100%, 360px); margin: 0 auto; border-radius: 10px; border: 1px solid var(--line); }
+.ch-info { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 16px; min-width: 0; }
+.ch-info h1 { font-size: clamp(2rem, 4.4vw, 3.1rem); line-height: 1; }
+.ch-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ch-tags a.pill { text-decoration: none; color: var(--ink); }
+.facts { display: flex; flex-wrap: wrap; gap: 6px; }
+.facts span { border: 1px solid var(--line); background: var(--panel2); border-radius: 99px; padding: 4px 11px; font-size: .92rem; }
+.gradechip { display: inline-flex; align-self: flex-start; align-items: baseline; gap: 10px; border: 2px solid var(--muted); border-radius: 8px; padding: 6px 12px; text-decoration: none; color: var(--ink); }
+.gradechip.co-psa { border-color: #c4202f; background: color-mix(in srgb, #c4202f 10%, transparent); }
+.gradechip.co-bgs { border-color: #9aa3ad; background: color-mix(in srgb, #9aa3ad 10%, transparent); }
+.gradechip b { font: 800 1.3rem var(--display); letter-spacing: .04em; }
+.gradechip small { color: var(--muted); }
+.pricebox { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: end; background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 16px; }
+.pricebox > div { display: grid; gap: 4px; }
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; background: var(--line); border: 2px solid var(--line); border-radius: 10px; overflow: hidden; }
+.trio > div { background: var(--panel); padding: 10px 12px; display: grid; gap: 2px; min-width: 0; }
+.trio b { font-size: 1.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+details.more { position: relative; }
+details.more > summary { list-style: none; }
+details.more > summary::-webkit-details-marker { display: none; }
+.more-pop { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; min-width: 240px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.more-pop .qrbox { width: 96px; }
+.ch-rest { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.ch-rest > section:first-child, .ch-rest > section:last-child { grid-column: 1 / -1; }
+
+/* add menu sheet */
+.addmenu { display: grid; gap: 8px; }
+.addmenu .btn { flex-direction: column; align-items: flex-start; gap: 0; padding: 12px 14px; white-space: normal; text-align: left; }
+.addmenu .btn small { font-weight: 400; opacity: .8; }
+
+/* phone tab bar */
+.tabbar { display: none; }
+@media (max-width: 860px) {
+  .only-phone { display: inline-flex !important; }
+  .page-head .actions.add-menu > :not(.only-phone) { display: none; }
+  .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 35; background: color-mix(in srgb, var(--side) 94%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-top: 1px solid rgba(255,255,255,.08);
+    padding: 6px max(8px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px)); }
+  .tabbar a, .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 2px; text-decoration: none; color: var(--side-ink); font: 600 .72rem var(--display); letter-spacing: .06em; text-transform: uppercase; padding: 4px 0; background: none; border: 0; border-radius: 0; }
+  .tabbar i { font-style: normal; font-size: 1.3rem; line-height: 1.1; }
+  .tabbar .on { color: var(--acc-base); }
+  .tabbar .fab i { background: var(--acc-base); color: #0a0c0f; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; margin-top: -24px; box-shadow: 0 6px 18px rgba(0,0,0,.5), 0 0 12px color-mix(in srgb, var(--acc-base) 45%, transparent); font-size: 1.5rem; }
+  .tabbar .fab { color: #fff; }
+  .view { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .hero { grid-template-columns: minmax(0, 1fr); }
+  .hero-main { border-right: 0; }
+  .hero-chart { padding-top: 0 !important; }
+  .hero-side { border-left: 0; border-top: 2px solid var(--line); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .hero-side > div { flex-direction: column; gap: 2px; }
+  .inv-filters { padding: 10px; }
+  .inv-filters:not(.open) .toolbar:not(:first-child), .inv-filters:not(.open) .seg, .inv-filters [data-to="#/scan"] { display: none !important; }
+  .cardhero, .ch-rest { grid-template-columns: minmax(0, 1fr); }
+  .ch-info { position: static; }
+  .cgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .more-pop { right: auto; left: 0; }
+}
+@media (max-width: 420px) { .pricebox { grid-template-columns: minmax(0, 1fr); } }
 </style>
 <div id="app"></div>
 <div id="modal-root"></div>
@@ -782,7 +889,7 @@ function snapshotSoon() { clearTimeout(snapTimer); snapTimer = setTimeout(async 
 
 /* ---------- shell ---------- */
 const NAV = [
-  ['dash', 'Home'], ['inv', 'Inventory'], ['pickups', 'Pickups'], ['sales', 'Sales'], ['receipts', 'Receipts'], ['finder', 'Niche Finder'], ['reports', 'Reports'], '-',
+  ['dash', 'Today'], ['inv', 'Inventory'], ['pickups', 'Pickups'], ['sales', 'Sales'], ['receipts', 'Receipts'], ['finder', 'Niche Finder'], ['reports', 'Reports'], '-',
   ['scan', 'Scan QR'], ['labels', 'QR labels'], ['storage', 'Storage boxes'], ['settings', 'Settings'],
 ];
 function shell() {
@@ -792,16 +899,21 @@ function shell() {
       <div class="brand"><i></i>DUGOUT</div>
       <nav>${NAV.map(n => n === '-' ? '<div class="sep"></div>' : `<a href="#/${n[0]}" data-nav="${n[0]}">${n[1]}</a>`).join('')}</nav>
       <div class="foot">
-        <span class="muted" style="color:inherit;opacity:.6">Version 1.14 · PSA back labels</span>
+        <span class="muted" style="color:inherit;opacity:.6">Version 1.15 · new layout</span>
         <span id="sync-status">${esc(Sync.status || (syncCfg() ? 'Sync ready' : 'Saved on this device'))}</span>
         <div class="row"><button class="btn sm" data-act="theme" type="button">Light / dark</button>${syncCfg() ? '<button class="btn sm" data-act="syncNow" type="button">Sync</button>' : ''}</div>
       </div>
     </aside>
     <div class="scrim" data-act="menu"></div>
     <div class="main">
-      <header class="topbar"><button class="btn sm" data-act="menu" type="button" aria-label="Menu">☰</button><b>DUGOUT</b><button class="btn sm" data-act="go" data-to="#/scan" type="button">Scan</button></header>
+      <header class="topbar"><b>DUGOUT</b><button class="btn sm" data-act="theme" type="button" aria-label="Switch light or dark"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 3a7 7 0 0 1 0 14z" fill="currentColor"/></svg></button></header>
       <div class="view" id="view"></div>
     </div>
+    <nav class="tabbar" aria-label="Main">
+      <a href="#/dash" data-tab="dash"><i aria-hidden="true">⌂</i>Today</a><a href="#/inv" data-tab="inv"><i aria-hidden="true">▦</i>Cards</a>
+      <a href="#/scan" data-tab="scan" class="fab"><i aria-hidden="true">⌗</i>Scan</a><a href="#/sales" data-tab="sales"><i aria-hidden="true">$</i>Sales</a>
+      <button type="button" data-act="menu" data-tab="more"><i aria-hidden="true">⋯</i>More</button>
+    </nav>
   </div>`;
 }
 function applyTheme() {
@@ -824,6 +936,8 @@ async function route() {
   const [, name = 'dash', arg] = h.split('/');
   curView = name;
   $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === name || (name === 'card' && a.dataset.nav === 'inv') || (name === 'pickup' && a.dataset.nav === 'pickups') || (name === 'box' && a.dataset.nav === 'storage')));
+  const tab = { card: 'inv', dash: 'dash', inv: 'inv', scan: 'scan', sales: 'sales' }[name] || 'more';
+  $$('.tabbar [data-tab]').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   const fn = V[name] || V.dash;
   renderView(await fn(arg));
   if (fn.after) fn.after(arg);
@@ -852,7 +966,7 @@ const tile = (label, val, k = '', sub = '') => `<div class="tile"><span class="l
 const statusPill = c => `<span class="pill st-${c.status}">${STATUS[c.status] || c.status}</span>`;
 function badges(c) {
   const b = [];
-  if (c.rookie) b.push('RC'); if (c.auto) b.push('AUTO'); if (c.patch) b.push('PATCH'); if (c.graded) b.push(esc(gradeText(c)));
+  if (c.rookie) b.push('RC'); if (c.auto) b.push('AUTO'); if (c.patch) b.push('PATCH'); if (c.graded && !c.slabLabel) b.push(esc(gradeText(c))); // a real slab label already shows the grade
   if (c.serial) b.push('/' + esc(String(c.serial).replace(/^.*\//, '')));
   return b.length ? `<div class="badges">${b.map(x => `<span class="badge">${x}</span>`).join('')}</div>` : '';
 }
@@ -863,10 +977,29 @@ function art(c, side = 'front') {
   return `<div class="art gen" style="--h:${hue(c.team || c.player)}">${badges(c)}<span>${esc(ini)}</span><small>${esc([c.year, c.brand].filter(Boolean).join(' '))}</small></div>`;
 }
 
+/* a small trend line: area + line + end dot */
+function miniSpark(vals, w = 120, h = 34, color = 'var(--acc)', label = '') {
+  vals = (vals || []).map(Number).filter(v => isFinite(v)); if (vals.length < 2) return '';
+  const mn = Math.min(...vals), mx = Math.max(...vals), sp = mx - mn || 1;
+  const pts = vals.map((v, i) => [2 + (w - 4) * i / (vals.length - 1), 3 + (h - 6) * (1 - (v - mn) / sp)]);
+  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(''); const e = pts[pts.length - 1];
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" ${label ? `role="img" aria-label="${esc(label)}"` : 'aria-hidden="true"'}><path d="${d}L${w - 2},${h}L2,${h}Z" fill="${color}" opacity=".13"/><path d="${d}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/><circle cx="${e[0].toFixed(1)}" cy="${e[1].toFixed(1)}" r="2.8" fill="${color}"/></svg>`;
+}
+const daysSince = d => (d ? Math.floor((Date.now() - new Date(String(d).slice(0, 10) + 'T12:00')) / 864e5) : 9999);
+const priceTrend = c => { const h = (c.priceHistory || []).map(x => num(x.value)); if (h.length < 2) return null; const a = h[Math.max(0, h.length - 4)], b = h[h.length - 1]; return a ? (b - a) / a : null; };
+/* which cards need attention, shared by Today and the inventory chips */
+const NEEDS = {
+  needprice: c => !num(c.value) || daysSince(c.priceUpdated) > 30,
+  listedlong: c => c.status === 'listed' && daysSince(c.listedAt || (c.buy && c.buy.date)) > 21,
+  grading: c => c.status === 'grading',
+  nophoto: c => !c.front,
+};
+/* the page's add menu on a phone: one button instead of a row */
+const addMenuBtn = () => `<button class="btn pri only-phone" data-act="addMenu" type="button">+ Add</button>`;
+
 /* ---------- home ---------- */
 V.dash = () => {
-  const t = totals(); const d = today(); const m0 = d.slice(0, 8) + '01';
-  const rm = realized(m0, d);
+  const t = totals(); const d = today(); const rm = realized(d.slice(0, 8) + '01', d);
   const monthName = new Date().toLocaleDateString('en-US', { month: 'short' });
   const welcome = !S.cards.length ? `
     <section class="panel"><h2>Welcome to Dugout</h2>
@@ -874,26 +1007,46 @@ V.dash = () => {
       <div class="row"><button class="btn pri" data-act="addCard" type="button">+ Add my first card</button><button class="btn" data-act="batch" type="button">Add many cards from photos</button><button class="btn" data-act="newPickup" type="button">Log a pickup</button><button class="btn" data-act="loadDemo" type="button">Load demo cards</button></div>
     </section>` : '';
   const demo = S.cards.some(c => c.demo && live(c)) ? `<div class="warn">You're looking at demo cards. Remove them in <a href="#/settings">Settings</a> when you're ready to start for real.</div>` : '';
+  const snaps = S.snaps.filter(x => !x.purged).sort((a, b) => a.date.localeCompare(b.date));
+  const cut = new Date(Date.now() - 30 * 864e5).toLocaleDateString('en-CA');
+  const base = [...snaps].reverse().find(x => x.date <= cut) || snaps[0];
+  const ch = base && base.value ? (t.value - base.value) / base.value : null;
+  const act = S.cards.filter(live).filter(c => ACTIVE.includes(c.status));
+  const n = k => act.filter(NEEDS[k]).length;
+  const q = (k, label, sub) => { const c = n(k); return `<button class="q${c ? ' due' : ''}" type="button" data-act="quick" data-k="${k}"><span class="qn">${c}</span><span class="ql"><b>${label}</b><small>${sub}</small></span><span class="qgo" aria-hidden="true">→</span></button>`; };
+  const movers = act.map(c => ({ c, t: priceTrend(c) })).filter(o => o.t !== null && o.t !== 0).sort((a, b) => Math.abs(b.t) - Math.abs(a.t)).slice(0, 6);
   return `
-  <div class="page-head"><h1>Home</h1><div class="actions">
+  <div class="page-head"><h1>Today</h1><div class="actions add-menu">
     <button class="btn pri" data-act="addCard" type="button">+ Add card</button>
     <button class="btn" data-act="batch" type="button">Bulk add</button>
     <button class="btn" data-act="scanReceipt" type="button">Scan receipt</button>
-    <a class="btn" href="#/scan">Scan QR</a>
-    <button class="btn" data-act="newPickup" type="button">Log pickup</button></div></div>
+    <button class="btn" data-act="newPickup" type="button">Log pickup</button>${addMenuBtn()}</div></div>
   ${demo}${welcome}
-  <section class="board" aria-label="Scoreboard">
-    ${tile('Inventory value', money0(t.value))}
-    ${tile('Cost basis', money0(t.cost))}
-    ${tile('Unrealized profit', money0(t.unreal, 1), cls(t.unreal), t.cost ? pct(t.unreal / t.cost) + ' on cost' : '')}
-    ${tile('Realized · ' + monthName, money0(rm, 1), cls(rm))}
-    ${tile('Cards in stock', t.count.toLocaleString())}
+  <section class="hero" aria-label="Scoreboard">
+    <div class="hero-main"><span class="lbl">Inventory value</span><div class="big led">${money0(t.value)}</div>
+      ${ch === null ? '<small class="muted">The trend fills in as you use Dugout</small>' : `<div class="delta ${cls(ch)}">${ch >= 0 ? '▲' : '▼'} ${pct(Math.abs(ch))} <span class="muted">last 30 days</span></div>`}</div>
+    <div class="hero-chart">${miniSpark(snaps.slice(-90).map(x => x.value), 420, 92, 'var(--acc)', 'Inventory value over time')}</div>
+    <div class="hero-side">
+      <div><span class="lbl">Unrealized</span><b class="num ${cls(t.unreal)}">${money0(t.unreal, 1)}</b></div>
+      <div><span class="lbl">Sold · ${monthName}</span><b class="num ${cls(rm)}">${money0(rm, 1)}</b></div>
+      <div><span class="lbl">In stock</span><b class="num">${t.count.toLocaleString()}</b></div>
+    </div>
   </section>
   <div class="cols">
-    <section class="panel"><h2>Value over time</h2>${valueChart(S.snaps)}</section>
-    <section class="panel"><h2>Best niches so far <a href="#/finder">Open Niche Finder →</a></h2>${nicheTeaser()}</section>
+    <section class="panel"><h2>Needs you</h2><div class="queue">
+      ${q('needprice', 'Prices to refresh', 'No price, or not updated in 30+ days')}
+      ${q('listedlong', 'Listed 3+ weeks', 'Drop the price or relist')}
+      ${q('grading', 'At grading', 'Mark them back when they arrive')}
+      ${q('nophoto', 'Missing photos', 'Add photos for the 3D view')}
+    </div></section>
+    <section class="panel"><h2>Biggest movers <small class="muted" style="margin-left:auto;font-family:var(--body);text-transform:none;letter-spacing:0">last 3 price updates</small></h2>
+      ${movers.length ? `<div class="movers">${movers.map(({ c, t: tr }) => `<a class="mover" href="#/card/${c.id}">${art(c)}<b>${esc(c.player)}</b><span class="num ${cls(tr)}">${tr >= 0 ? '▲' : '▼'} ${pct(Math.abs(tr))}</span><small class="num">${money(c.value)}</small></a>`).join('')}</div>` : '<div class="empty">Update a few prices and the cards that moved most show up here.</div>'}
+    </section>
   </div>
-  <section class="panel"><h2>Recent activity</h2>${activity(8)}</section>`;
+  <div class="cols">
+    <section class="panel"><h2>Recent activity</h2>${activity(6)}</section>
+    <section class="panel"><h2>Best niches so far <a href="#/finder">Open Niche Finder →</a></h2>${nicheTeaser()}</section>
+  </div>`;
 };
 const TXN_LABEL = { buy: 'Bought', sell: 'Sold', trade: 'Traded away', grading_out: 'Sent to grading', grading_in: 'Back from grading', writeoff: 'Written off', edit: 'Edited', price: 'Price updated' };
 function activity(n, cardId) {
@@ -937,7 +1090,8 @@ function valueChart(snaps) {
 function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-9)))); const f = raw / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; }
 
 /* ---------- inventory ---------- */
-const F = { q: '', sport: '', status: 'active', brand: '', year: '', player: '', min: '', max: '', sort: 'new', box: '' };
+const F = { q: '', sport: '', status: 'active', brand: '', year: '', player: '', min: '', max: '', sort: 'new', box: '', quick: '' };
+const QUICK = { graded: c => c.graded, rookie: c => c.rookie, auto: c => c.auto, listed: c => c.status === 'listed', ...NEEDS };
 function filterCards(f = F) {
   const q = f.q.trim().toLowerCase();
   let list = S.cards.filter(live).filter(c => {
@@ -948,6 +1102,7 @@ function filterCards(f = F) {
     if (f.year && String(c.year) !== String(f.year)) return false;
     if (f.player && !String(c.player || '').toLowerCase().includes(f.player.toLowerCase())) return false;
     if (f.box && c.locationId !== f.box) return false;
+    if (f.quick && QUICK[f.quick] && !QUICK[f.quick](c)) return false;
     if (f.min !== '' && num(c.value) < num(f.min)) return false;
     if (f.max !== '' && num(c.value) > num(f.max)) return false;
     if (q) { const hay = [c.code, c.player, c.team, c.brand, c.set, c.year, c.number, c.parallel, c.serial, c.notes, c.gradeCo, c.grade, c.sport].join(' ').toLowerCase(); if (!q.split(/\s+/).every(w => hay.includes(w))) return false; }
@@ -965,13 +1120,18 @@ function filterCards(f = F) {
 V.inv = () => {
   const cards = S.cards.filter(live);
   const sf = S.settings.savedFilters || [];
+  const act = cards.filter(c => ACTIVE.includes(c.status));
+  const chip = (k, label) => `<button type="button" data-act="quick" data-k="${k}" aria-pressed="${F.quick === k}">${label} <b>${k ? act.filter(QUICK[k]).length : act.length}</b></button>`;
+  const more = Object.entries(F).some(([k, v]) => !['q', 'quick', 'status', 'sort'].includes(k) && v) || F.status !== 'active' || F.sort !== 'new';
   return `
-  <div class="page-head"><h1>Inventory</h1><div class="actions">
+  <div class="page-head"><h1>Inventory</h1><div class="actions add-menu">
     <button class="btn" data-act="priceCheck" type="button">Price check</button>
     <button class="btn" data-act="scanReceipt" type="button">Scan receipt</button>
     <button class="btn" data-act="batch" type="button">Bulk add</button>
-    <button class="btn pri" data-act="addCard" type="button">+ Add card</button></div></div>
-  <section class="panel">
+    <button class="btn pri" data-act="addCard" type="button">+ Add card</button>${addMenuBtn()}</div></div>
+  <div class="chiprow" role="group" aria-label="Quick filters">${chip('', 'All')}${chip('graded', 'Graded')}${chip('rookie', 'Rookies')}${chip('auto', 'Autos')}${chip('listed', 'Listed')}${chip('needprice', 'Needs price')}${F.quick && !['graded', 'rookie', 'auto', 'listed', 'needprice'].includes(F.quick) ? chip(F.quick, { listedlong: 'Listed 3+ weeks', grading: 'At grading', nophoto: 'No photo' }[F.quick]) : ''}
+    <button type="button" class="only-phone" data-act="moreFilters" aria-expanded="${INVUI.more}">⚙ More filters${more ? ' •' : ''}</button></div>
+  <section class="panel inv-filters${INVUI.more ? ' open' : ''}">
     <div class="toolbar">
       <input type="search" id="f-q" placeholder="Search player, ID, set, team…" value="${esc(F.q)}" aria-label="Search">
       <button class="btn" data-act="go" data-to="#/scan" type="button" title="Scan a QR code to find a card">Scan</button>
@@ -999,6 +1159,7 @@ V.inv = () => {
   <div id="inv-results"></div>`;
 };
 V.inv.after = () => { updateInv(); };
+const INVUI = { more: false };
 function updateInv() {
   const list = filterCards(); const box = $('#inv-results'); if (!box) return;
   const qty = list.reduce((a, c) => a + (ACTIVE.includes(c.status) ? +c.qty || 0 : 0), 0);
@@ -1009,10 +1170,12 @@ function updateInv() {
   hydrate(box);
 }
 function cardTile(c) {
-  const v = num(c.value), p = v - unitCost(c);
-  return `<a class="ctile" href="#/card/${c.id}">${art(c)}<div class="ct-body"><div class="ct-top"><span class="code">${esc(c.code)}</span>${statusPill(c)}</div>
-    <b>${esc(cardName(c))}</b><small>${esc(cardSet(c))}${c.parallel ? ' · ' + esc(c.parallel) : ''}</small>
-    <div class="ct-money"><span class="num">${money(v)}${c.qty > 1 ? ` <small class="muted">×${c.qty}</small>` : ''}</span><span class="num ${cls(p)}">${money(p, 1)}</span></div></div></a>`;
+  const v = num(c.value), uc = unitCost(c), p = v - uc; const h = (c.priceHistory || []).map(x => num(x.value));
+  const slab = c.graded && c.slabLabel ? `<div class="tl-slab"><img data-file="${esc(c.slabLabel)}" alt="${esc(gradeText(c))} label"></div>` : '';
+  return `<a class="ctile${slab ? ' slabbed' : ''}" href="#/card/${c.id}"><div class="tl-photo">${slab}${art(c)}</div><div class="ct-body">
+    <b>${esc(cardName(c))}</b><small>${esc(cardSet(c))}${c.parallel && c.parallel !== 'Base' ? ' · ' + esc(c.parallel) : ''}</small>
+    <div class="ct-money"><span class="num ct-val">${money(v)}${c.qty > 1 ? ` <small class="muted">×${c.qty}</small>` : ''}</span>${miniSpark(h, 64, 22, p >= 0 ? 'var(--pos)' : 'var(--neg)')}<span class="roi ${cls(p)}">${uc && v ? (p >= 0 ? '+' : '') + Math.round(p / uc * 100) + '%' : '—'}</span></div>
+    <div class="ct-top"><span class="code">${esc(c.code)}</span>${statusPill(c)}</div></div></a>`;
 }
 function invTable(list) {
   return `<div class="tablewrap"><table class="t"><thead><tr><th>ID</th><th>Player</th><th>Card</th><th>Parallel</th><th>Grade</th><th class="r">Qty</th><th class="r">Cost</th><th class="r">Value</th><th class="r">Avg sold</th><th class="r">Profit</th><th class="r">ROI</th><th>Status</th><th>Box</th></tr></thead><tbody>
@@ -1032,52 +1195,65 @@ V.card = id => {
   const sold = S.txns.filter(t => !t.purged && t.cardId === c.id && ['sell', 'trade', 'writeoff'].includes(t.type));
   const realizedP = sold.reduce((a, t) => a + num(t.profit), 0);
   const active = ACTIVE.includes(c.status) && c.qty > 0;
+  const h = hist.map(x => num(x.value)); const cs = typeof compStats === 'function' ? compStats(c) : null;
+  const facts = [c.year, [c.brand, c.set].filter(Boolean).join(' '), c.number && '#' + c.number, c.parallel && c.parallel !== 'Base' && c.parallel, c.serial && (String(c.serial).includes('/') ? c.serial : '/' + c.serial), c.team, c.rookie && 'Rookie', c.auto && 'Auto', c.patch && 'Patch', !c.graded && c.condition].filter(Boolean);
+  const certURL = c.gradeCo === 'PSA' && c.cert ? 'https://www.psacard.com/cert/' + encodeURIComponent(c.cert) : '';
+  const grade = c.graded ? `<${certURL ? `a href="${certURL}" target="_blank" rel="noopener"` : 'div'} class="gradechip co-${esc(String(c.gradeCo || '').toLowerCase())}"><b>${esc(gradeText(c))}</b>${c.cert ? `<small>Cert ${esc(c.cert)}${certURL ? ' ↗' : ''}</small>` : ''}</${certURL ? 'a' : 'div'}>` : '';
+  const yes = (k, v) => (v ? kv(k, v) : ''); // only fields that have something in them
   return `
   ${c.deletedAt ? `<div class="warn">This card is in the trash. <button class="btn sm" data-act="restoreCard" data-id="${c.id}" type="button">Restore it</button></div>` : ''}
-  <div class="page-head"><div><span class="code">${esc(c.code)}</span> ${statusPill(c)}${c.demo ? ' <span class="pill muted">Demo</span>' : ''}<h1 style="margin-top:6px">${esc(cardName(c))}</h1><div class="muted">${esc(cardSet(c))}${c.parallel ? ' · ' + esc(c.parallel) : ''}${c.serial ? ' · ' + esc(c.serial) : ''}</div></div>
-    <div class="actions">${active ? `<button class="btn pri" data-act="sell" data-id="${c.id}" type="button">Mark as sold</button>` : ''}<button class="btn" data-act="editCard" data-id="${c.id}" type="button">Edit</button></div></div>
-  <section class="board">
-    ${tile('Cost per card', money(uc))}${tile('Current value', money(v), '', c.priceUpdated ? 'Updated ' + fmtDate(c.priceUpdated) : 'Not priced yet')}
-    ${active ? tile('Profit if sold now', money(p * (c.qty || 1), 1), cls(p), c.qty > 1 ? `${money(p, 1)} each × ${c.qty}` : '') : tile('Realized profit', money(realizedP, 1), cls(realizedP))}
-    ${tile('ROI', pct(uc ? p / uc : null), cls(p))}
-  </section>
-  <div class="detail">
-    <div class="photo-col">
+  <div class="cardhero">
+    <div class="ch-view">
       <div class="c3d" data-card3d="${c.id}"><div class="c3d-stage">${art(c, 'front')}</div>
         <div class="row c3d-ctl"><button class="btn sm" data-act="c3dFlip" type="button">Flip</button><button class="btn sm" data-act="c3dReset" type="button">Reset</button><button class="btn sm" data-act="c3dFull" data-id="${c.id}" type="button">Full screen</button>
         ${c.front || c.back ? `<button class="btn sm" data-act="straighten" data-id="${c.id}" data-side="${c.front ? 'front' : 'back'}" type="button">Straighten</button>` : ''}${c.front && (c.graded || c.slabLabel) ? `<button class="btn sm" data-act="slabRead" data-id="${c.id}" type="button">${c.slabLabel ? 'Re-read slab label' : 'Use slab label'}</button>` : ''}
         ${c.front ? `<button class="btn sm ghost" data-act="viewPhoto" data-id="${c.id}" data-side="front" type="button">Front photo</button>` : ''}${c.back ? `<button class="btn sm ghost" data-act="viewPhoto" data-id="${c.id}" data-side="back" type="button">Back photo</button>` : ''}</div>
         <small class="muted c3d-hint">Drag or swipe to turn it · double-tap to flip${c.front ? '' : ' · add photos to see the real card'}</small></div>
-      <div class="row" style="align-items:flex-end"><div class="qrbox" data-qr="${esc(cardQR(c))}"></div><div style="display:flex;flex-direction:column;gap:6px"><span class="code">${esc(c.code)}</span><button class="btn sm" data-act="labelOne" data-id="${c.id}" type="button">Print label</button></div></div>
-      <div class="row">
-        ${active ? `<button class="btn sm" data-act="listed" data-id="${c.id}" type="button">${c.status === 'listed' ? 'Mark not listed' : 'Mark listed'}</button>` : ''}
-        ${c.status === 'grading' ? `<button class="btn sm" data-act="gradeIn" data-id="${c.id}" type="button">Back from grading</button>` : active ? `<button class="btn sm" data-act="gradeOut" data-id="${c.id}" type="button">Send to grading</button>` : ''}
-        ${active ? `<button class="btn sm" data-act="trade" data-id="${c.id}" type="button">Trade</button><button class="btn sm" data-act="writeoff" data-id="${c.id}" type="button">Write off</button>` : ''}
-        ${c.deletedAt ? '' : `<button class="btn sm danger" data-act="trashCard" data-id="${c.id}" type="button">Delete</button>`}
+    </div>
+    <div class="ch-info">
+      <div class="ch-tags"><span class="code">${esc(c.code)}</span> ${statusPill(c)}${loc ? ` <a class="pill" href="#/box/${loc.id}">${esc(loc.code)}</a>` : ''}${c.demo ? ' <span class="pill muted">Demo</span>' : ''}</div>
+      <h1>${esc(c.player || 'Unnamed card')}</h1>
+      ${facts.length ? `<div class="facts">${facts.map(f => `<span>${esc(f)}</span>`).join('')}</div>` : ''}
+      ${grade}
+      <div class="pricebox"><div><span class="lbl">Value</span><div class="big led">${money(v)}</div><small class="muted">${c.priceUpdated ? 'Updated ' + fmtDate(c.priceUpdated) : 'Not priced yet'}${cs ? ` · avg sold ${money(cs.avg)} (${cs.count})` : ''}</small></div>${miniSpark(h, 220, 70, 'var(--acc)', 'Price history')}</div>
+      <div class="trio">
+        <div><span class="lbl">Cost</span><b class="num">${money(uc)}</b></div>
+        ${active ? `<div><span class="lbl">Profit now</span><b class="num ${cls(p)}">${money(p * (c.qty || 1), 1)}</b>${c.qty > 1 ? `<small class="muted">${money(p, 1)} × ${c.qty}</small>` : ''}</div>` : `<div><span class="lbl">Realized</span><b class="num ${cls(realizedP)}">${money(realizedP, 1)}</b></div>`}
+        <div><span class="lbl">ROI</span><b class="num ${cls(p)}">${pct(uc ? p / uc : null)}</b></div>
+      </div>
+      <div class="ch-actions">
+        ${active ? `<button class="btn pri" data-act="sell" data-id="${c.id}" type="button">Mark as sold</button><button class="btn" data-act="listEbay" data-id="${c.id}" type="button">${c.status === 'listed' ? 'Listing' : 'List on eBay'}</button>` : ''}
+        <button class="btn" data-act="editCard" data-id="${c.id}" type="button">Edit</button>
+        <details class="more"><summary class="btn">More ▾</summary><div class="more-pop">
+          <div class="row" style="align-items:flex-end"><div class="qrbox" data-qr="${esc(cardQR(c))}"></div><button class="btn sm" data-act="labelOne" data-id="${c.id}" type="button">Print label</button></div>
+          ${active ? `<button class="btn sm" data-act="listed" data-id="${c.id}" type="button">${c.status === 'listed' ? 'Mark not listed' : 'Mark listed'}</button>` : ''}
+          ${c.status === 'grading' ? `<button class="btn sm" data-act="gradeIn" data-id="${c.id}" type="button">Back from grading</button>` : active ? `<button class="btn sm" data-act="gradeOut" data-id="${c.id}" type="button">Send to grading</button>` : ''}
+          ${active ? `<button class="btn sm" data-act="trade" data-id="${c.id}" type="button">Trade</button><button class="btn sm" data-act="writeoff" data-id="${c.id}" type="button">Write off</button>` : ''}
+          ${c.deletedAt ? '' : `<button class="btn sm danger" data-act="trashCard" data-id="${c.id}" type="button">Delete</button>`}
+        </div></details>
       </div>
     </div>
-    <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
-      <section class="panel"><h2>Card</h2><div class="kv">
-        ${kv('Player', c.player)}${kv('Card #', c.number)}${kv('Brand', c.brand)}${kv('Set / series', c.set)}${kv('Year', c.year)}${kv('Sport', c.sport)}${kv('Team', c.team)}${kv('Parallel', c.parallel || 'Base')}${kv('Serial #', c.serial)}
-        ${kv('Rookie', c.rookie ? 'Yes' : 'No')}${kv('Autograph', c.auto ? 'Yes' : 'No')}${kv('Patch / memo', c.patch ? 'Yes' : 'No')}
-        ${kv('Graded', c.graded ? 'Yes' : 'Raw')}${c.graded ? kv('Grading co.', c.gradeCo) + kv('Grade', c.grade) + (c.cert ? kv('Cert #', c.gradeCo === 'PSA' ? `<a href="https://www.psacard.com/cert/${encodeURIComponent(c.cert)}" target="_blank" rel="noopener">${esc(c.cert)} ↗</a>` : esc(c.cert), true) : '') : kv('Condition', c.condition)}
-        ${kv('Quantity in hand', c.qty)}${kv('Storage', loc ? `<a href="#/box/${loc.id}">${esc(loc.code)} · ${esc(loc.name)}</a>` : '—', true)}
-      </div>${c.notes ? `<div><span class="muted" style="font:600 .72rem var(--display);letter-spacing:.08em;text-transform:uppercase">Notes</span><p style="margin:2px 0 0;white-space:pre-wrap">${esc(c.notes)}</p></div>` : ''}</section>
-      <section class="panel"><h2>Purchase</h2><div class="kv">
-        ${kv('Date', fmtDate(b.date))}${kv('Platform', b.platform)}${kv('Quantity bought', b.qty)}${kv('Price paid', money(b.price))}${kv('Shipping', money(b.ship))}${kv('Tax', money(b.tax))}${kv('Fees', money(b.fees))}${c.extraCost ? kv('Grading costs', money(c.extraCost)) : ''}${kv('Order #', b.order)}
-        ${pk ? kv('From pickup', `<a href="#/pickup/${pk.id}">${esc(pk.location || 'Pickup')} · ${fmtDate(pk.date)}</a>`, true) : ''}${kv('Total cost per card', `<span class="num">${money(uc)}</span>`, true)}
-      </div></section>
-      <section class="panel"><h2>Pricing <a href="${esc(compsURL(c))}" target="_blank" rel="noopener">eBay sold comps ↗</a></h2>
-        <form class="row" data-form="price" data-id="${c.id}"><input name="value" inputmode="decimal" placeholder="New value per card" style="max-width:180px" aria-label="New value"><button class="btn pri sm" type="submit">Update price</button>
-          ${c.listingUrl ? `<a class="btn sm" href="${esc(c.listingUrl)}" target="_blank" rel="noopener">Open listing ↗</a>` : ''}</form>
-        ${hist.length > 1 ? sparkline(hist) : ''}
-        ${hist.length ? `<div class="list">${hist.slice().reverse().slice(0, 5).map(h => `<div class="li"><span class="grow">${fmtDate(h.date)}</span><span class="num">${money(h.value)}</span></div>`).join('')}</div>` : ''}
-      </section>
-      ${compsPanel(c)}
-      <section class="panel"><h2>Receipts <span style="margin-left:auto;display:flex;gap:6px"><button class="btn sm pri" data-act="cardReceipt" data-id="${c.id}" type="button">Scan receipt → fill purchase</button><button class="btn sm" data-act="addReceipt" data-card="${c.id}" type="button">+ Attach receipt</button></span></h2>
-        ${recs.length ? `<div class="rgrid">${recs.map(receiptTile).join('')}</div>` : `<div class="empty">No receipts linked to this card yet.</div>`}</section>
-      <section class="panel"><h2>History</h2>${activity(50, c.id)}</section>
-    </div>
+  </div>
+  <div class="ch-rest">
+    <section class="panel"><h2>Card details</h2><div class="kv">
+      ${yes('Player', c.player)}${yes('Card #', c.number)}${yes('Brand', c.brand)}${yes('Set / series', c.set)}${yes('Year', c.year)}${yes('Sport', c.sport)}${yes('Team', c.team)}${kv('Parallel', c.parallel || 'Base')}${yes('Serial #', c.serial)}
+      ${c.rookie ? kv('Rookie', 'Yes') : ''}${c.auto ? kv('Autograph', 'Yes') : ''}${c.patch ? kv('Patch / memo', 'Yes') : ''}
+      ${c.graded ? kv('Grading co.', c.gradeCo) + kv('Grade', c.grade) + (c.cert ? kv('Cert #', certURL ? `<a href="${certURL}" target="_blank" rel="noopener">${esc(c.cert)} ↗</a>` : esc(c.cert), true) : '') : yes('Condition', c.condition)}
+      ${kv('Quantity in hand', c.qty)}${loc ? kv('Storage', `<a href="#/box/${loc.id}">${esc(loc.code)} · ${esc(loc.name)}</a>`, true) : ''}
+    </div>${c.notes ? `<div><span class="lbl">Notes</span><p style="margin:2px 0 0;white-space:pre-wrap">${esc(c.notes)}</p></div>` : ''}</section>
+    <section class="panel"><h2>Purchase</h2><div class="kv">
+      ${kv('Date', fmtDate(b.date))}${yes('Platform', b.platform)}${(+b.qty || 1) > 1 ? kv('Quantity bought', b.qty) : ''}${kv('Price paid', money(b.price))}${num(b.ship) ? kv('Shipping', money(b.ship)) : ''}${num(b.tax) ? kv('Tax', money(b.tax)) : ''}${num(b.fees) ? kv('Fees', money(b.fees)) : ''}${c.extraCost ? kv('Grading costs', money(c.extraCost)) : ''}${yes('Order #', b.order)}
+      ${pk ? kv('From pickup', `<a href="#/pickup/${pk.id}">${esc(pk.location || 'Pickup')} · ${fmtDate(pk.date)}</a>`, true) : ''}${kv('Total cost per card', `<span class="num">${money(uc)}</span>`, true)}
+    </div></section>
+    <section class="panel"><h2>Pricing <a href="${esc(compsURL(c))}" target="_blank" rel="noopener">eBay sold comps ↗</a></h2>
+      <form class="row" data-form="price" data-id="${c.id}"><input name="value" inputmode="decimal" placeholder="New value per card" style="max-width:180px" aria-label="New value"><button class="btn pri sm" type="submit">Update price</button>
+        ${c.listingUrl ? `<a class="btn sm" href="${esc(c.listingUrl)}" target="_blank" rel="noopener">Open listing ↗</a>` : ''}</form>
+      ${hist.length ? `<div class="list">${hist.slice().reverse().slice(0, 5).map(x => `<div class="li"><span class="grow">${fmtDate(x.date)}</span><span class="num">${money(x.value)}</span></div>`).join('')}</div>` : ''}
+    </section>
+    ${compsPanel(c)}
+    <section class="panel"><h2>Receipts <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm pri" data-act="cardReceipt" data-id="${c.id}" type="button">Scan receipt → fill purchase</button><button class="btn sm" data-act="addReceipt" data-card="${c.id}" type="button">+ Attach receipt</button></span></h2>
+      ${recs.length ? `<div class="rgrid">${recs.map(receiptTile).join('')}</div>` : `<div class="empty">No receipts linked to this card yet.</div>`}</section>
+    <section class="panel"><h2>History</h2>${activity(50, c.id)}</section>
   </div>`;
 };
 const kv = (k, v, raw) => `<div><span>${esc(k)}</span><b>${raw ? (v || '—') : esc(v === undefined || v === null || v === '' ? '—' : v)}</b></div>`;
@@ -1187,6 +1363,7 @@ async function submitCard(f) {
   if (!c.graded) { c.gradeCo = ''; c.grade = ''; c.cert = ''; } else c.condition = '';
   c.buy = Object.assign(c.buy || {}, { date: fd.get('b_date') || today(), platform: String(fd.get('b_platform') || '').trim(), qty: Math.max(1, parseInt(fd.get('b_qty'), 10) || 1), price: num(fd.get('b_price')), ship: num(fd.get('b_ship')), tax: num(fd.get('b_tax')), fees: num(fd.get('b_fees')), order: String(fd.get('b_order') || '').trim(), pickupId: fd.get('b_pickup') || '' });
   c.status = fd.get('status') || 'in_stock';
+  if (c.status === 'listed' && (!old || old.status !== 'listed')) c.listedAt = today(); // starts the "listed for" clock
   c.qty = old ? Math.max(0, parseInt(fd.get('qty'), 10) || 0) : c.buy.qty;
   const newVal = fd.get('value') === '' ? (old ? old.value : 0) : num(fd.get('value'));
   if (!old || num(old.value) !== newVal) { c.value = newVal; c.priceHistory = [...(c.priceHistory || []), { date: today(), value: newVal }]; c.priceUpdated = today(); }
@@ -1484,7 +1661,7 @@ const A = {
   sell: el => openSell(el.dataset.id),
   trade: el => openSimple('trade', el.dataset.id), writeoff: el => openSimple('writeoff', el.dataset.id),
   gradeOut: el => openSimple('gradeOut', el.dataset.id), gradeIn: el => openSimple('gradeIn', el.dataset.id),
-  listed: async el => { const c = cardById(el.dataset.id); c.status = c.status === 'listed' ? 'in_stock' : 'listed'; await save('cards', c); toast(c.status === 'listed' ? 'Marked listed' : 'Marked in stock'); },
+  listed: async el => { const c = cardById(el.dataset.id); c.status = c.status === 'listed' ? 'in_stock' : 'listed'; if (c.status === 'listed') c.listedAt = today(); await save('cards', c); toast(c.status === 'listed' ? 'Marked listed' : 'Marked in stock'); },
   trashCard: async el => { const c = cardById(el.dataset.id); c.deletedAt = nowISO(); await save('cards', c, { quiet: true }); onChange('cards'); location.hash = '#/inv'; toast(`${c.code} moved to trash`, { label: 'Undo', run: async () => { delete c.deletedAt; await save('cards', c); } }); },
   restoreCard: async el => { const c = cardById(el.dataset.id); delete c.deletedAt; await save('cards', c); toast('Restored'); },
   purgeCard: async el => { const c = cardById(el.dataset.id); if (el.dataset.confirm !== '1') { el.dataset.confirm = '1'; el.textContent = 'Tap again to delete forever'; return; } await purgeCard(c); onChange('cards'); toast('Deleted forever'); },
@@ -1503,7 +1680,7 @@ const A = {
   view: async el => { S.settings.view = el.dataset.v; await saveSettings(); },
   saveFilter: () => openModal(`<form data-form="filterName">${mhead('Save filter')}${field('Name', inp('name', '', 'required autofocus placeholder="Basketball rookies under $50"'))}${mfoot('Save')}</form>`, { narrow: true }),
   delFilter: async () => { const i = $('#f-saved').value; if (i === '') return toast('Pick a saved filter first'); S.settings.savedFilters.splice(+i, 1); await saveSettings(); },
-  clearFilter: () => { Object.assign(F, { q: '', sport: '', status: 'active', brand: '', year: '', player: '', min: '', max: '', sort: 'new', box: '' }); route(); },
+  clearFilter: () => { Object.assign(F, { q: '', sport: '', status: 'active', brand: '', year: '', player: '', min: '', max: '', sort: 'new', box: '', quick: '' }); route(); },
   priceCheck: () => openPriceCheck(),
   pqSkip: () => { PQ.i++; if (PQ.i >= PQ.list.length) closeModal(); else showPQ(); },
   labelOne: el => { LB.sel = new Set([el.dataset.id]); LB.tab = 'cards'; location.hash = '#/labels'; },
@@ -1867,6 +2044,48 @@ V.trash = () => {
   const list = S.cards.filter(c => c.deletedAt && !c.purged);
   return `<div class="page-head"><h1>Trash</h1><div class="actions">${list.length ? '<button class="btn danger" data-act="emptyTrash" type="button">Empty trash</button>' : ''}</div></div>
   ${list.length ? `<div class="list panel">${list.map(c => `<div class="li"><div class="grow"><b>${esc(c.code)} · ${esc(cardName(c))}</b><small>${esc(cardSet(c))} · deleted ${fmtDate(c.deletedAt)}</small></div><button class="btn sm" data-act="restoreCard" data-id="${c.id}" type="button">Restore</button><button class="btn sm danger" data-act="purgeCard" data-id="${c.id}" type="button">Delete forever</button></div>`).join('')}</div>` : '<div class="empty">Trash is empty.</div>'}`;
+};
+
+/* v1.15 layout: the phone "+ Add" menu, quick filter chips, and listing from the card page. */
+
+// one button on a phone page, opening every way to add something
+A.addMenu = () => openModal(`<div>${mhead('Add')}<div class="addmenu">
+  <button class="btn pri" data-act="addCard" type="button"><b>Add a card</b><small>One card, with photos</small></button>
+  <button class="btn" data-act="batch" type="button"><b>Bulk add</b><small>Many cards from photos or scanner sheets</small></button>
+  <button class="btn" data-act="scanReceipt" type="button"><b>Scan a receipt</b><small>Fill in purchases from a receipt</small></button>
+  <button class="btn" data-act="newPickup" type="button"><b>Log a pickup</b><small>A lot from a show or meetup</small></button>
+  <button class="btn" data-act="priceCheck" type="button"><b>Price check</b><small>Update values card by card</small></button>
+</div></div>`, { narrow: true });
+// the add menu's buttons close the menu before opening their own sheet
+document.addEventListener('click', e => { const b = e.target.closest('.addmenu [data-act]'); if (b) closeModal(false); }, true);
+
+// a quick filter chip, or a "Needs you" row on Today
+A.quick = el => {
+  const k = el.dataset.k || '';
+  if (curView === 'inv') { F.quick = F.quick === k ? '' : k; route(); return; }
+  Object.assign(F, { q: '', sport: '', status: 'active', brand: '', year: '', player: '', min: '', max: '', box: '', quick: k, sort: k === 'needprice' ? 'stale' : 'new' });
+  location.hash = '#/inv';
+};
+A.moreFilters = el => { INVUI.more = !INVUI.more; const p = $('.inv-filters'); if (p) p.classList.toggle('open', INVUI.more); el.setAttribute('aria-expanded', String(INVUI.more)); };
+
+// list on eBay: a ready-to-paste title, a link to eBay, then mark it listed with the listing link
+const listingTitle = c => [c.year, c.brand, c.set, c.player, c.number && '#' + c.number, c.parallel && c.parallel !== 'Base' && c.parallel, c.serial && (String(c.serial).includes('/') ? c.serial : '/' + c.serial), c.rookie && 'RC', c.auto && 'Auto', c.graded && gradeText(c)]
+  .filter(Boolean).join(' ').replace(/\s+/g, ' ').slice(0, 80);
+A.listEbay = el => {
+  const c = cardById(el.dataset.id); const t = listingTitle(c);
+  openModal(`<form data-form="listEbay" data-id="${c.id}">${mhead(c.status === 'listed' ? 'Listing' : 'List on eBay')}
+    ${field('Listing title (80 characters max)', `<div class="row" style="flex-wrap:nowrap"><input name="title" id="le-title" value="${esc(t)}" maxlength="80" style="flex:1;min-width:0"><button class="btn sm" type="button" data-act="copyTitle">Copy</button></div>`)}
+    <div class="row"><a class="btn" href="https://www.ebay.com/sl/sell" target="_blank" rel="noopener">Open eBay to list ↗</a></div>
+    ${field('Listing link (paste it after you list)', inp('url', c.listingUrl || '', 'type="url" placeholder="https://www.ebay.com/itm/…"'))}
+    <small class="muted">Saving marks the card Listed and starts its "listed for" clock, so Today can remind you after 3 weeks.</small>
+    ${mfoot(c.status === 'listed' ? 'Save' : 'Mark as listed')}</form>`, { narrow: true });
+};
+A.copyTitle = async () => { const i = $('#le-title'); try { await navigator.clipboard.writeText(i.value); toast('Title copied'); } catch (e) { i.select(); toast('Title selected. Copy it from the menu.'); } };
+FORMS.listEbay = async f => {
+  const c = cardById(f.dataset.id); const fd = new FormData(f); const url = String(fd.get('url') || '').trim();
+  if (c.status !== 'listed') { c.status = 'listed'; c.listedAt = today(); }
+  if (url) c.listingUrl = url;
+  await save('cards', c); closeModal(); toast('Marked listed');
 };
 
 /* Niche Finder: ranks what has made the most money for every filter, so you know what to hunt for. */
