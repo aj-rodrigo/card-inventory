@@ -503,6 +503,7 @@ a.plink { color: inherit; text-decoration: none; } a.plink:hover { text-decorati
 #sync-dot { width: 12px; height: 12px; border-radius: 50%; border: 0; padding: 0; margin-left: 8px; background: var(--muted); cursor: pointer; flex: 0 0 auto; }
 #sync-dot[data-st="ok"] { background: var(--pos); } #sync-dot[data-st="wait"] { background: var(--acc); } #sync-dot[data-st="bad"] { background: var(--neg); }
 #sync-status[data-ok="0"] { color: var(--neg); } #sync-status[data-ok="1"] { color: var(--pos); }
+.eb-thumbs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; } .eb-thumbs img { height: 110px; width: auto; border-radius: 4px; border: 1px solid var(--line); display: block; }
 </style>
 <div id="app"></div>
 <div id="modal-root"></div>
@@ -3240,7 +3241,7 @@ function homography(dst, src) { // maps dst (u,v) -> src (x,y)
   const hh = new Array(8); for (let i = 7; i >= 0; i--) { let s = B[i]; for (let c = i + 1; c < 8; c++) s -= A[i][c] * hh[c]; hh[i] = s / A[i][i]; }
   return hh;
 }
-function warpCard(src, quad, ow = OUT_W, oh = OUT_H) {
+function warpCard(src, quad, ow = OUT_W, oh = OUT_H, fill = null) {
   const { w, h, data } = src; const s = src.k;
   const q = quad.map(p => [p[0] * s, p[1] * s]);
   const H = homography([[0, 0], [ow, 0], [ow, oh], [0, oh]], q);
@@ -3249,6 +3250,7 @@ function warpCard(src, quad, ow = OUT_W, oh = OUT_H) {
   for (let v = 0; v < oh; v++) for (let u = 0; u < ow; u++) {
     const uu = u + 0.5, vv = v + 0.5; const Wd = H[6] * uu + H[7] * vv + 1;
     let x = (H[0] * uu + H[1] * vv + H[2]) / Wd - 0.5, y = (H[3] * uu + H[4] * vv + H[5]) / Wd - 0.5;
+    if (fill && (x < -0.5 || y < -0.5 || x > w - 0.5 || y > h - 0.5)) { const oi = (v * ow + u) * 4; o[oi] = fill[0]; o[oi + 1] = fill[1]; o[oi + 2] = fill[2]; o[oi + 3] = 255; continue; } // past the photo's edge: plain background, never smeared edge pixels
     x = Math.max(0, Math.min(w - 1.001, x)); y = Math.max(0, Math.min(h - 1.001, y));
     const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0; const i00 = (y0 * w + x0) * 4, i10 = i00 + 4, i01 = i00 + w * 4, i11 = i01 + 4; const oi = (v * ow + u) * 4;
     for (let c = 0; c < 3; c++) o[oi + c] = (data[i00 + c] * (1 - fx) + data[i10 + c] * fx) * (1 - fy) + (data[i01 + c] * (1 - fx) + data[i11 + c] * fx) * fy;
@@ -4609,10 +4611,44 @@ async function locate(blob, { slab, quad, cropped } = {}) {
   return { bmp, quad: q ? portraitQuad(orderQuad(q)) : null };
 }
 // straighten at full resolution; margin > 0 keeps a strip of the real background around the edges
+// the photo's own background colour, from its outer frame (median per channel)
+function frameColor(src) {
+  const { w, h, data } = src; const R = [], G = [], B = []; const at = (x, y) => { const i = (y * w + x) * 4; R.push(data[i]); G.push(data[i + 1]); B.push(data[i + 2]); };
+  const st = Math.max(1, Math.round((w + h) / 400)); for (let x = 0; x < w; x += st) { at(x, 0); at(x, h - 1); } for (let y = 0; y < h; y += st) { at(0, y); at(w - 1, y); }
+  const med = a => a.sort((p, q) => p - q)[a.length >> 1]; return [med(R), med(G), med(B)];
+}
 function warpFull(bmp, quad, margin) {
   const src = bitmapPixels(bmp, Math.max(bmp.width, bmp.height)); const q = margin ? growQuad(quad, margin) : quad;
   const [w, h] = quadSize(q); const oh = Math.round(Math.min(LIST_MAX, Math.max(1600, h))), ow = Math.round(oh * w / h);
-  return warpCard(src, q, ow, oh);
+  return warpCard(src, q, ow, oh, margin ? frameColor(src) : null);
+}
+// the listing photo: a plain crop of your original photo around the card, with real background showing.
+// No warping, no fill, no upscaling, so every pixel is one your camera or scanner captured.
+function cropFull(bmp, quad, margin) {
+  const xs = quad.map(p => p[0]), ys = quad.map(p => p[1]); const pad = margin * Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  const x0 = Math.max(0, Math.floor(Math.min(...xs) - pad)), y0 = Math.max(0, Math.floor(Math.min(...ys) - pad)), x1 = Math.min(bmp.width, Math.ceil(Math.max(...xs) + pad)), y1 = Math.min(bmp.height, Math.ceil(Math.max(...ys) + pad));
+  const w = x1 - x0, h = y1 - y0, k = Math.min(1, LIST_MAX / Math.max(w, h)); const cv = document.createElement('canvas'); cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+  const g = cv.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(bmp, x0, y0, w, h, 0, 0, cv.width, cv.height); return cv;
+}
+// four corner close-ups cut straight from the original photo, at its own resolution (never enlarged)
+function cornersFrom(bmp, quad, label) {
+  const [cw, ch] = quadSize(quad); const s = Math.max(40, Math.round(Math.min(cw, ch) * 0.22)); const cx = quad.reduce((a, p) => a + p[0], 0) / 4, cy = quad.reduce((a, p) => a + p[1], 0) / 4;
+  const cell = Math.min(800, s), gap = Math.max(6, Math.round(cell / 50)), N = cell * 2 + gap * 3; const out = document.createElement('canvas'); out.width = out.height = N; const g = out.getContext('2d');
+  g.fillStyle = '#e6e7e9'; g.fillRect(0, 0, N, N); g.imageSmoothingQuality = 'high';
+  [[quad[0], 'Top left'], [quad[1], 'Top right'], [quad[3], 'Bottom left'], [quad[2], 'Bottom right']].forEach(([p, name], i) => {
+    let sx = p[0] - s * (p[0] > cx ? 0.7 : 0.3), sy = p[1] - s * (p[1] > cy ? 0.7 : 0.3); sx = Math.max(0, Math.min(bmp.width - s, sx)); sy = Math.max(0, Math.min(bmp.height - s, sy));
+    const sw = Math.min(s, bmp.width), sh = Math.min(s, bmp.height); const x = gap + (i % 2) * (cell + gap), y = gap + Math.floor(i / 2) * (cell + gap);
+    g.drawImage(bmp, sx, sy, sw, sh, x, y, cell * sw / s, cell * sh / s);
+    const fs = Math.max(11, Math.round(cell / 28)); g.font = `600 ${fs}px system-ui, sans-serif`; const t = `${label} · ${name}`; const tw = g.measureText(t).width;
+    g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(x + fs * 0.4, y + cell - fs * 1.9, tw + fs * 0.9, fs * 1.5); g.fillStyle = '#fff'; g.fillText(t, x + fs * 0.85, y + cell - fs * 0.8);
+  });
+  return out;
+}
+// which sides of the card run into the edge of the photo (those edges can't be shown in full)
+function cutSides(bmp, quad) {
+  const t = Math.max(3, Math.min(bmp.width, bmp.height) * 0.004); const out = [];
+  if (quad.some(p => p[0] < t)) out.push('left'); if (quad.some(p => p[0] > bmp.width - t)) out.push('right');
+  if (quad.some(p => p[1] < t)) out.push('top'); if (quad.some(p => p[1] > bmp.height - t)) out.push('bottom'); return out;
 }
 const toJpeg = cv => new Promise(r => cv.toBlob(r, 'image/jpeg', 0.93));
 
@@ -4663,9 +4699,10 @@ async function listingPhotos(c, { studio = true } = {}) {
       const id = c[side + 'Orig'] || c[side]; if (!id) continue; const rec = await fileGet(id); if (!rec) continue;
       const { bmp, quad, whole } = await locate(rec.blob, { slab, quad: slab ? null : c[side + 'Quad'], cropped: !c[side + 'Orig'] });
       if (!quad) { out.photos.push({ blob: rec.blob, what: `${side} (original photo)` }); continue; }
-      const full = warpFull(bmp, quad, whole ? 0 : slab ? 0.04 : 0.06);
-      out.photos.push({ blob: whole ? rec.blob : await toJpeg(full), what: whole ? `${side} (photo already cropped to the card)` : `${side}, straightened with its edges showing` });
-      if (!slab) out.corners = (out.corners || []).concat({ blob: await toJpeg(cornersSheet(full, side === 'front' ? 'Front' : 'Back')), what: `${side} corners` });
+      const full = cropFull(bmp, quad, whole ? 0 : slab ? 0.04 : 0.06);
+      if (!whole) { const cut = cutSides(bmp, quad); if (cut.length) (out.warn = out.warn || []).push(`The card runs into the ${cut.join(' and ')} edge of the ${side} photo, so that edge can't be shown in full. Rescan with a little space around the card.`); }
+      out.photos.push({ blob: whole ? rec.blob : await toJpeg(full), what: whole ? `${side} (your photo, as taken)` : `${side}, your photo cropped around the card (no edits)` });
+      if (!slab) out.corners = (out.corners || []).concat({ blob: await toJpeg(cornersFrom(bmp, quad, side === 'front' ? 'Front' : 'Back')), what: `${side} corners, cut from your photo` });
       if (side === 'front' && studio) out.studio = await toJpeg(studioCompose(warpFull(bmp, quad, 0), slab));
     }
     out.photos = out.photos.concat(out.corners || []); return out;
@@ -4824,7 +4861,7 @@ A.listEbay = el => {
     <div class="eb-mode ${cfg.mode}">${cfg.mode === 'sim' ? 'Simulator: nothing is sent to eBay.' : cfg.mode === 'live' ? '<b>LIVE eBay:</b> this posts a real listing. Real buyers can buy it at this price.' : 'eBay Sandbox: a test listing on eBay\'s practice site. No real buyers.'}</div>
     ${field('Title (80 characters max)', `<input name="title" id="eb-title" value="${esc(t)}" maxlength="80" required><small class="muted"><span id="eb-tlen">${t.length}</span>/80</small>`)}
     <div class="fgrid">${field('Price', money_inp('price', price, 'required id="eb-price"'))}${field('Package weight (oz, packed)', inp('oz', c.graded ? cfg.ozSlab : cfg.ozRaw, 'inputmode="decimal"'))}</div>
-    <label class="chk"><input type="checkbox" name="studio" ${c.graded && !c.frontOrig ? 'disabled' : 'checked'}> Studio photo first: your ${c.graded ? 'slab' : 'card'} on a clean gray backdrop, exactly as photographed. Your original photos are included after it.</label>
+    <label class="chk"><input type="checkbox" name="studio" ${c.graded && !c.frontOrig ? 'disabled' : ''}> Studio photo first: your ${c.graded ? 'slab' : 'card'} on a clean gray backdrop, exactly as photographed. Your original photos are included after it.</label>
     <div class="eb-studio" id="eb-studio"><small class="muted">Preparing photos from your full-size originals…</small></div>
     <div class="fgrid">${field('Format', `<select name="format" id="eb-format"><option value="FIXED_PRICE">Buy It Now</option><option value="SUNDAY">Auction ending Sunday 7 pm</option><option value="AUCTION">7-day auction starting now</option></select>`)}${field('Starting bid (auctions)', money_inp('start', r2(Math.max(0.99, price * 0.6)), 'id="eb-start"'))}</div>
     <small class="muted" id="eb-auc-note"></small>
@@ -4846,7 +4883,8 @@ A.listEbay = el => {
   f.addEventListener('input', upd); upd();
   listingPhotos(c, { studio: !(c.graded && !c.frontOrig) }).then(P => { const box = $('#eb-studio'); if (!box) return; const t = f.querySelector('[name=studio]');
     if (!P.studio && t) { t.checked = false; t.disabled = true; }
-    box.innerHTML = `${P.studio ? `<img src="${URL.createObjectURL(P.studio)}" alt="Studio photo preview">` : ''}<small class="muted">Photos from your full-size originals: ${[P.studio && 'studio', ...P.photos.map(x => x.what)].filter(Boolean).join(' · ')}</small>`; }).catch(() => {});
+    const all = [...(P.studio ? [{ blob: P.studio, what: 'studio' }] : []), ...P.photos];
+    box.innerHTML = `<div class="eb-thumbs">${all.map(x => `<a href="${URL.createObjectURL(x.blob)}" target="_blank" rel="noopener" title="${esc(x.what)}"><img src="${URL.createObjectURL(x.blob)}" alt="${esc(x.what)}"></a>`).join('')}</div>${(P.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}<small class="muted">The photos eBay will get, from your full-size originals: ${all.map(x => x.what).join(' · ')}</small>`; }).catch(() => {});
 };
 const b64OfBlob = async (blob, name = 'studio.jpg') => { const buf = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000)); return { base64: btoa(s), type: blob.type || 'image/jpeg', name }; };
 // post one card: photos from the full-size originals (studio first if wanted), then the listing. Used by the form and by auto-list.
@@ -5446,7 +5484,7 @@ function specificsGaps(c) { const L = ebayListing(c, { title: 'x', price: 1, bes
     t.addEventListener('input', paint); paint(); A.useIdeal = () => { t.value = idealTitle(c); t.dispatchEvent(new Event('input', { bubbles: true })); }; return r; }; }
 
 /* ---------- #3 selling limits, #2 auto-list queue ---------- */
-const OPS_DEFAULTS = { limits: { items: 10, dollars: 500 }, autolist: { minValue: 5, undercut: 3, studio: true, auctionUnder: 0, useMarket: true, maxRun: 10 }, refreshDays: 60, ship: { handlingDays: 1, pickupLink: true } };
+const OPS_DEFAULTS = { limits: { items: 10, dollars: 500 }, autolist: { minValue: 5, undercut: 3, studio: false, auctionUnder: 0, useMarket: true, maxRun: 10 }, refreshDays: 60, ship: { handlingDays: 1, pickupLink: true } };
 function opsCfg() { const c = ebCfg(); for (const [k, v] of Object.entries(OPS_DEFAULTS)) if (c[k] === undefined) c[k] = structuredClone(v); return c; }
 function limitUse() {
   const m = today().slice(0, 7); const act = S.cards.filter(live).filter(c => c.ebay && c.ebay.status === 'active');
