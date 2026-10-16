@@ -3216,12 +3216,65 @@ function detectCardQuads(bmp) {
     merged++;
   }
   const cards = quads.map(q => ({ quad: portraitQuad(orderQuad(q.map(p => [p[0] / M.k, p[1] / M.k]))) }));
+  return { cards: gridOrder(cards), merged };
+}
+function gridOrder(cards) {
   const ctr = q => [q.reduce((a, p) => a + p[0], 0) / 4, q.reduce((a, p) => a + p[1], 0) / 4];
   cards.forEach(c => { c.c = ctr(c.quad); c.hgt = Math.hypot(c.quad[3][0] - c.quad[0][0], c.quad[3][1] - c.quad[0][1]); });
   cards.sort((a, b) => a.c[1] - b.c[1]);
   const rows = []; for (const c of cards) { const row = rows.find(rw => Math.abs(rw.y - c.c[1]) < c.hgt * 0.45); if (row) { row.items.push(c); row.y = (row.y + c.c[1]) / 2; } else rows.push({ y: c.c[1], items: [c] }); }
   rows.forEach((rw, ri) => { rw.items.sort((a, b) => a.c[0] - b.c[0]); rw.items.forEach((c, ci) => { c.row = ri; c.col = ci; }); });
-  return { cards: rows.flatMap(rw => rw.items), merged };
+  return rows.flatMap(rw => rw.items);
+}
+
+/* Cards found by their straight edges: every card is a 2.5 x 3.5 rectangle, so look for long straight edges that close
+   into rectangles of that shape, all the same size. Works when cards touch (top loaders side by side) and on dark
+   or busy backgrounds, where telling card from background by colour fails. */
+function edgeCards(bmp) {
+  const k = Math.min(1, 1000 / Math.max(bmp.width, bmp.height)); const W = Math.round(bmp.width * k), H = Math.round(bmp.height * k);
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d', { willReadFrequently: true }); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, 0, W, H);
+  const d = g.getImageData(0, 0, W, H).data; const T = 24;
+  const gx = new Float32Array(W * H), gy = new Float32Array(W * H);
+  for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) { const i = y * W + x; let mx = 0, my = 0;
+    for (let c = 0; c < 3; c++) { mx = Math.max(mx, Math.abs(d[(i + 1) * 4 + c] - d[(i - 1) * 4 + c])); my = Math.max(my, Math.abs(d[(i + W) * 4 + c] - d[(i - W) * 4 + c])); }
+    gx[i] = mx; gy[i] = my; }
+  const Ev = new Uint8Array(W * H), Eh = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) { if (gx[i] > T && gx[i] > gy[i] * 0.8) Ev[i] = 1; if (gy[i] > T && gy[i] > gx[i] * 0.8) Eh[i] = 1; }
+  // allow 2px of tilt or wobble, then running sums so any edge's coverage is one subtraction
+  const cv1 = new Float32Array((H + 1) * W), ch1 = new Float32Array(H * (W + 1)); const colSum = new Float32Array(W), rowSum = new Float32Array(H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let v = 0, h = 0; for (let s = -2; s <= 2; s++) { const xx = x + s, yy = y + s; if (xx >= 0 && xx < W && Ev[y * W + xx]) v = 1; if (yy >= 0 && yy < H && Eh[yy * W + x]) h = 1; }
+    cv1[(y + 1) * W + x] = cv1[y * W + x] + v; ch1[y * (W + 1) + x + 1] = ch1[y * (W + 1) + x] + h; colSum[x] += Ev[y * W + x]; rowSum[y] += Eh[y * W + x]; }
+  const cvAt = (y, x) => cv1[y * W + x], chAt = (y, x) => ch1[y * (W + 1) + x];
+  const peaks = (prof, n, sep) => { const idx = [...prof.keys()].sort((a, b) => prof[b] - prof[a]); const out = []; for (const i of idx) { if (out.every(j => Math.abs(i - j) > sep)) out.push(i); if (out.length >= n) break; } return out.sort((a, b) => a - b); };
+  const xs = peaks(colSum, 100, 3), ys = peaks(rowSum, 100, 3);
+  const side = (x0, y0, x1, y1) => [(cvAt(y1, x0) - cvAt(y0, x0)) / (y1 - y0), (cvAt(y1, x1) - cvAt(y0, x1)) / (y1 - y0), (chAt(y0, x1) - chAt(y0, x0)) / (x1 - x0), (chAt(y1, x1) - chAt(y1, x0)) / (x1 - x0)];
+  let cands = [];
+  for (let i = 0; i < xs.length; i++) for (let j = i + 1; j < xs.length; j++) {
+    const x0 = xs[i], x1 = xs[j], w = x1 - x0; if (w < 0.08 * W || w > 0.95 * W) continue;
+    for (const y0 of ys) { const t = y0 + w * 1.4; if (t > H) continue; let y1 = ys[0]; for (const y of ys) if (Math.abs(y - t) < Math.abs(y1 - t)) y1 = y;
+      const r = (y1 - y0) / w; if (r < 1.36 || r > 1.44) continue;
+      const S = side(x0, y0, x1, y1); const mn = Math.min(...S); if (mn > 0.45) cands.push({ sc: mn + 0.25 * (S[0] + S[1] + S[2] + S[3]) / 4, x0, y0, x1, y1 }); }
+  }
+  if (!cands.length) return { cards: [], score: 0 };
+  cands.sort((a, b) => b.sc - a.sc);
+  const area = c => (c.x1 - c.x0) * (c.y1 - c.y0); const inside = (a, b) => a.x0 >= b.x0 - 2 && a.y0 >= b.y0 - 2 && a.x1 <= b.x1 + 2 && a.y1 <= b.y1 + 2;
+  const ov = (a, b) => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0)) / Math.min(area(a), area(b));
+  const pick = med => { // every card on a sheet is the same size; the card, not the top loader around it, wins
+    let cs = cands.filter(c => Math.abs((c.x1 - c.x0) / med - 1) <= 0.07 && c.sc > 0.9);
+    cs = [...new Set(cs.map(c => { const inner = cs.filter(o => o !== c && inside(o, c) && area(o) >= 0.78 * area(c) && o.sc >= 0.85 * c.sc); return inner.length ? inner.reduce((a, b) => (b.sc > a.sc ? b : a)) : c; }))].sort((a, b) => b.sc - a.sc);
+    const out = []; for (const c of cs) if (out.every(o => ov(c, o) < 0.15)) out.push(c); return out;
+  };
+  let sel = [], tot = -1; for (const c of cands.slice(0, 40)) { const L = pick(c.x1 - c.x0); const t = L.reduce((a, o) => a + o.sc, 0); if (t > tot + 1e-9) { tot = t; sel = L; } } // the card size that explains the most
+  const cards = sel.map(c => ({ quad: [[c.x0, c.y0], [c.x1, c.y0], [c.x1, c.y1], [c.x0, c.y1]].map(p => [p[0] / k, p[1] / k]), sc: c.sc }));
+  return { cards: gridOrder(cards), score: sel.length ? sel.reduce((a, c) => a + c.sc, 0) / sel.length : 0 };
+}
+// pick the better reading of a sheet: straight-edge rectangles when they hold up, else the colour-based finder
+function findCards(bmp) {
+  const O = detectCardQuads(bmp); let E = null; try { E = edgeCards(bmp); } catch (e) {}
+  const hs = O.cards.map(c => c.hgt || 0).filter(Boolean); const mean = hs.reduce((a, b) => a + b, 0) / (hs.length || 1);
+  const oldShaky = O.merged > 0 || !O.cards.length || hs.some(h => Math.abs(h / mean - 1) > 0.2); // pieces stuck together, or cards of different sizes
+  if (E && E.cards.length && E.score >= 1.05 && (E.cards.length >= O.cards.length || oldShaky)) return { cards: E.cards, merged: 0, by: 'edges' };
+  return O;
 }
 
 /* --- perspective warp --------------------------------------------------- */
@@ -3777,6 +3830,25 @@ function parseCardBack(backText, frontText = '') {
   return c;
 }
 
+/* fronts: names sit in stylised nameplates, so try every pair of neighbouring words, and the bottom of the card enlarged */
+async function nameplateStrip(blob) {
+  const bmp = await createImageBitmap(blob); const y0 = Math.round(bmp.height * 0.7), h = bmp.height - y0; const cv = document.createElement('canvas'); cv.width = bmp.width * 2; cv.height = h * 2;
+  const g = cv.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, y0, bmp.width, h, 0, 0, cv.width, cv.height); return new Promise(r => cv.toBlob(r, 'image/png'));
+}
+function wordPairs(text) {
+  const out = []; for (const l of String(text).split('\n')) { const w = l.toUpperCase().match(/[A-Z][A-Z'.\-]{1,}/g) || []; for (let i = 0; i + 1 < w.length; i++) if (w[i].length >= 2 && w[i + 1].length >= 3) out.push(titleCase(w[i]) + ' ' + titleCase(w[i + 1])); }
+  return out.slice(0, 40);
+}
+// a lone surname printed big (FLAGG) when only one player in the list has it; always marked for a check
+function lastNameOnly(text, sport) {
+  const idx = PN.idx || {}; const pools = sport && idx[sport] ? [idx[sport]] : Object.values(idx); const words = uniq((String(text).toUpperCase().match(/[A-Z]{5,}/g) || []));
+  for (const w of words) { if (STOP.has(w.toLowerCase()) || BACK_STOP.has(w.toLowerCase()) || TEAMS[titleCase(w)] !== undefined || /CHROME|TOPPS|PANINI|PRIZM|ROOKIE|BASKETBALL|FOOTBALL|BASEBALL/.test(w)) continue;
+    const hits = pools.flatMap(m => m.get(w) || []); if (hits.length === 1) return { full: fold(hits[0]), score: 2.5, exact: false, gap: 9 }; }
+  for (const w of words) { if (w.length < 5 || /CHROME|TOPPS|PANINI|PRIZM|ROOKIE/.test(w)) continue; // one misread letter (ELAGG), only when a single surname is that close
+    const near = []; for (const m of pools) for (const k of m.keys()) if (k.length === w.length && lev(k, w, 1) === 1) near.push(...m.get(k));
+    if (near.length === 1) return { full: fold(near[0]), score: 2.8, exact: false, gap: 9 }; }
+  return null;
+}
 /* real player names (NBA, MLB incl. prospects, NFL) to fix misreads like "EFF HORNACEK" */
 const PN = { idx: null, loading: null };
 const fold = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -3914,8 +3986,9 @@ FORMS.batchGo = async f => {
       await new Promise(r => setTimeout(r, 20));
       const fs = mode === 'photos' ? await loadPhoto(fronts[s]) : fS[s];
       const bs = mode === 'photos' ? (backs[s] ? await loadPhoto(backs[s]) : null) : bS[s];
-      const F2 = detectCardQuads(fs.bmp); BS.merged += F2.merged;
-      const B2 = bs ? detectCardQuads(bs.bmp) : { cards: [], merged: 0 }; BS.merged += B2.merged;
+      const find = mode === 'photos' ? detectCardQuads : findCards; // scanner sheets: also try straight edges (cards touching, dark lids)
+      const F2 = find(fs.bmp); BS.merged += F2.merged;
+      const B2 = bs ? find(bs.bmp) : { cards: [], merged: 0 }; BS.merged += B2.merged;
       const whole = sh => ({ quad: [[0, 0], [sh.bmp.width, 0], [sh.bmp.width, sh.bmp.height], [0, sh.bmp.height]], c: [sh.bmp.width / 2, sh.bmp.height / 2], row: 0, col: 0, whole: true });
       if (mode === 'photos') { if (!F2.cards.length) F2.cards.push(whole(fs)); if (bs && !B2.cards.length) B2.cards.push(whole(bs)); } // never drop a photo
       // one card per photo: pair directly; several: pair by position
@@ -3957,7 +4030,9 @@ FORMS.batchGo = async f => {
         // pass 3: the front (nameplate)
         if (conf !== 'high') {
           ft = (await readImageText(it.f.warped, pr, '11')).text;
-          const cf = parseCardBack('', ft); const mf = matchPlayer(cf.cands, (parseCardBack(bt).sport) || cf.sport);
+          try { ft += '\n' + (await readImageText(await nameplateStrip(it.f.warped), pr, '11')).text; } catch (e) {} // the nameplate, enlarged
+          const cf = parseCardBack('', ft); cf.cands = [...cf.cands, ...wordPairs(ft)];
+          let mf = matchPlayer(cf.cands, (parseCardBack(bt).sport) || cf.sport); if (!mf && !m) mf = lastNameOnly(ft, parseCardBack(bt).sport || cf.sport);
           if (m && mf && m.full === mf.full) conf = nameConfidence(m, true);
           else if (mf && (!m || mf.score < m.score)) { m = mf; conf = nameConfidence(mf, false); }
         }
@@ -3965,6 +4040,7 @@ FORMS.batchGo = async f => {
       if (BS.opts.serial && !ft) ft = (await readImageText(it.f.warped, pr, '11')).text;
       it.text = bt; it.fields = parseCardBack(bt, ft); it.fields.serial = serialFrom(ft) || serialFrom(bt) || '';
       if (m) { it.fields.player = m.full; it.fields.matched = true; }
+      else if (it.fields.player && it.fields.player.split(' ').some(w => w.replace(/[^A-Za-z]/g, '').length < 3)) it.fields.player = ''; // a scrap like "Lu Mz" is worse than a blank
       it.fields.conf = BS.opts.read ? conf : '';
     }
     renderBatchReview();
