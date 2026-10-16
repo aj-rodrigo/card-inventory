@@ -504,6 +504,14 @@ a.plink { color: inherit; text-decoration: none; } a.plink:hover { text-decorati
 #sync-dot[data-st="ok"] { background: var(--pos); } #sync-dot[data-st="wait"] { background: var(--acc); } #sync-dot[data-st="bad"] { background: var(--neg); }
 #sync-status[data-ok="0"] { color: var(--neg); } #sync-status[data-ok="1"] { color: var(--pos); }
 .eb-thumbs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; } .eb-thumbs img { height: 110px; width: auto; border-radius: 4px; border: 1px solid var(--line); display: block; }
+/* scrubbable charts */
+svg[data-scrub] { touch-action: pan-y; cursor: crosshair; -webkit-user-select: none; user-select: none; }
+.scrub-line { stroke: var(--ink); stroke-width: 1; opacity: .55; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.scrub-dot { fill: var(--acc); stroke: var(--bg); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.scrub-host { display: grid; gap: 4px; }
+.scrub-read { min-height: 1.4em; font-size: .85rem; }
+.scrub-read:empty::before { content: "Drag across the chart to see any date"; color: var(--muted); font-size: .78rem; }
+.hero-chart svg[data-scrub] { width: 100%; height: auto; }
 </style>
 <div id="app"></div>
 <div id="modal-root"></div>
@@ -6956,6 +6964,81 @@ function paySettingsPanel() {
 }
 FORMS.payCfg = async f => { const fd = new FormData(f); const o = S.settings.payFees = S.settings.payFees || {}; for (const k of Object.keys(PAY_DEF)) if (fd.has('p_' + k)) o[k] = { pct: num(fd.get('p_' + k)), flat: num(fd.get('f_' + k)) }; S.settings.mileRate = { ...(S.settings.mileRate || {}), [today().slice(0, 4)]: num(fd.get('mile')) || IRS_MILE[2026] }; await saveSettings(); toast('Saved'); };
 { const vs = V.settings; V.settings = (...a) => Promise.resolve(vs(...a)).then(async h => { const sh = await syncHealthPanel(); return h.replace('<section class="panel"><h2>Backup</h2>', m => sh + m).replace('<div class="cols">', () => paySettingsPanel() + '<div class="cols">'); }); V.settings.after = vs.after; }
+
+/* v1.16 scrubbable charts: drag a finger (or move the mouse) across a chart to read the value on any date.
+   A chart opts in with data-scrub (its points in chart coordinates) and says where the reading goes. */
+
+const scrubPts = pts => esc(JSON.stringify(pts.map(p => [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10, p.d, r2(p.v), p.c === undefined ? null : r2(p.c)])));
+const scrubDate = d => new Date(String(d).slice(0, 10) + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+/* Today: the big number becomes the value on the day under your finger */
+function heroChart(snaps, w = 420, h = 92, label = 'Inventory value over time') {
+  const L = snaps.filter(s => num(s.value) > 0); if (L.length < 2) return '';
+  const vs = L.map(s => num(s.value)); const mn = Math.min(...vs), mx = Math.max(...vs), sp = mx - mn || 1;
+  const P = L.map((s, i) => ({ x: 2 + (w - 4) * i / (L.length - 1), y: 3 + (h - 6) * (1 - (num(s.value) - mn) / sp), d: s.date, v: num(s.value), c: num(s.cost) }));
+  const d = P.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(''); const e = P[P.length - 1];
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}. Drag across it to see any day." data-scrub="${scrubPts(P)}" data-kind="hero"><path d="${d}L${w - 2},${h}L2,${h}Z" fill="var(--acc)" opacity=".13"/><path d="${d}" fill="none" stroke="var(--acc)" stroke-width="2"/><circle cx="${e.x}" cy="${e.y}" r="3" fill="var(--acc)"/></svg>`;
+}
+{ const vd = V.dash; V.dash = (...a) => { const h = vd(...a); if (typeof h !== 'string') return h;
+    const snaps = S.snaps.filter(x => !x.purged).sort((a, b) => a.date.localeCompare(b.date)).slice(-90); const hc = heroChart(snaps);
+    return hc ? h.replace(/<div class="hero-chart">[\s\S]*?<\/svg><\/div>/, `<div class="hero-chart">${hc}</div>`) : h; }; V.dash.after = vd.after; }
+/* a card's page: the big price becomes the value on the day under your finger */
+{ const vc = V.card; V.card = (...a) => Promise.resolve(vc(...a)).then(h => { const c = cardById(a[0]); if (!c || typeof h !== 'string') return h;
+    const hist = (c.priceHistory || []).slice(-12).filter(x => x.date); const hc = heroChart(hist, 220, 70, 'Price history'); if (!hc) return h;
+    return h.replace(/(<div class="pricebox">[\s\S]*?<\/small><\/div>)<svg class="spark"[\s\S]*?<\/svg>/, (m, a1) => a1 + hc); }); V.card.after = vc.after; }
+
+/* value over time (Reports, player pages): value and cost on the day */
+{ const vc = valueChart; valueChart = snaps => {
+    const h = vc(snaps); const pts = [...snaps].filter(s => !s.purged).sort((a, b) => a.date.localeCompare(b.date)); if (pts.length < 2 || !h.startsWith('<svg')) return h;
+    const W = 640, H = 220, L = 58, R = 12, T = 12, B = 26; const xs = pts.map(p => +new Date(p.date)); const x0 = xs[0], x1 = xs[xs.length - 1] || x0 + 1;
+    const maxV = Math.max(...pts.map(p => Math.max(p.value, p.cost)), 1); const step = niceStep(maxV / 4); const top = Math.ceil(maxV / step) * step;
+    const P = pts.map((p, i) => ({ x: L + (W - L - R) * ((xs[i] - x0) / Math.max(1, x1 - x0)), y: T + (H - T - B) * (1 - p.value / top), d: p.date, v: p.value, c: p.cost }));
+    return `<div class="scrub-host">${h.replace('<svg class="chart"', `<svg class="chart" data-scrub="${scrubPts(P)}" data-kind="value"`)}<div class="scrub-read" aria-live="polite"></div></div>`;
+  }; }
+
+/* a card's price history */
+{ const sp = sparkline; sparkline = hist => {
+    const h = sp(hist); const vs = hist.map(x => num(x.value)); if (vs.length < 2) return h; const W = 300, H0 = 60; const mn = Math.min(...vs), mx = Math.max(...vs), span = mx - mn || 1;
+    const P = hist.map((x, i) => ({ x: 4 + (W - 8) * i / (vs.length - 1), y: 6 + (H0 - 12) * (1 - (vs[i] - mn) / span), d: x.date, v: vs[i] }));
+    return `<div class="scrub-host" style="max-width:340px">${h.replace('<svg class="chart"', `<svg class="chart" data-scrub="${scrubPts(P)}" data-kind="price"`)}<div class="scrub-read" aria-live="polite"></div></div>`;
+  }; }
+
+/* the scrubbing itself, shared by every chart */
+const SCRUB = { svg: null, saved: null, idx: -1 };
+function scrubAt(svg, clientX) {
+  const P = svg._pts || (svg._pts = JSON.parse(svg.dataset.scrub)); const m = svg.getScreenCTM(); if (!m) return;
+  const x = (clientX - m.e) / m.a; let i = 0; for (let k = 1; k < P.length; k++) if (Math.abs(P[k][0] - x) < Math.abs(P[i][0] - x)) i = k;
+  if (i === SCRUB.idx && SCRUB.svg === svg) return; SCRUB.idx = i; const [px, py, d, v, c] = P[i];
+  const vb = svg.viewBox.baseVal; let g = svg.querySelector('.scrub-g');
+  if (!g) { g = document.createElementNS('http://www.w3.org/2000/svg', 'g'); g.setAttribute('class', 'scrub-g'); g.innerHTML = '<line class="scrub-line"/><circle class="scrub-dot" r="5"/>'; svg.appendChild(g); }
+  const ln = g.querySelector('line'); ln.setAttribute('x1', px); ln.setAttribute('x2', px); ln.setAttribute('y1', vb.y); ln.setAttribute('y2', vb.y + vb.height);
+  const dot = g.querySelector('circle'); dot.setAttribute('cx', px); dot.setAttribute('cy', py); g.style.display = '';
+  const first = P[0][3], last = P[P.length - 1][3];
+  if (svg.dataset.kind === 'hero') {
+    const box = svg.closest('.hero, .pricebox') || document; const big = box.querySelector('.big'), sub = box.querySelector('.delta') || box.querySelector('small');
+    if (!SCRUB.saved) SCRUB.saved = [[big, big && big.innerHTML], [sub, sub && sub.innerHTML], [sub, sub && sub.className]];
+    if (big) big.textContent = box.classList && box.classList.contains('pricebox') ? money(v) : money0(v);
+    if (sub) { const ch = first ? (v - first) / first : null; sub.className = 'delta ' + cls(v - first); sub.innerHTML = `${esc(scrubDate(d))}${ch === null ? '' : ` <span class="muted">· ${ch >= 0 ? '▲' : '▼'} ${pct(Math.abs(ch))} from ${esc(scrubDate(P[0][2]).replace(/, \d{4}$/, ''))}</span>`}`; }
+  } else {
+    const out = svg.closest('.scrub-host') && svg.closest('.scrub-host').querySelector('.scrub-read'); if (!out) return;
+    out.innerHTML = `<b class="num">${money(v)}</b> <span class="muted">${esc(scrubDate(d))}</span>${c !== null && c !== undefined ? ` <span class="muted">· cost ${money0(c)}</span> <span class="${cls(v - c)}">${money(v - c, 1)}</span>` : ''}${i < P.length - 1 && v ? ` <span class="muted">· now ${money(last)} (${pct((last - v) / v)} since)</span>` : ''}`;
+    out.classList.add('on');
+  }
+}
+function scrubEnd() {
+  const svg = SCRUB.svg; if (!svg) return; const g = svg.querySelector('.scrub-g'); if (g) g.style.display = 'none';
+  if (SCRUB.saved) { const [[big, bh], [sub, sh], [, sc]] = SCRUB.saved; if (big) big.innerHTML = bh; if (sub) { sub.innerHTML = sh; sub.className = sc; } }
+  const out = svg.closest('.scrub-host') && svg.closest('.scrub-host').querySelector('.scrub-read'); if (out) { out.innerHTML = ''; out.classList.remove('on'); }
+  SCRUB.svg = null; SCRUB.saved = null; SCRUB.idx = -1;
+}
+document.addEventListener('pointerdown', e => { const svg = e.target.closest && e.target.closest('svg[data-scrub]'); if (!svg) return; if (SCRUB.svg && SCRUB.svg !== svg) scrubEnd(); SCRUB.svg = svg; SCRUB.down = true; try { svg.setPointerCapture(e.pointerId); } catch (x) {} scrubAt(svg, e.clientX); });
+document.addEventListener('pointermove', e => {
+  const svg = SCRUB.down ? SCRUB.svg : e.pointerType === 'mouse' && e.target.closest ? e.target.closest('svg[data-scrub]') : null; if (!svg) return;
+  if (SCRUB.svg !== svg) { if (SCRUB.svg) scrubEnd(); SCRUB.svg = svg; } scrubAt(svg, e.clientX);
+});
+document.addEventListener('pointerup', e => { if (!SCRUB.down) return; SCRUB.down = false; if (e.pointerType !== 'mouse') scrubEnd(); });
+document.addEventListener('pointercancel', () => { SCRUB.down = false; scrubEnd(); });
+document.addEventListener('pointerout', e => { if (SCRUB.down || !SCRUB.svg || e.pointerType !== 'mouse') return; if (!SCRUB.svg.contains(e.relatedTarget)) scrubEnd(); });
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
 async function loadDemo() {
