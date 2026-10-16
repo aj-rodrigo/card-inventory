@@ -3230,7 +3230,7 @@ function portraitQuad(q) { const top = Math.hypot(q[1][0] - q[0][0], q[1][1] - q
 
 /* used when a photo is added: keep the original, save a straightened copy */
 async function processCardPhoto(file, auto, toploader) {
-  const orig = await compressImage(file, 2400, 0.9);
+  const orig = await compressImage(file, 3200, 0.9);
   if (!auto) return { orig, out: orig, quad: null };
   try {
     const bmp = await bitmapOf(orig); const r = findCardCorners(bmp, { toploader });
@@ -4357,7 +4357,7 @@ function enhanceLabel(cv) {
 
 /* Everything for one slab photo: the card face, the cleaned label, and what the label says. */
 async function processSlabPhoto(fileOrBlob, opts = {}) {
-  const orig = opts.orig || await compressImage(fileOrBlob, 2400, 0.92);
+  const orig = opts.orig || await compressImage(fileOrBlob, 3200, 0.92);
   const bmp = await bitmapOf(orig);
   const s = findSlab(bmp, { labelAt: opts.labelAt }); if (!s) return null;
   const src = s.src || bitmapPixels(bmp, 2400);
@@ -4518,78 +4518,92 @@ document.addEventListener('change', async e => {
   note.innerHTML = `<div><span>Slab found. The real label goes on the 3D slab${filled.length ? '; filled in ' + esc(filled.join(', ')) : ''}. Add the back of the slab as the back photo to show the label's back too.</span></div>`;
 });
 
-/* Studio photo: your real card (or slab), cut out of its photo and set on a clean gray backdrop in a clear stand.
-   Only the background is new. The card's own pixels are copied as photographed, never redrawn. */
-const STUDIO = 1600; // eBay's recommended square size
-
-// the card or slab as a straight, flat image
-async function studioSubject(blob, slab) {
-  const bmp = await bitmapOf(blob);
-  const ar = bmp.height / bmp.width;
-  if (!slab && ar > 1.33 && ar < 1.47) { // already a straightened card (Dugout saves fronts this way)
-    const cv = document.createElement('canvas'); cv.width = bmp.width; cv.height = bmp.height; cv.getContext('2d').drawImage(bmp, 0, 0); return cv;
-  }
-  const src = bitmapPixels(bmp, 2400);
-  let quad = null;
-  if (slab) { const D = detectCardQuads(bmp); if (D.cards.length) quad = D.cards.slice().sort((a, b) => b.hgt - a.hgt)[0].quad; }
-  else { const r = findCardCorners(bmp); if (r) quad = r.quad; }
-  if (!quad) return null;
-  quad = portraitQuad(orderQuad(quad));
-  const w = Math.hypot(quad[1][0] - quad[0][0], quad[1][1] - quad[0][1]), h = Math.hypot(quad[3][0] - quad[0][0], quad[3][1] - quad[0][1]);
-  const ow = 1100, oh = Math.round(ow * h / w);
-  return warpCard(src, quad, ow, oh);
-}
+/* Listing photos, made from your full-size original photos (not the small crop used for the 3D view):
+   - a straightened photo of each side with a margin, so the card's true corners and edges show
+   - a close-up of all four corners
+   - an optional studio photo: the same card on a clean gray backdrop in a clear stand
+   The card's own pixels are copied as photographed. Nothing is redrawn, smoothed, clipped or touched up. */
+const STUDIO = 2000;   // square studio photo; eBay zooms photos 1600px and larger
+const LIST_MAX = 2400; // longest side of the straightened photos
 
 function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+const quadSize = q => [(Math.hypot(q[1][0] - q[0][0], q[1][1] - q[0][1]) + Math.hypot(q[2][0] - q[3][0], q[2][1] - q[3][1])) / 2, (Math.hypot(q[3][0] - q[0][0], q[3][1] - q[0][1]) + Math.hypot(q[2][0] - q[1][0], q[2][1] - q[1][1])) / 2];
+const growQuad = (q, f) => { const cx = q.reduce((a, p) => a + p[0], 0) / 4, cy = q.reduce((a, p) => a + p[1], 0) / 4; return q.map(([x, y]) => [cx + (x - cx) * (1 + f), cy + (y - cy) * (1 + f)]); };
 
-// draw the finished studio photo
+// find the card (or the whole slab) in a full-size photo; a quad you fixed with Straighten wins
+async function locate(blob, { slab, quad } = {}) {
+  const bmp = await bitmapOf(blob); let q = null;
+  if (slab) { const D = detectCardQuads(bmp); if (D.cards.length) q = D.cards.slice().sort((a, b) => b.hgt - a.hgt)[0].quad; }
+  else if (quad && quad.length === 4) q = quad;
+  else { const r = findCardCorners(bmp); if (r) q = r.quad; }
+  if (!q && !slab) { const ar = bmp.height / bmp.width; if (ar > 1.33 && ar < 1.47) return { bmp, quad: [[0, 0], [bmp.width, 0], [bmp.width, bmp.height], [0, bmp.height]], whole: true }; } // already cropped to the card
+  return { bmp, quad: q ? portraitQuad(orderQuad(q)) : null };
+}
+// straighten at full resolution; margin > 0 keeps a strip of the real background around the edges
+function warpFull(bmp, quad, margin) {
+  const src = bitmapPixels(bmp, Math.max(bmp.width, bmp.height)); const q = margin ? growQuad(quad, margin) : quad;
+  const [w, h] = quadSize(q); const oh = Math.round(Math.min(LIST_MAX, Math.max(1600, h))), ow = Math.round(oh * w / h);
+  return warpCard(src, q, ow, oh);
+}
+const toJpeg = cv => new Promise(r => cv.toBlob(r, 'image/jpeg', 0.93));
+
+// a 2×2 close-up of the four corners, cut from the straightened photo
+function cornersSheet(cv, label) {
+  const N = 1600, gap = 16, cell = (N - gap * 3) / 2; const out = document.createElement('canvas'); out.width = out.height = N; const g = out.getContext('2d');
+  g.fillStyle = '#e6e7e9'; g.fillRect(0, 0, N, N);
+  const s = Math.round(Math.min(cv.width, cv.height) * 0.2);
+  const spots = [[0, 0, 'Top left'], [cv.width - s, 0, 'Top right'], [0, cv.height - s, 'Bottom left'], [cv.width - s, cv.height - s, 'Bottom right']];
+  spots.forEach(([sx, sy, name], i) => {
+    const x = gap + (i % 2) * (cell + gap), y = gap + Math.floor(i / 2) * (cell + gap);
+    g.drawImage(cv, sx, sy, s, s, x, y, cell, cell);
+    g.font = '600 28px system-ui, sans-serif'; const t = `${label} · ${name}`; const tw = g.measureText(t).width;
+    g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(x + 12, y + cell - 52, tw + 24, 40); g.fillStyle = '#fff'; g.fillText(t, x + 24, y + cell - 22);
+  });
+  return out;
+}
+
+// the studio photo: subject drawn as photographed, square corners and all (real rounded corners show as they are)
 function studioCompose(subj, slab) {
   const N = STUDIO, cv = document.createElement('canvas'); cv.width = cv.height = N; const g = cv.getContext('2d');
-  // backdrop: soft gray wall meeting a lighter tabletop, like a light tent
   const hz = N * 0.8;
   let gr = g.createLinearGradient(0, 0, 0, hz); gr.addColorStop(0, '#d9dbde'); gr.addColorStop(1, '#e9eaec'); g.fillStyle = gr; g.fillRect(0, 0, N, hz);
   gr = g.createLinearGradient(0, hz, 0, N); gr.addColorStop(0, '#eeeff0'); gr.addColorStop(1, '#d6d8db'); g.fillStyle = gr; g.fillRect(0, hz, N, N - hz);
-  gr = g.createLinearGradient(0, hz - 40, 0, hz + 40); gr.addColorStop(0, 'rgba(233,234,236,0)'); gr.addColorStop(0.5, 'rgba(240,241,242,.9)'); gr.addColorStop(1, 'rgba(238,239,240,0)'); g.fillStyle = gr; g.fillRect(0, hz - 40, N, 80);
+  gr = g.createLinearGradient(0, hz - 50, 0, hz + 50); gr.addColorStop(0, 'rgba(233,234,236,0)'); gr.addColorStop(0.5, 'rgba(240,241,242,.9)'); gr.addColorStop(1, 'rgba(238,239,240,0)'); g.fillStyle = gr; g.fillRect(0, hz - 50, N, 100);
   gr = g.createRadialGradient(N / 2, N * 0.45, N * 0.2, N / 2, N * 0.5, N * 0.78); gr.addColorStop(0, 'rgba(255,255,255,.35)'); gr.addColorStop(1, 'rgba(60,64,70,.18)'); g.fillStyle = gr; g.fillRect(0, 0, N, N);
-
-  // size and place the subject so it sits in the stand
-  const ar = subj.height / subj.width; const ch = N * (slab ? 0.74 : 0.69), cw = ch / ar;
-  const cx = N / 2, bottom = N * (slab ? 0.86 : 0.84), x = cx - cw / 2, y = bottom - ch;
-  const rad = cw * (slab ? 0.035 : 0.03);
-
-  // shadows: one cast on the wall behind, one where the stand meets the table
-  g.save(); g.filter = `blur(${Math.round(N * 0.018)}px)`; g.fillStyle = 'rgba(30,34,40,.32)'; roundRect(g, x + N * 0.012, y + N * 0.016, cw, ch, rad); g.fill(); g.restore();
-  const footY = bottom + N * 0.065, spread = cw * 0.3;
+  const ar = subj.height / subj.width; const ch = N * (slab ? 0.76 : 0.72), cw = ch / ar;
+  const cx = N / 2, bottom = N * (slab ? 0.87 : 0.85), x = cx - cw / 2, y = bottom - ch;
+  g.save(); g.filter = `blur(${Math.round(N * 0.018)}px)`; g.fillStyle = 'rgba(30,34,40,.32)'; roundRect(g, x + N * 0.012, y + N * 0.016, cw, ch, cw * 0.03); g.fill(); g.restore();
+  const footY = bottom + N * 0.06, spread = cw * 0.3;
   g.save(); g.filter = `blur(${Math.round(N * 0.012)}px)`; g.fillStyle = 'rgba(30,34,40,.28)'; g.beginPath(); g.ellipse(cx, footY + N * 0.006, spread * 1.25, N * 0.014, 0, 0, Math.PI * 2); g.fill(); g.restore();
-
-  // stand legs (behind the card's bottom edge)
-  const lipTop = bottom - ch * 0.032, lipBot = bottom + N * 0.012, lw = cw * 0.62;
+  // the stand sits below the card, so it covers nothing
   const leg = (x1, y1, x2, y2, w) => { g.lineCap = 'round'; g.strokeStyle = 'rgba(150,158,168,.45)'; g.lineWidth = w + 3; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = w - 3; g.stroke(); };
-  leg(cx - cw * 0.12, lipBot, cx - spread, footY, N * 0.012); leg(cx + cw * 0.12, lipBot, cx + spread, footY, N * 0.012);
-  leg(cx - cw * 0.12, lipBot, cx + cw * 0.12, lipBot, N * 0.012);
-
-  // the card itself, exactly as photographed, with rounded corners
-  g.save(); roundRect(g, x, y, cw, ch, rad); g.clip(); g.drawImage(subj, x, y, cw, ch); g.restore();
-  g.save(); roundRect(g, x, y, cw, ch, rad); g.strokeStyle = slab ? 'rgba(255,255,255,.55)' : 'rgba(0,0,0,.18)'; g.lineWidth = slab ? 3 : 1.5; g.stroke(); g.restore();
-
-  // the stand's clear front lip across the bottom edge
-  g.save(); roundRect(g, cx - lw / 2, lipTop, lw, lipBot - lipTop, 6);
-  gr = g.createLinearGradient(0, lipTop, 0, lipBot); gr.addColorStop(0, 'rgba(255,255,255,.42)'); gr.addColorStop(0.35, 'rgba(255,255,255,.16)'); gr.addColorStop(1, 'rgba(200,206,214,.30)'); g.fillStyle = gr; g.fill();
-  g.strokeStyle = 'rgba(140,148,158,.5)'; g.lineWidth = 2; g.stroke();
-  g.beginPath(); g.moveTo(cx - lw / 2 + 8, lipTop + 3); g.lineTo(cx + lw / 2 - 8, lipTop + 3); g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 2; g.stroke(); g.restore();
+  const top = bottom + N * 0.012;
+  leg(cx - cw * 0.12, top, cx - spread, footY, N * 0.011); leg(cx + cw * 0.12, top, cx + spread, footY, N * 0.011); leg(cx - cw * 0.3, top, cx + cw * 0.3, top, N * 0.011);
+  g.drawImage(subj, x, y, cw, ch); // exactly as photographed, no clipping
   return cv;
 }
 
-async function studioPhoto(blob, opts = {}) { const s = await studioSubject(blob, !!opts.slab); return s ? studioCompose(s, !!opts.slab) : null; }
-
-// the studio photo for a card: slabs use the whole-slab photo; nothing is made if the subject can't be found
-const STUDIO_CACHE = new Map();
-async function studioForCard(c) {
-  const slab = !!c.graded; const id = slab ? c.frontOrig : c.front; if (!id) return null;
-  const k = id + (slab ? ':s' : ':r'); if (STUDIO_CACHE.has(k)) return STUDIO_CACHE.get(k);
-  const p = (async () => { const rec = await fileGet(id); if (!rec) return null; const cv = await studioPhoto(rec.blob, { slab }); return cv ? await canvasBlob(cv, 'image/jpeg', 0.92) : null; })().catch(() => null);
-  STUDIO_CACHE.set(k, p); return p;
+// everything a single listing uploads, in order
+const PHOTO_CACHE = new Map();
+async function listingPhotos(c, { studio = true } = {}) {
+  const key = [c.id, c.frontOrig || c.front, c.backOrig || c.back, JSON.stringify(c.frontQuad || ''), JSON.stringify(c.backQuad || ''), studio].join('|');
+  if (PHOTO_CACHE.has(key)) return PHOTO_CACHE.get(key);
+  const p = (async () => {
+    const slab = !!c.graded; const out = { studio: null, photos: [] };
+    for (const side of ['front', 'back']) {
+      const id = c[side + 'Orig'] || c[side]; if (!id) continue; const rec = await fileGet(id); if (!rec) continue;
+      const { bmp, quad, whole } = await locate(rec.blob, { slab, quad: slab ? null : c[side + 'Quad'] });
+      if (!quad) { out.photos.push({ blob: rec.blob, what: `${side} (original photo)` }); continue; }
+      const full = warpFull(bmp, quad, whole ? 0 : slab ? 0.04 : 0.06);
+      out.photos.push({ blob: whole ? rec.blob : await toJpeg(full), what: whole ? `${side} (photo already cropped to the card)` : `${side}, straightened with its edges showing` });
+      if (!slab) out.corners = (out.corners || []).concat({ blob: await toJpeg(cornersSheet(full, side === 'front' ? 'Front' : 'Back')), what: `${side} corners` });
+      if (side === 'front' && studio) out.studio = await toJpeg(studioCompose(warpFull(bmp, quad, 0), slab));
+    }
+    out.photos = out.photos.concat(out.corners || []); return out;
+  })().catch(e => { PHOTO_CACHE.delete(key); throw e; });
+  PHOTO_CACHE.set(key, p); return p;
 }
+async function studioForCard(c) { try { return (await listingPhotos(c)).studio; } catch (e) { return null; } }
 
 /* eBay automation: list, offer rules, reprice, offers to watchers, sold sync, shipping queue and deal finder.
    TEST BUILD ONLY for now. Two modes:
@@ -4726,9 +4740,9 @@ A.listEbay = el => {
   openModal(`<form data-form="ebList" data-id="${c.id}">${mhead('List on ' + ebModeName())}
     <div class="eb-mode ${cfg.mode}">${cfg.mode === 'sim' ? 'Simulator: nothing is sent to eBay.' : cfg.mode === 'live' ? '<b>LIVE eBay:</b> this posts a real listing. Real buyers can buy it at this price.' : 'eBay Sandbox: a test listing on eBay\'s practice site. No real buyers.'}</div>
     ${field('Title (80 characters max)', `<input name="title" id="eb-title" value="${esc(t)}" maxlength="80" required><small class="muted"><span id="eb-tlen">${t.length}</span>/80</small>`)}
-    <div class="fgrid">${field('Price', money_inp('price', price, 'required id="eb-price"'))}${field('Photos', `<input value="${[c.front && 'front', c.back && 'back'].filter(Boolean).join(' + ') || 'none'}" disabled>`)}${field('Package weight (oz, packed)', inp('oz', c.graded ? cfg.ozSlab : cfg.ozRaw, 'inputmode="decimal"'))}</div>
+    <div class="fgrid">${field('Price', money_inp('price', price, 'required id="eb-price"'))}${field('Package weight (oz, packed)', inp('oz', c.graded ? cfg.ozSlab : cfg.ozRaw, 'inputmode="decimal"'))}</div>
     <label class="chk"><input type="checkbox" name="studio" ${c.graded && !c.frontOrig ? 'disabled' : 'checked'}> Studio photo first: your ${c.graded ? 'slab' : 'card'} on a clean gray backdrop, exactly as photographed. Your original photos are included after it.</label>
-    <div class="eb-studio" id="eb-studio">${c.graded && !c.frontOrig ? '<small class="muted">Studio photo needs a photo of the whole slab. Use Re-read slab label on the card page first.</small>' : '<small class="muted">Making the studio photo…</small>'}</div>
+    <div class="eb-studio" id="eb-studio"><small class="muted">Preparing photos from your full-size originals…</small></div>
     <label class="chk"><input type="checkbox" name="bestOffer" checked> Accept offers, with automatic answers</label>
     <div class="fgrid">${field('Auto-accept at (% of price)', inp('accept', cfg.accept, 'inputmode="numeric" id="eb-acc"'))}${field('Auto-decline under (% of price)', inp('decline', cfg.decline, 'inputmode="numeric" id="eb-dec"'))}</div>
     <div class="calc" id="eb-calc"></div>
@@ -4744,7 +4758,9 @@ A.listEbay = el => {
     $('#eb-errs').innerHTML = L.errs.length ? `<div class="warn">${L.errs.map(esc).join('<br>')}</div>` : '';
   };
   f.addEventListener('input', upd); upd();
-  if (!(c.graded && !c.frontOrig)) studioForCard(c).then(b => { const box = $('#eb-studio'); if (!box) return; if (!b) { box.innerHTML = "<small class='muted'>Couldn't find the card's edges in the photo, so the listing will use your original photos only.</small>"; const t = f.querySelector('[name=studio]'); if (t) { t.checked = false; t.disabled = true; } return; } const u = URL.createObjectURL(b); box.innerHTML = `<img src="${u}" alt="Studio photo preview">`; });
+  listingPhotos(c, { studio: !(c.graded && !c.frontOrig) }).then(P => { const box = $('#eb-studio'); if (!box) return; const t = f.querySelector('[name=studio]');
+    if (!P.studio && t) { t.checked = false; t.disabled = true; }
+    box.innerHTML = `${P.studio ? `<img src="${URL.createObjectURL(P.studio)}" alt="Studio photo preview">` : ''}<small class="muted">Photos from your full-size originals: ${[P.studio && 'studio', ...P.photos.map(x => x.what)].filter(Boolean).join(' · ')}</small>`; }).catch(() => {});
 };
 const b64OfBlob = async (blob, name = 'studio.jpg') => { const buf = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000)); return { base64: btoa(s), type: blob.type || 'image/jpeg', name }; };
 FORMS.ebList = async f => {
@@ -4754,8 +4770,9 @@ FORMS.ebList = async f => {
   const btn = f.querySelector('[type=submit]');
   if (ebIsLive() && f.dataset.sure !== '1') { f.dataset.sure = '1'; btn.textContent = `Tap again to list for ${money(num(o.price))}`; return; } btn.disabled = true; btn.textContent = 'Uploading photos…';
   try {
-    if (fd.get('studio') === 'on') { const sb = await studioForCard(c); if (sb) { const r = await ebay('image', await b64OfBlob(sb)); L.inventoryItem.product.imageUrls.push(r.imageUrl); } }
-    for (const side of c.graded && c.frontOrig ? ['frontOrig', 'front', 'back'] : ['front', 'back']) if (c[side]) { const img = await b64OfFile(c[side]); if (img) { const r = await ebay('image', img); L.inventoryItem.product.imageUrls.push(r.imageUrl); } }
+    const useStudio = fd.get('studio') === 'on'; const P = await listingPhotos(c, { studio: useStudio });
+    const blobs = [...(useStudio && P.studio ? [P.studio] : []), ...P.photos.map(x => x.blob)].slice(0, 24);
+    for (let k = 0; k < blobs.length; k++) { btn.textContent = `Uploading photo ${k + 1} of ${blobs.length}…`; const r = await ebay('image', await b64OfBlob(blobs[k], `photo-${k + 1}.jpg`)); L.inventoryItem.product.imageUrls.push(r.imageUrl); }
     btn.textContent = 'Posting…';
     const r = await ebay('list', { inventoryItem: L.inventoryItem, offer: L.offer });
     const was = c.status;
@@ -4984,11 +5001,12 @@ async function marketCheck(c) {
   let items = marketMatches(c, r.items || []).map(x => ({ title: x.title, url: x.url, total: r2(num(x.price) + num(x.ship)) }));
   const m0 = mkMedian(items.map(x => x.total)); if (m0) items = items.filter(x => x.total <= m0 * 3 && x.total >= m0 / 3); // drop odd outliers
   items.sort((a, b) => a.total - b.total); const t = items.map(x => x.total);
-  const res = { date: today(), q, n: t.length, median: r2(mkMedian(t)), low: t[0] || 0, p25: t[Math.floor((t.length - 1) * 0.25)] || 0, p75: t[Math.floor((t.length - 1) * 0.75)] || 0 };
+  const res = { date: today(), q, n: t.length, avg: t.length ? r2(t.reduce((a, b) => a + b, 0) / t.length) : 0, median: r2(mkMedian(t)), low: t[0] || 0, p25: t[Math.floor((t.length - 1) * 0.25)] || 0, p75: t[Math.floor((t.length - 1) * 0.75)] || 0 };
   c.market = res; await save('cards', c, { quiet: true });
   return { ...res, items };
 }
-const marketGap = c => c.market && c.market.n >= 3 && num(c.value) ? (c.market.median - num(c.value)) / num(c.value) : null;
+const mkPrice = m => m ? num(m.avg) || num(m.median) : 0; // the average of the matching listings
+const marketGap = c => c.market && c.market.n >= 3 && num(c.value) ? (mkPrice(c.market) - num(c.value)) / num(c.value) : null;
 const offMarket = () => S.cards.filter(live).filter(c => ACTIVE.includes(c.status)).filter(c => { const g = marketGap(c); return g !== null && Math.abs(g) >= 0.25; });
 async function setValue(c, v, src) {
   v = r2(v); if (!(v > 0) || v === num(c.value)) return;
@@ -5002,13 +5020,13 @@ A.marketCheck = async el => {
   const g = marketGap(c); const sold = 'https://www.ebay.com/sch/i.html?' + new URLSearchParams({ _nkw: r.q, LH_Sold: '1', LH_Complete: '1' });
   openModal(`<div>${mhead('Market check')}
     <p class="muted" style="margin:0">Asking prices for Buy It Now listings right now, shipping included. These aren't sold prices.</p>
-    <div class="calc"><div><span>Middle price</span><b>${r.n ? money(r.median) : '—'}</b></div><div><span>Typical range</span><b>${r.n ? money(r.p25) + '–' + money(r.p75) : '—'}</b></div><div><span>Your value</span><b>${money(c.value)}${g !== null ? ` <small class="${cls(g)}">${g >= 0 ? '+' : ''}${Math.round(g * 100)}%</small>` : ''}</b></div></div>
+    <div class="calc"><div><span>Average</span><b>${r.n ? money(r.avg) : '—'}</b></div><div><span>Middle price</span><b>${r.n ? money(r.median) : '—'}</b></div><div><span>Typical range</span><b>${r.n ? money(r.p25) + '–' + money(r.p75) : '—'}</b></div><div><span>Your value</span><b>${money(c.value)}${g !== null ? ` <small class="${cls(g)}">${g >= 0 ? '+' : ''}${Math.round(g * 100)}%</small>` : ''}</b></div></div>
     <small class="muted">${r.n} matching listing${r.n === 1 ? '' : 's'} for "${esc(r.q)}". Lots${c.graded ? ', other graders and other grades' : ' and graded cards'} are left out.</small>
     ${r.items.length ? `<div class="list">${r.items.slice(0, 8).map(x => `<div class="li"><a class="grow" href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a><b class="num">${money(x.total)}</b></div>`).join('')}</div>` : '<div class="empty">No close matches. Try the sold search on eBay.</div>'}
-    <div class="sheet-foot"><a class="btn" href="${esc(sold)}" target="_blank" rel="noopener">Sold prices on eBay ↗</a><button class="btn" type="button" data-act="close">Close</button>${r.n >= 3 ? `<button class="btn pri" type="button" data-act="marketUse" data-id="${c.id}">Set value to ${money(r.median)}</button>` : ''}</div></div>`, { narrow: true });
+    <div class="sheet-foot"><a class="btn" href="${esc(sold)}" target="_blank" rel="noopener">Sold prices on eBay ↗</a><button class="btn" type="button" data-act="close">Close</button>${r.n >= 3 ? `<button class="btn pri" type="button" data-act="marketUse" data-id="${c.id}">Set value to ${money(r.avg)}</button>` : ''}</div></div>`, { narrow: true });
 };
-A.marketUse = async el => { const c = cardById(el.dataset.id); if (!c || !c.market) return; await setValue(c, c.market.median, 'Market check (asking prices)'); closeModal(); onChange('cards'); toast('Value updated to ' + money(c.market.median)); };
-A.marketUseAll = async () => { const L = offMarket(); for (const c of L) await setValue(c, c.market.median, 'Market check (asking prices)'); onChange('cards'); toast(`Updated ${L.length} value${L.length === 1 ? '' : 's'}`); };
+A.marketUse = async el => { const c = cardById(el.dataset.id); if (!c || !c.market) return; const v = mkPrice(c.market); await setValue(c, v, 'Market check (average asking price)'); closeModal(); onChange('cards'); toast('Value updated to ' + money(v)); };
+A.marketUseAll = async () => { const L = offMarket(); await rememberUndo(L); for (const c of L) await setValue(c, mkPrice(c.market), 'Market check (average asking price)'); onChange('cards'); toast(`Updated ${L.length} value${L.length === 1 ? '' : 's'}`); };
 let MK_RUN = false;
 async function marketRun(cards, loud) {
   if (MK_RUN) return 0; MK_RUN = true; let n = 0;
@@ -5019,6 +5037,23 @@ A.marketAll = async el => {
   const cards = S.cards.filter(live).filter(c => ACTIVE.includes(c.status) && c.player);
   el.disabled = true; el.textContent = `Checking ${cards.length} cards…`;
   const n = await marketRun(cards, true); onChange('cards'); toast(`Checked ${n} card${n === 1 ? '' : 's'}. ${offMarket().length} look off market.`);
+};
+// check every card, then set each value to the average of its matching listings (3+ matches needed). Undo puts them all back.
+async function rememberUndo(cards) { const cfg = ebCfg(); cfg.marketUndo = { at: nowISO(), items: cards.map(c => ({ id: c.id, value: num(c.value) })) }; await saveSettings(); }
+A.marketSetAll = async el => {
+  const cards = S.cards.filter(live).filter(c => ACTIVE.includes(c.status) && c.player);
+  if (el.dataset.sure !== '1') { el.dataset.sure = '1'; el.textContent = `Tap again: check ${cards.length} cards and set their values`; return; }
+  el.disabled = true; let done = 0; const tick = setInterval(() => { el.textContent = `Checking… ${S.cards.filter(c => c.market && c.market.date === today()).length} of ${cards.length}`; }, 700);
+  try { while (MK_RUN) await new Promise(r => setTimeout(r, 300)); await marketRun(cards, false); } finally { clearInterval(tick); }
+  const fresh = cards.filter(c => c.market && c.market.date === today() && c.market.n >= 3 && mkPrice(c.market) > 0);
+  await rememberUndo(fresh);
+  for (const c of fresh) { if (r2(mkPrice(c.market)) !== num(c.value)) { await setValue(c, mkPrice(c.market), 'Market check (average asking price)'); done++; } }
+  onChange('cards'); toast(`Set ${done} value${done === 1 ? '' : 's'} to the market average. ${cards.length - fresh.length} skipped (fewer than 3 matching listings).`);
+};
+A.marketUndo = async () => {
+  const cfg = ebCfg(); const u = cfg.marketUndo; if (!u) return; let n = 0;
+  for (const it of u.items) { const c = cardById(it.id); if (c && num(c.value) !== it.value) { await setValue(c, it.value, 'Undo market update'); n++; } }
+  cfg.marketUndo = null; await saveSettings(); onChange('cards'); toast(`Put back ${n} value${n === 1 ? '' : 's'}`);
 };
 // on its own: up to 30 cards a day that haven't been checked in a week. It only notes the market; values change when you say so.
 async function marketAuto() {
@@ -5031,8 +5066,9 @@ function marketPanel() {
   const checked = S.cards.filter(live).filter(c => c.market).length;
   return `<section class="panel" id="market"><h2>Market check <span class="muted" style="margin-left:auto;font-size:.8rem">${checked} cards checked</span></h2>
     <p class="muted" style="margin:0">Compares your values with what the same card is listed for on eBay right now (Buy It Now, with shipping). Dugout checks up to 30 cards a day on its own and never changes a value without you.</p>
-    ${L.length ? `<div class="list">${L.slice(0, 40).map(c => { const g = marketGap(c); return `<div class="li"><a class="grow" href="#/card/${c.id}">${esc(cardName(c))} <small class="muted">${esc(cardSet(c))}</small></a><span class="num muted">${money(c.value)}</span><span>→</span><b class="num">${money(c.market.median)}</b><small class="${cls(g)}">${g >= 0 ? '+' : ''}${Math.round(g * 100)}%</small><button class="btn sm" type="button" data-act="marketUse" data-id="${c.id}">Use</button></div>`; }).join('')}</div>` : '<div class="empty">No cards more than 25% off the market right now.</div>'}
-    <div class="row"><button class="btn" type="button" data-act="marketAll">Check all cards now</button>${L.length ? `<button class="btn pri" type="button" data-act="marketUseAll">Use market for all ${L.length}</button>` : ''}</div></section>`;
+    ${L.length ? `<div class="list">${L.slice(0, 40).map(c => { const g = marketGap(c); return `<div class="li"><a class="grow" href="#/card/${c.id}">${esc(cardName(c))} <small class="muted">${esc(cardSet(c))}</small></a><span class="num muted">${money(c.value)}</span><span>→</span><b class="num">${money(mkPrice(c.market))}</b><small class="${cls(g)}">${g >= 0 ? '+' : ''}${Math.round(g * 100)}%</small><button class="btn sm" type="button" data-act="marketUse" data-id="${c.id}">Use</button></div>`; }).join('')}</div>` : '<div class="empty">No cards more than 25% off the market right now.</div>'}
+    <div class="row"><button class="btn pri" type="button" data-act="marketSetAll">Check all &amp; set values to market average</button>${ebCfg().marketUndo ? `<button class="btn ghost" type="button" data-act="marketUndo">Undo last update (${ebCfg().marketUndo.items.length} cards)</button>` : ''}</div>
+    <div class="row"><button class="btn" type="button" data-act="marketAll">Check all cards now (no changes)</button>${L.length ? `<button class="btn" type="button" data-act="marketUseAll">Use market for the ${L.length} off-market</button>` : ''}</div></section>`;
 }
 
 /* ---------- studio group photo for a lot: every card, as photographed, on the same backdrop ---------- */
@@ -5048,8 +5084,7 @@ async function studioGrid(blobs) {
     const r = Math.floor(i / cols), k = i % cols; const inRow = Math.min(cols, n - r * cols); const xs = x0 + ((cols - inRow) * (w + gap)) / 2;
     const x = xs + k * (w + gap), y = y0 + r * (h + gap); const s = Math.min(w / im.width, h / im.height); const dw = im.width * s, dh = im.height * s, dx = x + (w - dw) / 2, dy = y + (h - dh) / 2, rad = dw * 0.03;
     g.save(); g.filter = `blur(${Math.max(4, Math.round(w * 0.04))}px)`; g.fillStyle = 'rgba(30,34,40,.3)'; roundRect(g, dx + w * 0.02, dy + w * 0.03, dw, dh, rad); g.fill(); g.restore();
-    g.save(); roundRect(g, dx, dy, dw, dh, rad); g.clip(); g.drawImage(im, dx, dy, dw, dh); g.restore();
-    g.save(); roundRect(g, dx, dy, dw, dh, rad); g.strokeStyle = 'rgba(0,0,0,.18)'; g.lineWidth = 1.5; g.stroke(); g.restore();
+    g.drawImage(im, dx, dy, dw, dh); // as photographed, corners and all
   });
   return cv;
 }
@@ -5104,7 +5139,7 @@ function openLotForm(cards, info) {
     ${lc.desc ? field(lc.desc.name || 'Card condition', `<select name="desc">${lc.desc.values.map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('')}</select>`) : ''}
     ${req.map(a => field(a.name + ' (eBay requires this)', a.mode === 'SELECTION_ONLY' && a.values.length ? `<select name="asp:${esc(a.name)}">${a.values.map(v => `<option${(auto.aspects[a.name] || [])[0] === v ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>` : `<input name="asp:${esc(a.name)}" value="${esc((auto.aspects[a.name] || []).join(', '))}" required>`)).join('')}</div>
     <label class="chk"><input type="checkbox" name="bestOffer" checked> Accept offers, auto-accept at ${cfg.accept}% and auto-decline under ${cfg.decline}%</label>
-    <small class="muted">Photos: one studio group photo of all ${cards.length} cards exactly as photographed, then each card's own front${cards.some(c => c.back) ? ' and back' : ''} (eBay allows 24). Cost of these cards: ${money(cost)}.</small>
+    <small class="muted">Photos: one group photo of all ${cards.length} cards exactly as photographed, then each card's front${cards.some(c => c.back) ? ' and back' : ''} from your full-size originals, straightened with the edges and corners showing (eBay allows 24). Cost of these cards: ${money(cost)}.</small>
     <div class="list">${cards.map(c => `<div class="li"><span class="code">${esc(c.code)}</span><span class="grow">${esc(cardName(c))}</span><span class="num muted">${money(c.value)}</span></div>`).join('')}</div>
     ${mfoot('Post lot')}</form>`);
 }
@@ -5127,8 +5162,9 @@ FORMS.lotList = async f => {
     const fronts = []; for (const c of cards) { const rec = await fileGet(c.front); if (rec) fronts.push(rec.blob); }
     const grid = await studioGrid(fronts); if (grid) await up(await canvasBlob(grid));
     btn.textContent = 'Uploading photos…';
-    for (const b of fronts) await up(b);
-    for (const c of cards) if (c.back && urls.length < 24) { const rec = await fileGet(c.back); if (rec) await up(rec.blob); }
+    const sides = []; for (const c of cards) { try { const P = await listingPhotos(c, { studio: false }); sides.push(P.photos.filter(x => !/corners/.test(x.what))); } catch (e) { sides.push([]); } }
+    for (const ph of sides) if (ph[0]) await up(ph[0].blob); // every front first, straightened with edges showing
+    for (const ph of sides) if (ph[1]) await up(ph[1].blob); // then backs, while there's room
     const inventoryItem = { availability: { shipToLocationAvailability: { quantity: 1 } }, condition: lc.condition, ...(lc.descriptors ? { conditionDescriptors: lc.descriptors } : {}),
       packageWeightAndSize: { packageType: 'PACKAGE_THICK_ENVELOPE', weight: { value: r2(oz), unit: 'OUNCE' }, dimensions: { length: 9, width: 6, height: Math.min(4, 0.5 + cards.length * 0.12), unit: 'INCH' } },
       product: { title, description: desc, aspects, imageUrls: urls } };
@@ -5187,7 +5223,7 @@ A.lotOpen = el => openLotManage(el.dataset.sku);
 /* ---------- hooks ---------- */
 { const ve = V.ebay; V.ebay = (...a) => { const h = ve(...a); if (!ebOn()) return h; return h + lotsPanel() + marketPanel(); }; V.ebay.after = ve.after; }
 { const vc = V.card; V.card = (...a) => Promise.resolve(vc(...a)).then(h => { const c = cardById(a[0]); if (!c || !ebOn() || typeof h !== 'string') return h;
-    const btn = `<button class="btn" data-act="marketCheck" data-id="${c.id}" type="button">Market check${c.market && c.market.n ? ' · ' + money(c.market.median) : ''}</button>`;
+    const btn = `<button class="btn" data-act="marketCheck" data-id="${c.id}" type="button">Market check${c.market && c.market.n ? ' · ' + money(mkPrice(c.market)) : ''}</button>`;
     return h.replace(`<button class="btn" data-act="editCard" data-id="${c.id}"`, btn + `<button class="btn" data-act="editCard" data-id="${c.id}"`); }); V.card.after = vc.after; }
 { const vd = V.dash; V.dash = (...a) => { const h = vd(...a); if (!ebOn() || typeof h !== 'string') return h; const n = offMarket().length; if (!n) return h;
     return h.replace('<div class="queue">', `<div class="queue"><a class="q due" href="#/ebay"><span class="qn">${n}</span><span class="ql"><b>Values off market</b><small>25%+ from current eBay asking prices · review on the eBay page</small></span><span class="qgo" aria-hidden="true">→</span></a>`); }; V.dash.after = vd.after; }
