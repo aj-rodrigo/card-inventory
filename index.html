@@ -4,12 +4,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Dugout">
+<meta name="apple-mobile-web-app-title" content="Dugout TEST">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
-<title>Dugout</title>
+<title>Dugout TEST</title>
 </head><body>
 <meta name="theme-color" content="#060809">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -431,6 +431,21 @@ details.more > summary::-webkit-details-marker { display: none; }
   .more-pop { right: auto; left: 0; }
 }
 @media (max-width: 420px) { .pricebox { grid-template-columns: minmax(0, 1fr); } }
+
+/* test build + eBay */
+.testbar { position: sticky; top: 0; z-index: 31; background: repeating-linear-gradient(135deg, #ffb000 0 14px, #1a1a1a 14px 28px); color: #0a0c0f; font: 700 .85rem var(--display); letter-spacing: .06em; text-transform: uppercase; padding: 6px max(16px, env(safe-area-inset-left, 0px)); display: flex; gap: 10px; align-items: center; }
+.testbar b { background: #0a0c0f; color: #ffb000; padding: 2px 8px; border-radius: 4px; }
+.testbar { text-shadow: 0 0 2px #ffb000; }
+@media (max-width: 860px) { .testbar { top: calc(env(safe-area-inset-top, 0px) + 52px); } }
+.eb-mode { border-radius: 8px; padding: 8px 12px; font-size: .9rem; border: 1px solid var(--line); background: var(--panel2); }
+.eb-mode.sim { border-color: #7aa7ff; } .eb-mode.sandbox { border-color: var(--acc); }
+.eb-pill.sim { color: #7aa7ff; } .eb-pill.sandbox { color: var(--acc); }
+.deal tr.hot td { background: color-mix(in srgb, var(--pos) 10%, transparent); }
+.li.ship { align-items: flex-start; flex-wrap: wrap; }
+.li.ship .grow { display: flex; flex-direction: column; min-width: 200px; }
+
+.calc .eb-offers { grid-column: 1 / -1; }
+.calc .eb-offers b { font-size: .95rem; }
 </style>
 <div id="app"></div>
 <div id="modal-root"></div>
@@ -439,7 +454,8 @@ details.more > summary::-webkit-details-marker { display: none; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>/* Dugout data layer: IndexedDB on this device, with an in-memory cache. */
+<script>window.DUGOUT_TEST = true;
+/* Dugout data layer: IndexedDB on this device, with an in-memory cache. */
 const STORES = ['cards', 'txns', 'pickups', 'receipts', 'files', 'locations', 'expenses', 'snaps', 'meta'];
 const SYNC_STORES = ['cards', 'txns', 'pickups', 'receipts', 'locations', 'expenses', 'snaps'];
 const DB = { db: null };
@@ -452,7 +468,7 @@ const today = () => new Date().toLocaleDateString('en-CA');
 function idbOpen() {
   return new Promise(res => {
     let r;
-    try { r = indexedDB.open('dugout', 1); } catch (e) { return res(); }
+    try { r = indexedDB.open(window.DUGOUT_TEST ? 'dugout-test' : 'dugout', 1); } catch (e) { return res(); }
     r.onupgradeneeded = () => {
       const d = r.result;
       STORES.forEach(s => { if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' }); });
@@ -619,8 +635,8 @@ function utf8ToB64(str) { return blobToB64(new Blob([str], { type: 'application/
    data.json holds the records; files/<id> holds photos and receipts. */
 const Sync = { busy: false, timer: null, status: '', ok: null };
 
-function syncCfg() { try { return JSON.parse(localStorage.getItem('dugout.sync') || 'null'); } catch (e) { return null; } }
-function setSyncCfg(c) { try { c ? localStorage.setItem('dugout.sync', JSON.stringify(c)) : localStorage.removeItem('dugout.sync'); } catch (e) {} }
+function syncCfg() { if (window.DUGOUT_TEST) return null; try { return JSON.parse(localStorage.getItem('dugout.sync') || 'null'); } catch (e) { return null; } }
+function setSyncCfg(c) { if (window.DUGOUT_TEST) { toast('Sync is off in the test build, so it can never touch your real inventory.'); return; } try { c ? localStorage.setItem('dugout.sync', JSON.stringify(c)) : localStorage.removeItem('dugout.sync'); } catch (e) {} }
 
 async function gh(path, opt = {}) {
   const c = syncCfg();
@@ -907,7 +923,7 @@ function shell() {
     <div class="scrim" data-act="menu"></div>
     <div class="main">
       <header class="topbar"><b>DUGOUT</b><button class="btn sm" data-act="theme" type="button" aria-label="Switch light or dark"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 3a7 7 0 0 1 0 14z" fill="currentColor"/></svg></button></header>
-      <div class="view" id="view"></div>
+      ${window.DUGOUT_TEST ? '<div class="testbar" role="note"><b>TEST BUILD</b> Separate data · no sync · eBay Simulator or Sandbox only</div>' : ''}<div class="view" id="view"></div>
     </div>
     <nav class="tabbar" aria-label="Main">
       <a href="#/dash" data-tab="dash"><i aria-hidden="true">⌂</i>Today</a><a href="#/inv" data-tab="inv"><i aria-hidden="true">▦</i>Cards</a>
@@ -1222,7 +1238,7 @@ V.card = id => {
         <div><span class="lbl">ROI</span><b class="num ${cls(p)}">${pct(uc ? p / uc : null)}</b></div>
       </div>
       <div class="ch-actions">
-        ${active ? `<button class="btn pri" data-act="sell" data-id="${c.id}" type="button">Mark as sold</button><button class="btn" data-act="listEbay" data-id="${c.id}" type="button">${c.status === 'listed' ? 'Listing' : 'List on eBay'}</button>` : ''}
+        ${active ? `<button class="btn pri" data-act="sell" data-id="${c.id}" type="button">Mark as sold</button><button class="btn" data-act="listEbay" data-id="${c.id}" type="button">${c.ebay && c.ebay.status === 'active' ? 'On eBay · ' + money(c.ebay.price) : c.status === 'listed' ? 'Listing' : 'List on eBay'}</button>` : ''}
         <button class="btn" data-act="editCard" data-id="${c.id}" type="button">Edit</button>
         <details class="more"><summary class="btn">More ▾</summary><div class="more-pop">
           <div class="row" style="align-items:flex-end"><div class="qrbox" data-qr="${esc(cardQR(c))}"></div><button class="btn sm" data-act="labelOne" data-id="${c.id}" type="button">Print label</button></div>
@@ -4498,6 +4514,345 @@ document.addEventListener('change', async e => {
   ['player', 'year', 'brand', 'set', 'number', 'parallel'].forEach(k => set(k, info[k], false));
   note.innerHTML = `<div><span>Slab found. The real label goes on the 3D slab${filled.length ? '; filled in ' + esc(filled.join(', ')) : ''}. Add the back of the slab as the back photo to show the label's back too.</span></div>`;
 });
+
+/* eBay automation: list, offer rules, reprice, offers to watchers, sold sync, shipping queue and deal finder.
+   TEST BUILD ONLY for now. Two modes:
+   - Simulator: a pretend eBay inside the app. Nothing leaves this device.
+   - Sandbox: eBay's test site, through your own Cloudflare Worker (the worker holds your keys).
+   Live eBay is locked in this build. */
+
+const EBAY_CAT = '261328'; // Sports Trading Card Singles (EBAY_US)
+const EB_GRADER = { PSA: '275010', BGS: '275013', SGC: '275016', CGC: '275015', TAG: '2750115' };
+const EB_GRADE = { '10': '275020', '9.5': '275021', '9': '275022', '8.5': '275023', '8': '275024', '7.5': '275025', '7': '275026', '6.5': '275027', '6': '275028', '5.5': '275029', '5': '2750210', '4.5': '2750211', '4': '2750212', '3.5': '2750213', '3': '2750214', '2.5': '2750215', '2': '2750216', '1.5': '2750217', '1': '2750218', authentic: '2750219' };
+const EB_RAW = { 'Mint': '400010', 'Near Mint-Mint': '400010', 'Near Mint': '400010', 'Excellent-Mint': '400011', 'Excellent': '400011', 'Very Good': '400012', 'Good': '400012', 'Poor': '400013' };
+
+const EB_DEFAULTS = { mode: 'sim', worker: '', key: '', accept: 90, decline: 75, offerPct: 10, staleDays: 21, dropPct: 10, watches: [], orders: [], lastSync: '', ntfy: '', setup: null, sim: null };
+// always the same object, so changes made across an await are never lost
+const ebCfg = () => { const c = S.settings.ebay || (S.settings.ebay = {}); for (const k in EB_DEFAULTS) if (!(k in c)) c[k] = Array.isArray(EB_DEFAULTS[k]) ? [] : EB_DEFAULTS[k]; return c; };
+const ebOn = () => !!ebCfg().mode && (ebCfg().mode === 'sim' || (ebCfg().worker && ebCfg().key));
+const ebModeName = () => (ebCfg().mode === 'sandbox' ? 'eBay Sandbox' : 'Simulator');
+const r2s = n => (Math.round(n * 100) / 100).toFixed(2);
+
+/* ---------- the listing, in eBay's own format (built here so it can be checked before anything is sent) ---------- */
+function ebayListing(c, o) {
+  const price = r2(num(o.price)); const errs = [];
+  const title = String(o.title || '').trim();
+  if (!title) errs.push('Add a title.'); if (title.length > 80) errs.push('The title is over 80 characters.');
+  if (!(price > 0)) errs.push('Set a price.');
+  if (!c.player) errs.push('Add the player name.'); if (!c.sport) errs.push('Pick the sport.');
+  if (!c.front) errs.push('Add a front photo. eBay needs at least one picture.');
+  let condition, descriptors;
+  if (c.graded) {
+    const g = EB_GRADER[String(c.gradeCo || '').toUpperCase()]; const key = /auth/i.test(c.grade) ? 'authentic' : String(parseFloat(c.grade));
+    const gr = EB_GRADE[key];
+    if (!g) errs.push(`eBay's graded-card fields don't list ${c.gradeCo || 'this grader'}. Use PSA, BGS, SGC, CGC or TAG.`);
+    if (!gr) errs.push(`Grade "${c.grade || ''}" isn't one eBay accepts (1–10 in half steps, or Authentic).`);
+    condition = 'LIKE_NEW'; descriptors = [{ name: '27501', values: [g] }, { name: '27502', values: [gr] }];
+    if (c.cert) descriptors.push({ name: '27503', additionalInfo: String(c.cert).slice(0, 30) });
+  } else { condition = 'USED_VERY_GOOD'; descriptors = [{ name: '40001', values: [EB_RAW[c.condition] || '400010'] }]; }
+  const yr = String(c.year || ''); const y4 = (yr.match(/\d{4}/) || [''])[0];
+  const A = { 'Sport': [c.sport], 'Player/Athlete': [c.player], 'Manufacturer': [c.brand], 'Set': [c.set || c.brand], 'Season': [yr], 'Year Manufactured': [y4], 'Card Number': [c.number], 'Parallel/Variety': [c.parallel && c.parallel !== 'Base' ? c.parallel : ''], 'Team': [c.team], 'Card Name': [c.player], 'Type': ['Sports Trading Card'],
+    'Autographed': [c.auto ? 'Yes' : 'No'], 'Features': [[c.rookie && 'Rookie', c.serial && 'Serial Numbered', c.patch && 'Patch'].filter(Boolean).join(', ')], 'Print Run': [c.serial ? String(c.serial).replace(/^.*\//, '') : ''],
+    'Graded': [c.graded ? 'Yes' : 'No'], 'Professional Grader': [c.graded ? c.gradeCo : ''], 'Grade': [c.graded ? String(c.grade) : ''], 'Certification Number': [c.graded ? c.cert : ''] };
+  const aspects = {}; for (const [k, v] of Object.entries(A)) { const vals = v.filter(x => x !== undefined && x !== null && String(x).trim()); if (vals.length) aspects[k] = vals.map(String); }
+  const accept = o.bestOffer ? r2(price * o.accept / 100) : 0, decline = o.bestOffer ? r2(price * o.decline / 100) : 0;
+  if (o.bestOffer && !(decline < accept && accept < price)) errs.push('Auto-decline must be below auto-accept, and both below the price.');
+  const desc = `<p><b>${esc(title)}</b></p><ul>${[c.year && `Year: ${c.year}`, c.brand && `Brand: ${c.brand}`, c.set && `Set: ${c.set}`, c.number && `Card #: ${c.number}`, c.parallel && `Parallel: ${c.parallel}`, c.serial && `Serial: ${c.serial}`, c.graded ? `Graded: ${c.gradeCo} ${c.grade}${c.cert ? ` (cert ${c.cert})` : ''}` : c.condition && `Condition: ${c.condition}`].filter(Boolean).map(x => `<li>${esc(x)}</li>`).join('')}</ul><p>${esc(o.note || 'You get the exact card pictured. Ships in a penny sleeve and top loader, in a bubble mailer with tracking.')}</p>`;
+  return {
+    errs, sku: c.code,
+    inventoryItem: { availability: { shipToLocationAvailability: { quantity: Math.max(1, +c.qty || 1) } }, condition, conditionDescriptors: descriptors,
+      product: { title, description: desc, aspects, imageUrls: [] } },
+    offer: { sku: c.code, marketplaceId: 'EBAY_US', format: 'FIXED_PRICE', availableQuantity: Math.max(1, +c.qty || 1), categoryId: EBAY_CAT, listingDescription: desc,
+      pricingSummary: { price: { value: r2s(price), currency: 'USD' } },
+      listingPolicies: o.bestOffer ? { bestOfferTerms: { bestOfferEnabled: true, autoAcceptPrice: { value: r2s(accept), currency: 'USD' }, autoDeclinePrice: { value: r2s(decline), currency: 'USD' } } } : {} },
+  };
+}
+
+/* ---------- talking to eBay (or the simulator) ---------- */
+async function ebay(op, body = {}) {
+  const cfg = ebCfg();
+  if (cfg.mode === 'sim') { await new Promise(r => setTimeout(r, 120)); return EBSIM[op] ? EBSIM[op](body) : Promise.reject(new Error('The simulator does not do ' + op)); }
+  if (!cfg.worker || !cfg.key) throw new Error('Add your Cloudflare Worker address and key in Settings → eBay first.');
+  const url = cfg.worker.replace(/\/+$/, '') + '/api/' + op;
+  let r; try { r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-dugout-key': cfg.key }, body: JSON.stringify(body) }); }
+  catch (e) { throw new Error("Couldn't reach your worker. Check the address and your connection."); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw new Error(j.error || `eBay said ${r.status}`);
+  if (j.env && j.env !== 'sandbox') throw new Error('Your worker is set to live eBay. This test build only talks to the sandbox.');
+  return j;
+}
+const b64OfFile = async id => { const rec = await fileGet(id); if (!rec) return null; const buf = new Uint8Array(await rec.blob.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000)); return { base64: btoa(s), type: rec.blob.type || 'image/jpeg', name: rec.name || 'card.jpg' }; };
+
+/* ---------- the simulator: a pretend eBay that behaves like the real API's results ---------- */
+const EBSIM = {
+  _s() { const c = ebCfg(); c.sim = c.sim || { listings: {}, orders: [], seq: 1000, watchers: {} }; return c.sim; },
+  async status() { return { env: 'simulator', connected: true }; },
+  async setup() { return { fulfillment: [{ id: 'SIM-SHIP-1', name: 'Card mailer · USPS Ground Advantage · $4.99' }, { id: 'SIM-SHIP-2', name: 'eBay standard envelope · $1.32' }], payment: [{ id: 'SIM-PAY-1', name: 'eBay managed payments' }], ret: [{ id: 'SIM-RET-1', name: 'No returns' }, { id: 'SIM-RET-2', name: '30-day returns, buyer pays' }], location: 'dugout' }; },
+  async policies(b) { return { ok: true, saved: b }; },
+  async image(b) { return { imageUrl: 'https://i.ebayimg.sim/' + (b.name || 'card') + '-' + Math.random().toString(36).slice(2, 8) + '.jpg' }; },
+  async list(b) { const s = this._s(); const id = 'SIM' + (++s.seq);
+    if (!b.inventoryItem.product.imageUrls.length) throw new Error('eBay needs at least one photo.');
+    s.listings[b.offer.sku] = { sku: b.offer.sku, listingId: id, offerId: 'O' + id, price: b.offer.pricingSummary.price.value, bestOffer: b.offer.listingPolicies.bestOfferTerms || null, title: b.inventoryItem.product.title, images: b.inventoryItem.product.imageUrls.length, status: 'PUBLISHED' };
+    s.watchers[id] = Math.floor(Math.random() * 4); await saveSettings(); return { offerId: 'O' + id, listingId: id, url: '#sim-listing-' + id }; },
+  async reprice(b) { const s = this._s(); const l = s.listings[b.sku]; if (!l) throw new Error('No eBay listing for ' + b.sku); l.price = r2s(b.price); if (l.bestOffer) { l.bestOffer.autoAcceptPrice.value = r2s(b.accept); l.bestOffer.autoDeclinePrice.value = r2s(b.decline); } await saveSettings(); return { ok: true }; },
+  async end(b) { const s = this._s(); if (s.listings[b.sku]) s.listings[b.sku].status = 'ENDED'; await saveSettings(); return { ok: true }; },
+  async eligible() { const s = this._s(); return { listingIds: Object.values(s.listings).filter(l => l.status === 'PUBLISHED' && (s.watchers[l.listingId] || 0) > 0).map(l => l.listingId) }; },
+  async sendOffer(b) { const s = this._s(); const n = s.watchers[b.listingId] || 0; s.watchers[b.listingId] = 0; await saveSettings(); return { sent: n }; },
+  async orders() { return { orders: this._s().orders }; },
+  async ship(b) { const o = this._s().orders.find(x => x.orderId === b.orderId); if (o) { o.status = 'FULFILLED'; o.tracking = b.tracking; } await saveSettings(); return { ok: true }; },
+  async sell(b) { // test button: pretend a buyer bought it
+    const s = this._s(); const l = s.listings[b.sku]; if (!l || l.status !== 'PUBLISHED') throw new Error('List it on the simulator first.');
+    const price = num(l.price); const ship = 4.99; const fee = r2((price + ship) * 0.1325 + 0.4);
+    const names = ['Jordan Reyes', 'Sam Patel', 'Chris Nguyen', 'Taylor Brooks', 'Morgan Lee'];
+    const o = { orderId: '26-' + Math.floor(10000 + Math.random() * 89999) + '-' + Math.floor(10000 + Math.random() * 89999), created: new Date().toISOString(), status: 'NOT_STARTED', buyer: 'buyer_' + Math.random().toString(36).slice(2, 7),
+      shipTo: { name: names[Math.floor(Math.random() * names.length)], line1: Math.floor(100 + Math.random() * 8900) + ' Example St', line2: '', city: 'Austin', state: 'TX', zip: '787' + Math.floor(10 + Math.random() * 89) }, total: r2(price + ship), shipping: ship, fee,
+      lines: [{ lineItemId: 'L' + Math.floor(Math.random() * 1e9), sku: b.sku, title: l.title, qty: 1, price }] };
+    s.orders.push(o); l.status = 'SOLD'; await saveSettings(); return { order: o };
+  },
+  async search(b) { // listings around a market price, a few of them deals
+    const q = String(b.q || 'card'); let h = 0; for (const ch of q) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const rnd = () => { h = (h * 1664525 + 1013904223) >>> 0; return h / 4294967296; };
+    const mkt = num(b.market) || 20 + Math.floor(rnd() * 180); const now = Date.now(); const out = [];
+    const extras = ['PSA 10', 'Silver Prizm', 'RC Rookie', 'Base', 'Holo', '/99', 'Raw NM', 'Refractor', 'Lot of 2', 'Mosaic'];
+    for (let i = 0; i < 14; i++) {
+      const deal = i % 5 === 1; const f = deal ? 0.55 + rnd() * 0.2 : 0.85 + rnd() * 0.45; const auction = rnd() < 0.25;
+      const price = r2(mkt * f); const ship = rnd() < 0.4 ? 0 : r2(1 + rnd() * 4);
+      out.push({ id: 'v1|SIM' + i + '|0', title: `${q} ${extras[i % extras.length]}`.slice(0, 80), price, ship, img: '', url: 'https://www.ebay.com/sch/i.html?_nkw=' + encodeURIComponent(q), buying: auction ? ['AUCTION'] : rnd() < 0.5 ? ['FIXED_PRICE', 'BEST_OFFER'] : ['FIXED_PRICE'], created: new Date(now - rnd() * 864e5 * 3).toISOString(), ends: auction ? new Date(now + rnd() * 864e5 * 2).toISOString() : '', bids: auction ? Math.floor(rnd() * 6) : 0, seller: 'seller' + Math.floor(rnd() * 900) });
+    }
+    return { items: b.maxPrice ? out.filter(x => x.price <= num(b.maxPrice)) : out };
+  },
+  async watches() { return { ok: true, note: 'The simulator cannot send phone alerts. Use the sandbox worker for that.' }; },
+};
+
+/* ---------- card page: list / manage on eBay ---------- */
+const suggestedPrice = c => { const cs = typeof compStats === 'function' ? compStats(c) : null; return r2(cs ? cs.avg : num(c.value) || unitCost(c) * 1.3 || 0); };
+A.listEbay = el => {
+  const c = cardById(el.dataset.id); const cfg = ebCfg();
+  if (!ebOn()) return openModal(`<div>${mhead('Connect eBay first')}<p>Pick the Simulator (no account needed) or set up the eBay Sandbox in Settings → eBay.</p><div class="sheet-foot"><a class="btn pri" href="#/settings" data-act="close">Open Settings</a></div></div>`, { narrow: true });
+  if (c.ebay && c.ebay.listingId && c.ebay.status !== 'ended') return openEbayManage(c);
+  const price = suggestedPrice(c); const t = typeof listingTitle === 'function' ? listingTitle(c) : cardName(c);
+  openModal(`<form data-form="ebList" data-id="${c.id}">${mhead('List on ' + ebModeName())}
+    <div class="eb-mode ${cfg.mode}">${cfg.mode === 'sim' ? 'Simulator: nothing is sent to eBay.' : 'eBay Sandbox: a test listing on eBay\'s practice site. No real buyers.'}</div>
+    ${field('Title (80 characters max)', `<input name="title" id="eb-title" value="${esc(t)}" maxlength="80" required><small class="muted"><span id="eb-tlen">${t.length}</span>/80</small>`)}
+    <div class="fgrid">${field('Price', money_inp('price', price, 'required id="eb-price"'))}${field('Photos', `<input value="${[c.front && 'front', c.back && 'back'].filter(Boolean).join(' + ') || 'none'}" disabled>`)}</div>
+    <label class="chk"><input type="checkbox" name="bestOffer" checked> Accept offers, with automatic answers</label>
+    <div class="fgrid">${field('Auto-accept at (% of price)', inp('accept', cfg.accept, 'inputmode="numeric" id="eb-acc"'))}${field('Auto-decline under (% of price)', inp('decline', cfg.decline, 'inputmode="numeric" id="eb-dec"'))}</div>
+    <div class="calc" id="eb-calc"></div>
+    <details><summary class="muted">What gets sent</summary><pre class="bs-text" id="eb-preview"></pre></details>
+    <div id="eb-errs"></div>
+    ${mfoot('Post listing')}</form>`);
+  const f = $('#modal-root form'); const upd = () => {
+    const fd = new FormData(f); const o = { title: fd.get('title'), price: fd.get('price'), bestOffer: fd.get('bestOffer') === 'on', accept: num(fd.get('accept')), decline: num(fd.get('decline')) };
+    const L = ebayListing(c, o); const p = num(o.price);
+    $('#eb-tlen').textContent = String(o.title || '').length;
+    $('#eb-calc').innerHTML = `<div><span>Fees (about 13.25% + $0.40)</span><b>${money(p * 0.1325 + 0.4)}</b></div><div><span>You keep before shipping</span><b>${money(p - p * 0.1325 - 0.4)}</b></div><div><span>Profit vs cost ${money(unitCost(c))}</span><b class="${cls(p - p * 0.1325 - 0.4 - unitCost(c))}">${money(p - p * 0.1325 - 0.4 - unitCost(c), 1)}</b></div>${o.bestOffer ? `<div class="eb-offers"><span>Automatic offer answers</span><b>Accept ${money(p * o.accept / 100)}+ · decline under ${money(p * o.decline / 100)}</b></div>` : ''}`;
+    $('#eb-preview').textContent = JSON.stringify({ inventoryItem: L.inventoryItem, offer: L.offer }, null, 2);
+    $('#eb-errs').innerHTML = L.errs.length ? `<div class="warn">${L.errs.map(esc).join('<br>')}</div>` : '';
+  };
+  f.addEventListener('input', upd); upd();
+};
+FORMS.ebList = async f => {
+  const c = cardById(f.dataset.id); const fd = new FormData(f); const cfg = ebCfg();
+  const o = { title: fd.get('title'), price: fd.get('price'), bestOffer: fd.get('bestOffer') === 'on', accept: num(fd.get('accept')), decline: num(fd.get('decline')) };
+  const L = ebayListing(c, o); if (L.errs.length) return toast(L.errs[0]);
+  const btn = f.querySelector('[type=submit]'); btn.disabled = true; btn.textContent = 'Uploading photos…';
+  try {
+    for (const side of ['front', 'back']) if (c[side]) { const img = await b64OfFile(c[side]); if (img) { const r = await ebay('image', img); L.inventoryItem.product.imageUrls.push(r.imageUrl); } }
+    btn.textContent = 'Posting…';
+    const r = await ebay('list', { inventoryItem: L.inventoryItem, offer: L.offer });
+    const was = c.status;
+    c.ebay = { mode: cfg.mode, sku: L.sku, offerId: r.offerId, listingId: r.listingId, url: r.url, price: num(o.price), bestOffer: o.bestOffer, accept: o.accept, decline: o.decline, listedAt: today(), status: 'active' };
+    c.status = 'listed'; if (was !== 'listed') c.listedAt = today(); c.listingUrl = r.url && !r.url.startsWith('#') ? r.url : c.listingUrl;
+    if (!num(c.value)) { c.value = num(o.price); c.priceUpdated = today(); }
+    await save('cards', c, { quiet: true });
+    await logTxn({ cardId: c.id, type: 'edit', date: today(), changes: [{ f: 'eBay listing', from: '', to: `${r.listingId} at ${money(o.price)}` }], note: ebModeName() });
+    closeModal(); onChange('cards'); toast(`Listed on ${ebModeName()} · ${r.listingId}`);
+  } catch (e) { btn.disabled = false; btn.textContent = 'Post listing'; toast(e.message); }
+};
+function openEbayManage(c) {
+  const e = c.ebay; const cfg = ebCfg();
+  openModal(`<form data-form="ebReprice" data-id="${c.id}">${mhead('On ' + (e.mode === 'sandbox' ? 'eBay Sandbox' : 'the Simulator'))}
+    <div class="list"><div class="li"><span class="grow">Listing</span><b>${e.url && !e.url.startsWith('#') ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.listingId)} ↗</a>` : esc(e.listingId)}</b></div>
+    <div class="li"><span class="grow">Price</span><b class="num">${money(e.price)}</b></div><div class="li"><span class="grow">Listed</span><b>${fmtDate(e.listedAt)} · ${daysSince(e.listedAt)} days</b></div>
+    ${e.bestOffer ? `<div class="li"><span class="grow">Offers</span><b>accept ≥ ${money(e.price * e.accept / 100)} · decline &lt; ${money(e.price * e.decline / 100)}</b></div>` : ''}</div>
+    ${field('New price', money_inp('price', r2(e.price * (1 - cfg.dropPct / 100)), 'required'))}
+    <small class="muted">Offer limits move with the price (${e.accept}% / ${e.decline}%).</small>
+    <div class="sheet-foot">${cfg.mode === 'sim' ? `<button class="btn" type="button" data-act="ebSimSell" data-id="${c.id}" title="Test only">Simulate a sale</button>` : ''}<button class="btn danger" type="button" data-act="ebEnd" data-id="${c.id}">End listing</button><button class="btn" type="button" data-act="close">Close</button><button class="btn pri" type="submit">Change price</button></div></form>`, { narrow: true });
+}
+async function ebReprice(c, price) {
+  const e = c.ebay; await ebay('reprice', { sku: e.sku, price, accept: r2(price * e.accept / 100), decline: r2(price * e.decline / 100), bestOffer: e.bestOffer });
+  const old = e.price; e.price = r2(price); await save('cards', c, { quiet: true });
+  await logTxn({ cardId: c.id, type: 'edit', date: today(), changes: [{ f: 'eBay price', from: String(old), to: String(e.price) }], note: ebModeName() });
+}
+FORMS.ebReprice = async f => { const c = cardById(f.dataset.id); try { await ebReprice(c, num(new FormData(f).get('price'))); closeModal(); onChange('cards'); toast('Price changed on ' + ebModeName()); } catch (e) { toast(e.message); } };
+A.ebEnd = async el => {
+  if (el.dataset.confirm !== '1') { el.dataset.confirm = '1'; el.textContent = 'Tap again to end it'; return; }
+  const c = cardById(el.dataset.id); try { await ebay('end', { sku: c.ebay.sku }); c.ebay.status = 'ended'; if (c.status === 'listed') c.status = 'in_stock'; await save('cards', c, { quiet: true }); closeModal(); onChange('cards'); toast('Listing ended'); } catch (e) { toast(e.message); }
+};
+A.ebSimSell = async el => { const c = cardById(el.dataset.id); try { await ebay('sell', { sku: c.ebay.sku }); closeModal(false); toast('A pretend buyer bought it. Syncing…'); await ebSync(true); } catch (e) { toast(e.message); } };
+
+/* ---------- sold sync: eBay orders become sales in Dugout ---------- */
+const localDay = iso => { const d = new Date(iso); return isNaN(d) ? String(iso).slice(0, 10) : d.toLocaleDateString('en-CA'); };
+async function ebSync(loud) {
+  if (!ebOn()) return 0; const cfg = ebCfg();
+  const since = cfg.lastSync || new Date(Date.now() - 30 * 864e5).toISOString();
+  const r = await ebay('orders', { since }); let n = 0;
+  for (const o of r.orders || []) {
+    const lineTotal = o.lines.reduce((a, l) => a + num(l.price) * (l.qty || 1), 0) || 1;
+    for (const l of o.lines) {
+      const key = o.orderId + ':' + l.lineItemId; if (S.txns.some(t => t.ebayLine === key && !t.purged)) continue;
+      const c = S.cards.find(x => live(x) && x.code === l.sku); if (!c) continue;
+      const share = num(l.price) * (l.qty || 1) / lineTotal; const q = Math.min(l.qty || 1, c.qty || 1);
+      const gross = r2(num(l.price) * q + num(o.shipping) * share), fees = r2(num(o.fee) * share), cost = r2(unitCost(c) * q), net = r2(gross - fees);
+      await logTxn({ cardId: c.id, type: 'sell', date: localDay(o.created), qty: q, amount: gross, shipping: 0, fees, net, cost, profit: r2(net - cost), platform: 'eBay', ebayLine: key, note: `${cfg.mode === 'sim' ? 'Simulator' : 'eBay Sandbox'} order ${o.orderId} · shipping label not counted yet` });
+      c.qty = (c.qty || 0) - q; if (c.qty <= 0) { c.qty = 0; c.status = 'sold'; c.soldAt = localDay(o.created); }
+      if (c.ebay) c.ebay.status = 'sold';
+      await save('cards', c, { quiet: true }); n++;
+    }
+  }
+  cfg.orders = (r.orders || []).map(o => ({ ...o, cardIds: o.lines.map(l => (S.cards.find(x => x.code === l.sku) || {}).id).filter(Boolean) }));
+  cfg.lastSync = new Date(Date.now() - 6 * 3600e3).toISOString(); // a small overlap so nothing slips between syncs
+  await saveSettings(); onChange('txns');
+  if (loud) toast(n ? `${n} new sale${n > 1 ? 's' : ''} from ${ebModeName()}` : 'No new eBay sales');
+  return n;
+}
+A.ebSync = async () => { try { await ebSync(true); } catch (e) { toast(e.message); } };
+const toShip = () => (ebCfg().orders || []).filter(o => o.status !== 'FULFILLED');
+
+/* ---------- the eBay page: ship, reprice, offers ---------- */
+V.ebay = () => {
+  const cfg = ebCfg(); if (!ebOn()) return `<div class="page-head"><h1>eBay</h1></div><section class="panel"><h2>Not connected</h2><p>Choose the Simulator to try everything with pretend data, or connect the eBay Sandbox.</p><div class="row"><a class="btn pri" href="#/settings">Set up in Settings</a></div></section>`;
+  const listed = S.cards.filter(live).filter(c => c.ebay && c.ebay.status === 'active');
+  const stale = listed.filter(c => daysSince(c.ebay.listedAt) >= cfg.staleDays);
+  const ready = S.cards.filter(live).filter(c => c.status === 'in_stock' && c.front && !(c.ebay && c.ebay.status === 'active'));
+  const ship = toShip();
+  return `
+  <div class="page-head"><h1>eBay</h1><div class="actions"><span class="pill eb-pill ${cfg.mode}">${ebModeName()}</span><button class="btn pri" data-act="ebSync" type="button">Sync sales</button></div></div>
+  <section class="board">${tile('On eBay', listed.length)}${tile('To ship', ship.length, ship.length ? 'neg' : '')}${tile('Listed ' + cfg.staleDays + '+ days', stale.length)}${tile('Ready to list', ready.length)}</section>
+  <div class="cols">
+    <section class="panel"><h2>To ship <span class="muted" style="margin-left:auto;font-size:.8rem">${cfg.lastSync ? 'synced ' + fmtDate(cfg.lastSync.slice(0, 10)) : 'not synced yet'}</span></h2>
+      ${ship.length ? `<div class="list">${ship.map(o => `<div class="li ship"><div class="grow"><b>${esc(o.lines.map(l => l.title).join(', ')).slice(0, 90)}</b><small>${esc(o.shipTo.name)} · ${esc([o.shipTo.line1, o.shipTo.line2, o.shipTo.city, o.shipTo.state, o.shipTo.zip].filter(Boolean).join(', '))}</small><small class="muted">Order ${esc(o.orderId)} · ${fmtDate(localDay(o.created))}</small></div>
+        <form class="row" data-form="ebShip" data-order="${esc(o.orderId)}"><input name="tracking" placeholder="Tracking #" style="width:150px" aria-label="Tracking number"><button class="btn sm pri" type="submit">Shipped</button></form></div>`).join('')}</div>
+        <div class="row"><a class="btn sm" href="https://www.ebay.com/sh/ord" target="_blank" rel="noopener">Print labels in Seller Hub ↗</a><a class="btn sm" href="https://tools.usps.com/schedule-pickup-steps.htm" target="_blank" rel="noopener">Schedule USPS pickup ↗</a></div>` : '<div class="empty">Nothing to ship. Sync to check for new sales.</div>'}
+    </section>
+    <section class="panel"><h2>Stale listings</h2>
+      ${stale.length ? `<div class="list">${stale.map(c => `<div class="li"><a class="grow" href="#/card/${c.id}">${esc(cardName(c))}</a><span class="num muted">${money(c.ebay.price)}</span><span>→</span><b class="num">${money(c.ebay.price * (1 - cfg.dropPct / 100))}</b></div>`).join('')}</div>
+        <button class="btn pri" data-act="ebDropAll" type="button">Drop all ${cfg.dropPct}%</button>` : `<div class="empty">No listings older than ${cfg.staleDays} days.</div>`}
+      <h2 style="margin-top:8px">Offers to watchers</h2><p class="muted" style="margin:0">Sends a ${cfg.offerPct}% off offer to everyone watching your listings. eBay allows one per listing at a time.</p>
+      <div class="row"><button class="btn" data-act="ebOffers" type="button">Send offers to watchers</button></div>
+    </section>
+  </div>
+  <section class="panel"><h2>Ready to list <span class="muted" style="margin-left:auto;font-size:.8rem">in stock, with photos</span></h2>
+    ${ready.length ? `<div class="list">${ready.slice(0, 40).map(c => `<div class="li"><a class="grow" href="#/card/${c.id}">${esc(cardName(c))} <small class="muted">${esc(cardSet(c))}</small></a><span class="num muted">${money(suggestedPrice(c))}</span><button class="btn sm" data-act="listEbay" data-id="${c.id}" type="button">List</button></div>`).join('')}</div>` : '<div class="empty">Everything in stock with photos is already listed.</div>'}
+  </section>`;
+};
+A.ebDropAll = async el => {
+  const cfg = ebCfg(); const stale = S.cards.filter(live).filter(c => c.ebay && c.ebay.status === 'active' && daysSince(c.ebay.listedAt) >= cfg.staleDays);
+  el.disabled = true; let ok = 0;
+  for (const c of stale) { try { await ebReprice(c, r2(c.ebay.price * (1 - cfg.dropPct / 100))); c.ebay.listedAt = today(); await save('cards', c, { quiet: true }); ok++; } catch (e) { toast(cardName(c) + ': ' + e.message); } }
+  onChange('cards'); toast(`Dropped ${ok} price${ok === 1 ? '' : 's'} ${cfg.dropPct}%`);
+};
+A.ebOffers = async el => {
+  const cfg = ebCfg(); el.disabled = true;
+  try {
+    const r = await ebay('eligible'); let sent = 0, items = 0;
+    for (const id of r.listingIds || []) { const s = await ebay('sendOffer', { listingId: id, pct: cfg.offerPct }); items++; sent += s.sent || 0; }
+    toast(items ? `Offers sent on ${items} listing${items > 1 ? 's' : ''}${sent ? ` (${sent} watcher${sent > 1 ? 's' : ''})` : ''}` : 'No listings have watchers who can get an offer right now');
+  } catch (e) { toast(e.message); } el.disabled = false;
+};
+FORMS.ebShip = async f => {
+  const id = f.dataset.order; const tracking = String(new FormData(f).get('tracking') || '').trim(); const o = (ebCfg().orders || []).find(x => x.orderId === id);
+  try { await ebay('ship', { orderId: id, lineItemIds: o ? o.lines.map(l => l.lineItemId) : [], tracking, carrier: 'USPS' }); if (o) o.status = 'FULFILLED'; await saveSettings(); toast(tracking ? 'Marked shipped with tracking' : 'Marked shipped'); route(); } catch (e) { toast(e.message); }
+};
+
+/* ---------- deal finder ---------- */
+const DF = { results: {}, busy: '' };
+const median = a => { const s = a.slice().sort((x, y) => x - y); return s.length ? (s.length % 2 ? s[s.length >> 1] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : 0; };
+V.deals = () => {
+  const cfg = ebCfg(); const W = cfg.watches || [];
+  return `
+  <div class="page-head"><h1>Deals</h1><div class="actions"><span class="pill eb-pill ${cfg.mode}">${ebModeName()}</span><button class="btn" data-act="dfAll" type="button">Check all</button><button class="btn pri" data-act="dfNew" type="button">+ Watch</button></div></div>
+  <p class="muted" style="margin:0">Each watch searches eBay for a card and flags listings priced under its market value. Buying stays your tap: open the listing and buy it on eBay.${cfg.mode === 'sandbox' ? ' Phone alerts run from your worker every 15 minutes.' : ''}</p>
+  ${W.length ? W.map(w => dealBlock(w)).join('') : `<section class="panel"><div class="empty">No watches yet. Add one for a card you like to flip, like "Wembanyama Prizm Silver PSA 10".</div><div class="row"><button class="btn pri" data-act="dfNew" type="button">+ Add a watch</button>${S.cards.some(live) ? '<button class="btn" data-act="dfFromNiche" type="button">Add watches from my best niches</button>' : ''}</div></section>`}`;
+};
+function dealBlock(w) {
+  const res = DF.results[w.id]; const items = res ? res.items : null;
+  const mkt = num(w.market) || (items && items.length ? r2(median(items.map(x => x.price + x.ship))) : 0);
+  const rows = (items || []).map(x => ({ ...x, all: r2(x.price + x.ship), off: mkt ? 1 - (x.price + x.ship) / mkt : 0 })).sort((a, b) => b.off - a.off);
+  return `<section class="panel deal"><h2>${esc(w.q)} <span class="muted" style="margin-left:auto;font-size:.8rem">alert at ${w.pct}% under ${mkt ? money(mkt) : 'market'}${!num(w.market) && mkt ? ' (median of listings)' : ''}</span></h2>
+    <div class="row"><button class="btn sm" data-act="dfRun" data-id="${w.id}" type="button">${DF.busy === w.id ? 'Checking…' : 'Check now'}</button><button class="btn sm ghost" data-act="dfEdit" data-id="${w.id}" type="button">Edit</button><button class="btn sm ghost" data-act="dfDel" data-id="${w.id}" type="button">Remove</button>${res ? `<small class="muted">${rows.length} listings · checked ${new Date(res.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</small>` : ''}</div>
+    ${rows.length ? `<div class="tablewrap"><table class="t"><thead><tr><th>Listing</th><th>Type</th><th class="r">Price + ship</th><th class="r">vs market</th><th></th></tr></thead><tbody>${rows.slice(0, 12).map(x => `<tr class="${x.off * 100 >= w.pct ? 'hot' : ''}"><td style="white-space:normal;min-width:200px">${esc(x.title)}<small class="muted" style="display:block">${x.buying.includes('AUCTION') ? `${x.bids} bid${x.bids === 1 ? '' : 's'} · ends ${new Date(x.ends).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : 'listed ' + new Date(x.created).toLocaleDateString([], { month: 'short', day: 'numeric' })}</small></td>
+      <td>${x.buying.includes('AUCTION') ? 'Auction' : x.buying.includes('BEST_OFFER') ? 'Buy / offer' : 'Buy now'}</td><td class="r num">${money(x.all)}</td><td class="r num ${x.off > 0 ? 'pos' : 'neg'}">${x.off > 0 ? '−' : '+'}${Math.abs(Math.round(x.off * 100))}%</td>
+      <td><a class="btn sm${x.off * 100 >= w.pct ? ' pri' : ''}" href="${esc(x.url)}" target="_blank" rel="noopener">Open ↗</a>${x.buying.includes('BEST_OFFER') && mkt ? `<small class="muted" style="display:block">offer ${money(mkt * (1 - w.pct / 100) - x.ship)}</small>` : ''}</td></tr>`).join('')}</tbody></table></div>` : res ? '<div class="empty">No listings found.</div>' : ''}
+  </section>`;
+}
+A.dfNew = () => dfForm(null);
+A.dfEdit = el => dfForm(ebCfg().watches.find(w => w.id === el.dataset.id));
+function dfForm(w) {
+  w = w || { id: '', q: '', market: '', pct: 25, max: '' };
+  openModal(`<form data-form="dfSave" data-id="${w.id}">${mhead(w.id ? 'Edit watch' : 'New watch')}
+    ${field('Search eBay for', inp('q', w.q, 'required autofocus placeholder="Wembanyama Prizm Silver PSA 10"'))}
+    <div class="fgrid">${field('Market value (blank = median of listings)', money_inp('market', w.market))}${field('Alert when under market by', inp('pct', w.pct, 'inputmode="numeric"') + '<small class="muted">percent</small>')}${field('Max price (optional)', money_inp('max', w.max))}</div>
+    <small class="muted">Tip: set the market value from your sold comps. A card's page shows the average of its recent sales.</small>
+    ${mfoot('Save watch')}</form>`, { narrow: true });
+}
+FORMS.dfSave = async f => {
+  const fd = new FormData(f); const cfg = ebCfg(); const id = f.dataset.id || 'w_' + uid();
+  const w = { id, q: String(fd.get('q')).trim(), market: num(fd.get('market')) || '', pct: Math.max(5, Math.min(80, parseInt(fd.get('pct'), 10) || 25)), max: num(fd.get('max')) || '' };
+  const i = cfg.watches.findIndex(x => x.id === id); if (i >= 0) cfg.watches[i] = w; else cfg.watches.push(w);
+  await saveSettings(); await pushWatches(); closeModal(); location.hash = '#/deals'; route(); dfRun(id);
+};
+A.dfDel = async el => { const cfg = ebCfg(); cfg.watches = cfg.watches.filter(w => w.id !== el.dataset.id); await saveSettings(); await pushWatches(); route(); };
+async function dfRun(id) {
+  const w = ebCfg().watches.find(x => x.id === id); if (!w) return; DF.busy = id; if (curView === 'deals') route();
+  try { const r = await ebay('search', { q: w.q, maxPrice: w.max || '', market: w.market || '' }); DF.results[id] = { items: r.items || [], at: Date.now() }; }
+  catch (e) { toast(e.message); }
+  DF.busy = ''; if (curView === 'deals') route();
+}
+A.dfRun = el => dfRun(el.dataset.id);
+A.dfAll = async () => { for (const w of ebCfg().watches) await dfRun(w.id); };
+A.dfFromNiche = async () => { // the players you profit on most become watches
+  const by = {}; for (const t of S.txns.filter(t => t.type === 'sell' && !t.purged)) { const c = cardById(t.cardId); if (c && c.player) by[c.player] = (by[c.player] || 0) + num(t.profit); }
+  const top = Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([p]) => p);
+  const pick = top.length ? top : [...new Set(S.cards.filter(live).map(c => c.player))].slice(0, 3);
+  const cfg = ebCfg(); for (const p of pick) if (!cfg.watches.some(w => w.q === p)) cfg.watches.push({ id: 'w_' + uid(), q: p + ' rookie', market: '', pct: 25, max: '' });
+  await saveSettings(); await pushWatches(); route(); toast(`Added ${pick.length} watch${pick.length === 1 ? '' : 'es'}`);
+};
+async function pushWatches() { if (ebCfg().mode !== 'sandbox') return; try { await ebay('watches', { watches: ebCfg().watches, ntfy: ebCfg().ntfy }); } catch (e) { toast('Watches saved here, but not on your worker: ' + e.message); } }
+
+/* ---------- settings ---------- */
+function ebaySettingsPanel() {
+  const cfg = ebCfg(); const st = cfg.setup;
+  return `<section class="panel" id="ebay-settings"><h2>eBay <span class="pill eb-pill ${cfg.mode}" style="margin-left:8px">test build</span></h2>
+    <form class="fgrid" data-form="ebCfg">
+      ${field('Mode', `<select name="mode"><option value="sim"${cfg.mode === 'sim' ? ' selected' : ''}>Simulator (no account, nothing leaves this device)</option><option value="sandbox"${cfg.mode === 'sandbox' ? ' selected' : ''}>eBay Sandbox (through your worker)</option><option disabled>Live eBay (locked in the test build)</option></select>`)}
+      ${field('Worker address', inp('worker', cfg.worker, 'placeholder="https://dugout-ebay.yourname.workers.dev" autocomplete="off"'))}
+      ${field('Worker key', inp('key', cfg.key, 'type="password" placeholder="the DUGOUT_KEY secret" autocomplete="off"'))}
+      ${field('Phone alerts (ntfy topic)', inp('ntfy', cfg.ntfy, 'placeholder="dugout-deals-7f3k2" autocomplete="off"'))}
+      ${field('Auto-accept offers at (% of price)', inp('accept', cfg.accept, 'inputmode="numeric"'))}${field('Auto-decline under (% of price)', inp('decline', cfg.decline, 'inputmode="numeric"'))}
+      ${field('Offer to watchers (% off)', inp('offerPct', cfg.offerPct, 'inputmode="numeric"'))}${field('Stale after (days)', inp('staleDays', cfg.staleDays, 'inputmode="numeric"'))}${field('Price drop for stale (%)', inp('dropPct', cfg.dropPct, 'inputmode="numeric"'))}
+      <div class="row wide"><button class="btn pri" type="submit">Save</button><button class="btn" type="button" data-act="ebTest">Test connection</button>${cfg.mode === 'sandbox' && cfg.worker ? `<a class="btn" href="${esc(cfg.worker.replace(/\/+$/, ''))}/auth/start?key=${encodeURIComponent(cfg.key || '')}" target="_blank" rel="noopener">Sign in to eBay Sandbox ↗</a>` : ''}<button class="btn" type="button" data-act="ebSetup">Load shipping and return policies</button></div>
+    </form>
+    ${st ? `<form class="fgrid" data-form="ebPolicies">${field('Shipping policy', `<select name="fulfillmentPolicyId">${opts(st.fulfillment.map(p => [p.id, p.name]), st.chosen && st.chosen.fulfillmentPolicyId)}</select>`)}${field('Payment policy', `<select name="paymentPolicyId">${opts(st.payment.map(p => [p.id, p.name]), st.chosen && st.chosen.paymentPolicyId)}</select>`)}${field('Return policy', `<select name="returnPolicyId">${opts(st.ret.map(p => [p.id, p.name]), st.chosen && st.chosen.returnPolicyId)}</select>`)}<div class="row wide"><button class="btn" type="submit">Use these policies</button>${st.chosen ? '<small class="muted">Saved</small>' : ''}</div></form>` : ''}
+    <small class="muted">Your eBay keys live in your worker, not in Dugout. This test build keeps its own separate data and never syncs to your real inventory.</small>
+  </section>`;
+}
+FORMS.ebCfg = async f => { const fd = new FormData(f); const cfg = ebCfg(); for (const k of ['mode', 'worker', 'key', 'ntfy']) cfg[k] = String(fd.get(k) || '').trim(); for (const k of ['accept', 'decline', 'offerPct', 'staleDays', 'dropPct']) cfg[k] = Math.max(1, num(fd.get(k)) || cfg[k]);
+  if (cfg.decline >= cfg.accept) { cfg.decline = Math.max(1, cfg.accept - 10); toast('Auto-decline must be below auto-accept, so it was lowered to ' + cfg.decline + '%'); }
+  await saveSettings(); await pushWatches(); toast('eBay settings saved'); route(); };
+A.ebTest = async () => { try { const r = await ebay('status'); toast(r.connected ? `Connected to ${r.env === 'simulator' ? 'the Simulator' : 'eBay ' + r.env}` : 'Worker found, but not signed in to eBay yet. Use "Sign in to eBay Sandbox".'); } catch (e) { toast(e.message); } };
+A.ebSetup = async () => { try { const r = await ebay('setup', {}); const cfg = ebCfg(); cfg.setup = { fulfillment: r.fulfillment || [], payment: r.payment || [], ret: r.ret || [], chosen: cfg.setup && cfg.setup.chosen }; await saveSettings(); toast(r.fulfillment && r.fulfillment.length ? 'Policies loaded. Pick them below.' : 'No policies yet. Create shipping, payment and return policies on eBay first.'); route(); } catch (e) { toast(e.message); } };
+FORMS.ebPolicies = async f => { const fd = new FormData(f); const cfg = ebCfg(); const ch = { fulfillmentPolicyId: fd.get('fulfillmentPolicyId'), paymentPolicyId: fd.get('paymentPolicyId'), returnPolicyId: fd.get('returnPolicyId') };
+  try { await ebay('policies', ch); cfg.setup.chosen = ch; await saveSettings(); toast('Policies saved'); route(); } catch (e) { toast(e.message); } };
+
+/* ---------- hook into the rest of the app ---------- */
+{ const i = NAV.findIndex(n => Array.isArray(n) && n[0] === 'sales'); NAV.splice(i + 1, 0, ['ebay', 'eBay'], ['deals', 'Deals']); }
+{ const vs = V.settings; V.settings = (...a) => { const h = vs(...a); return Promise.resolve(h).then(html => html.replace('<div class="cols">', () => ebaySettingsPanel() + '<div class="cols">')); }; V.settings.after = vs.after; }
+{ const vd = V.dash; V.dash = (...a) => { let h = vd(...a); const n = toShip().length;
+    const row = `<a class="q${n ? ' due' : ''}" href="#/ebay"><span class="qn">${n}</span><span class="ql"><b>Orders to ship</b><small>${ebOn() ? 'From ' + ebModeName() + ' · tap Sync sales on the eBay page' : 'Connect eBay in Settings'}</small></span><span class="qgo" aria-hidden="true">→</span></a>`;
+    return h.replace('<div class="queue">', '<div class="queue">' + row); }; V.dash.after = vd.after; }
+let ebBootSync = false;
+window.addEventListener('hashchange', () => { if (!ebBootSync && ebOn() && S.cards.length) { ebBootSync = true; ebSync(false).then(n => n && toast(`${n} new eBay sale${n > 1 ? 's' : ''} synced`)).catch(() => {}); } });
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
 async function loadDemo() {
