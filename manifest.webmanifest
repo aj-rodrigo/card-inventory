@@ -1,11 +1,11 @@
 {
- "name": "Dugout TEST",
- "short_name": "Dugout TEST",
+ "name": "Dugout",
+ "short_name": "Dugout",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
  "background_color": "#0a0c0f",
- "theme_color": "#ffb000",
+ "theme_color": "#060809",
  "icons": [
   {
    "src": "icon-192.png",
