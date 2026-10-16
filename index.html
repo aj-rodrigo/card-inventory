@@ -448,6 +448,7 @@ details.more > summary::-webkit-details-marker { display: none; }
 .calc .eb-offers b { font-size: .95rem; }
 .eb-mode.live { border-color: var(--neg); background: color-mix(in srgb, var(--neg) 10%, var(--panel2)); }
 .eb-pill.live { color: var(--neg); border-color: var(--neg); }
+.eb-studio img { width: 160px; height: 160px; border-radius: 8px; border: 1px solid var(--line); display: block; }
 </style>
 <div id="app"></div>
 <div id="modal-root"></div>
@@ -1239,7 +1240,7 @@ V.card = id => {
         <div><span class="lbl">ROI</span><b class="num ${cls(p)}">${pct(uc ? p / uc : null)}</b></div>
       </div>
       <div class="ch-actions">
-        ${active ? `<button class="btn pri" data-act="sell" data-id="${c.id}" type="button">Mark as sold</button><button class="btn" data-act="listEbay" data-id="${c.id}" type="button">${c.ebay && c.ebay.status === 'active' ? 'On eBay · ' + money(c.ebay.price) : c.status === 'listed' ? 'Listing' : 'List on eBay'}</button>` : ''}
+        ${active ? `<button class="btn pri" data-act="sell" data-id="${c.id}" type="button">Mark as sold</button><button class="btn" data-act="listEbay" data-id="${c.id}" type="button">${c.ebay && c.ebay.status === 'active' ? 'On eBay · ' + money(c.ebay.price) : c.ebay && c.ebay.status === 'lot' ? 'In a lot on eBay' : c.status === 'listed' ? 'Listing' : 'List on eBay'}</button>` : ''}
         <button class="btn" data-act="editCard" data-id="${c.id}" type="button">Edit</button>
         <details class="more"><summary class="btn">More ▾</summary><div class="more-pop">
           <div class="row" style="align-items:flex-end"><div class="qrbox" data-qr="${esc(cardQR(c))}"></div><button class="btn sm" data-act="labelOne" data-id="${c.id}" type="button">Print label</button></div>
@@ -4516,6 +4517,79 @@ document.addEventListener('change', async e => {
   note.innerHTML = `<div><span>Slab found. The real label goes on the 3D slab${filled.length ? '; filled in ' + esc(filled.join(', ')) : ''}. Add the back of the slab as the back photo to show the label's back too.</span></div>`;
 });
 
+/* Studio photo: your real card (or slab), cut out of its photo and set on a clean gray backdrop in a clear stand.
+   Only the background is new. The card's own pixels are copied as photographed, never redrawn. */
+const STUDIO = 1600; // eBay's recommended square size
+
+// the card or slab as a straight, flat image
+async function studioSubject(blob, slab) {
+  const bmp = await bitmapOf(blob);
+  const ar = bmp.height / bmp.width;
+  if (!slab && ar > 1.33 && ar < 1.47) { // already a straightened card (Dugout saves fronts this way)
+    const cv = document.createElement('canvas'); cv.width = bmp.width; cv.height = bmp.height; cv.getContext('2d').drawImage(bmp, 0, 0); return cv;
+  }
+  const src = bitmapPixels(bmp, 2400);
+  let quad = null;
+  if (slab) { const D = detectCardQuads(bmp); if (D.cards.length) quad = D.cards.slice().sort((a, b) => b.hgt - a.hgt)[0].quad; }
+  else { const r = findCardCorners(bmp); if (r) quad = r.quad; }
+  if (!quad) return null;
+  quad = portraitQuad(orderQuad(quad));
+  const w = Math.hypot(quad[1][0] - quad[0][0], quad[1][1] - quad[0][1]), h = Math.hypot(quad[3][0] - quad[0][0], quad[3][1] - quad[0][1]);
+  const ow = 1100, oh = Math.round(ow * h / w);
+  return warpCard(src, quad, ow, oh);
+}
+
+function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+
+// draw the finished studio photo
+function studioCompose(subj, slab) {
+  const N = STUDIO, cv = document.createElement('canvas'); cv.width = cv.height = N; const g = cv.getContext('2d');
+  // backdrop: soft gray wall meeting a lighter tabletop, like a light tent
+  const hz = N * 0.8;
+  let gr = g.createLinearGradient(0, 0, 0, hz); gr.addColorStop(0, '#d9dbde'); gr.addColorStop(1, '#e9eaec'); g.fillStyle = gr; g.fillRect(0, 0, N, hz);
+  gr = g.createLinearGradient(0, hz, 0, N); gr.addColorStop(0, '#eeeff0'); gr.addColorStop(1, '#d6d8db'); g.fillStyle = gr; g.fillRect(0, hz, N, N - hz);
+  gr = g.createLinearGradient(0, hz - 40, 0, hz + 40); gr.addColorStop(0, 'rgba(233,234,236,0)'); gr.addColorStop(0.5, 'rgba(240,241,242,.9)'); gr.addColorStop(1, 'rgba(238,239,240,0)'); g.fillStyle = gr; g.fillRect(0, hz - 40, N, 80);
+  gr = g.createRadialGradient(N / 2, N * 0.45, N * 0.2, N / 2, N * 0.5, N * 0.78); gr.addColorStop(0, 'rgba(255,255,255,.35)'); gr.addColorStop(1, 'rgba(60,64,70,.18)'); g.fillStyle = gr; g.fillRect(0, 0, N, N);
+
+  // size and place the subject so it sits in the stand
+  const ar = subj.height / subj.width; const ch = N * (slab ? 0.74 : 0.69), cw = ch / ar;
+  const cx = N / 2, bottom = N * (slab ? 0.86 : 0.84), x = cx - cw / 2, y = bottom - ch;
+  const rad = cw * (slab ? 0.035 : 0.03);
+
+  // shadows: one cast on the wall behind, one where the stand meets the table
+  g.save(); g.filter = `blur(${Math.round(N * 0.018)}px)`; g.fillStyle = 'rgba(30,34,40,.32)'; roundRect(g, x + N * 0.012, y + N * 0.016, cw, ch, rad); g.fill(); g.restore();
+  const footY = bottom + N * 0.065, spread = cw * 0.3;
+  g.save(); g.filter = `blur(${Math.round(N * 0.012)}px)`; g.fillStyle = 'rgba(30,34,40,.28)'; g.beginPath(); g.ellipse(cx, footY + N * 0.006, spread * 1.25, N * 0.014, 0, 0, Math.PI * 2); g.fill(); g.restore();
+
+  // stand legs (behind the card's bottom edge)
+  const lipTop = bottom - ch * 0.032, lipBot = bottom + N * 0.012, lw = cw * 0.62;
+  const leg = (x1, y1, x2, y2, w) => { g.lineCap = 'round'; g.strokeStyle = 'rgba(150,158,168,.45)'; g.lineWidth = w + 3; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = w - 3; g.stroke(); };
+  leg(cx - cw * 0.12, lipBot, cx - spread, footY, N * 0.012); leg(cx + cw * 0.12, lipBot, cx + spread, footY, N * 0.012);
+  leg(cx - cw * 0.12, lipBot, cx + cw * 0.12, lipBot, N * 0.012);
+
+  // the card itself, exactly as photographed, with rounded corners
+  g.save(); roundRect(g, x, y, cw, ch, rad); g.clip(); g.drawImage(subj, x, y, cw, ch); g.restore();
+  g.save(); roundRect(g, x, y, cw, ch, rad); g.strokeStyle = slab ? 'rgba(255,255,255,.55)' : 'rgba(0,0,0,.18)'; g.lineWidth = slab ? 3 : 1.5; g.stroke(); g.restore();
+
+  // the stand's clear front lip across the bottom edge
+  g.save(); roundRect(g, cx - lw / 2, lipTop, lw, lipBot - lipTop, 6);
+  gr = g.createLinearGradient(0, lipTop, 0, lipBot); gr.addColorStop(0, 'rgba(255,255,255,.42)'); gr.addColorStop(0.35, 'rgba(255,255,255,.16)'); gr.addColorStop(1, 'rgba(200,206,214,.30)'); g.fillStyle = gr; g.fill();
+  g.strokeStyle = 'rgba(140,148,158,.5)'; g.lineWidth = 2; g.stroke();
+  g.beginPath(); g.moveTo(cx - lw / 2 + 8, lipTop + 3); g.lineTo(cx + lw / 2 - 8, lipTop + 3); g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 2; g.stroke(); g.restore();
+  return cv;
+}
+
+async function studioPhoto(blob, opts = {}) { const s = await studioSubject(blob, !!opts.slab); return s ? studioCompose(s, !!opts.slab) : null; }
+
+// the studio photo for a card: slabs use the whole-slab photo; nothing is made if the subject can't be found
+const STUDIO_CACHE = new Map();
+async function studioForCard(c) {
+  const slab = !!c.graded; const id = slab ? c.frontOrig : c.front; if (!id) return null;
+  const k = id + (slab ? ':s' : ':r'); if (STUDIO_CACHE.has(k)) return STUDIO_CACHE.get(k);
+  const p = (async () => { const rec = await fileGet(id); if (!rec) return null; const cv = await studioPhoto(rec.blob, { slab }); return cv ? await canvasBlob(cv, 'image/jpeg', 0.92) : null; })().catch(() => null);
+  STUDIO_CACHE.set(k, p); return p;
+}
+
 /* eBay automation: list, offer rules, reprice, offers to watchers, sold sync, shipping queue and deal finder.
    TEST BUILD ONLY for now. Two modes:
    - Simulator: a pretend eBay inside the app. Nothing leaves this device.
@@ -4529,7 +4603,7 @@ const EB_RAW = { 'Mint': '400010', 'Near Mint-Mint': '400010', 'Near Mint': '400
 
 // the real Dugout talks to live eBay only; the test build only to the Simulator or the Sandbox
 const EB_LIVE = !window.DUGOUT_TEST; const EB_ENV = EB_LIVE ? 'production' : 'sandbox';
-const EB_DEFAULTS = { mode: EB_LIVE ? 'off' : 'sim', worker: '', key: '', accept: 90, decline: 75, offerPct: 10, staleDays: 21, dropPct: 10, watches: [], orders: [], lastSync: '', ntfy: '', setup: null, sim: null };
+const EB_DEFAULTS = { mode: EB_LIVE ? 'off' : 'sim', worker: '', key: '', accept: 90, decline: 75, offerPct: 10, staleDays: 21, dropPct: 10, watches: [], orders: [], lastSync: '', ntfy: '', setup: null, sim: null, ozRaw: 3, ozSlab: 8 };
 // always the same object, so changes made across an await are never lost
 const ebCfg = () => { const c = S.settings.ebay || (S.settings.ebay = {}); for (const k in EB_DEFAULTS) if (!(k in c)) c[k] = Array.isArray(EB_DEFAULTS[k]) ? [] : EB_DEFAULTS[k]; return c; };
 // in the real Dugout the worker key stays on this device (not in synced data)
@@ -4563,12 +4637,16 @@ function ebayListing(c, o) {
     'Autographed': [c.auto ? 'Yes' : 'No'], 'Features': [[c.rookie && 'Rookie', c.serial && 'Serial Numbered', c.patch && 'Patch'].filter(Boolean).join(', ')], 'Print Run': [c.serial ? String(c.serial).replace(/^.*\//, '') : ''],
     'Graded': [c.graded ? 'Yes' : 'No'], 'Professional Grader': [c.graded ? c.gradeCo : ''], 'Grade': [c.graded ? String(c.grade) : ''], 'Certification Number': [c.graded ? c.cert : ''] };
   const aspects = {}; for (const [k, v] of Object.entries(A)) { const vals = v.filter(x => x !== undefined && x !== null && String(x).trim()); if (vals.length) aspects[k] = vals.map(String); }
+  // eBay needs the package size when your shipping policy uses calculated shipping (bubble mailer)
+  const oz = r2(num(o.oz) || (c.graded ? num(ebCfg().ozSlab) || 8 : num(ebCfg().ozRaw) || 3));
+  if (!(oz > 0 && oz <= 160)) errs.push('Set a package weight in ounces.');
+  const pkg = { packageType: 'PACKAGE_THICK_ENVELOPE', weight: { value: oz, unit: 'OUNCE' }, dimensions: c.graded ? { length: 9, width: 6, height: 1.5, unit: 'INCH' } : { length: 7, width: 5, height: 0.5, unit: 'INCH' } };
   const accept = o.bestOffer ? r2(price * o.accept / 100) : 0, decline = o.bestOffer ? r2(price * o.decline / 100) : 0;
   if (o.bestOffer && !(decline < accept && accept < price)) errs.push('Auto-decline must be below auto-accept, and both below the price.');
   const desc = `<p><b>${esc(title)}</b></p><ul>${[c.year && `Year: ${c.year}`, c.brand && `Brand: ${c.brand}`, c.set && `Set: ${c.set}`, c.number && `Card #: ${c.number}`, c.parallel && `Parallel: ${c.parallel}`, c.serial && `Serial: ${c.serial}`, c.graded ? `Graded: ${c.gradeCo} ${c.grade}${c.cert ? ` (cert ${c.cert})` : ''}` : c.condition && `Condition: ${c.condition}`].filter(Boolean).map(x => `<li>${esc(x)}</li>`).join('')}</ul><p>${esc(o.note || 'You get the exact card pictured. Ships in a penny sleeve and top loader, in a bubble mailer with tracking.')}</p>`;
   return {
     errs, sku: c.code,
-    inventoryItem: { availability: { shipToLocationAvailability: { quantity: Math.max(1, +c.qty || 1) } }, condition, conditionDescriptors: descriptors,
+    inventoryItem: { availability: { shipToLocationAvailability: { quantity: Math.max(1, +c.qty || 1) } }, condition, conditionDescriptors: descriptors, packageWeightAndSize: pkg,
       product: { title, description: desc, aspects, imageUrls: [] } },
     offer: { sku: c.code, marketplaceId: 'EBAY_US', format: 'FIXED_PRICE', availableQuantity: Math.max(1, +c.qty || 1), categoryId: EBAY_CAT, listingDescription: desc,
       pricingSummary: { price: { value: r2s(price), currency: 'USD' } },
@@ -4595,6 +4673,7 @@ const b64OfFile = async id => { const rec = await fileGet(id); if (!rec) return 
 /* ---------- the simulator: a pretend eBay that behaves like the real API's results ---------- */
 const EBSIM = {
   _s() { const c = ebCfg(); c.sim = c.sim || { listings: {}, orders: [], seq: 1000, watchers: {} }; return c.sim; },
+  async lotInfo() { return { categoryId: '261329', name: 'Sports Trading Card Lots (simulated)', aspects: [{ name: 'Sport', mode: 'SELECTION_ONLY', values: ['Baseball', 'Basketball', 'Football', 'Hockey', 'Soccer', 'Multi-Sport'] }], conditions: [{ id: '4000', name: 'Ungraded', descriptors: [{ id: '40001', name: 'Card Condition', values: [{ id: '400010', name: 'Near mint or better' }, { id: '400011', name: 'Excellent' }, { id: '400012', name: 'Very good' }, { id: '400013', name: 'Poor' }] }] }], at: Date.now() }; },
   async status() { return { env: 'simulator', connected: true }; },
   async setup() { return { fulfillment: [{ id: 'SIM-SHIP-1', name: 'Card mailer · USPS Ground Advantage · $4.99' }, { id: 'SIM-SHIP-2', name: 'eBay standard envelope · $1.32' }], payment: [{ id: 'SIM-PAY-1', name: 'eBay managed payments' }], ret: [{ id: 'SIM-RET-1', name: 'No returns' }, { id: 'SIM-RET-2', name: '30-day returns, buyer pays' }], location: 'dugout' }; },
   async policies(b) { return { ok: true, saved: b }; },
@@ -4621,7 +4700,7 @@ const EBSIM = {
   async search(b) { // listings around a market price, a few of them deals
     const q = String(b.q || 'card'); let h = 0; for (const ch of q) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
     const rnd = () => { h = (h * 1664525 + 1013904223) >>> 0; return h / 4294967296; };
-    const mkt = num(b.market) || 20 + Math.floor(rnd() * 180); const now = Date.now(); const out = [];
+    const mkt = num(b.marketPrice) || num(b.market) || 20 + Math.floor(rnd() * 180); const now = Date.now(); const out = [];
     const extras = ['PSA 10', 'Silver Prizm', 'RC Rookie', 'Base', 'Holo', '/99', 'Raw NM', 'Refractor', 'Lot of 2', 'Mosaic'];
     for (let i = 0; i < 14; i++) {
       const deal = i % 5 === 1; const f = deal ? 0.55 + rnd() * 0.2 : 0.85 + rnd() * 0.45; const auction = rnd() < 0.25;
@@ -4640,12 +4719,15 @@ A.listEbay = el => {
   const c = cardById(el.dataset.id); const cfg = ebCfg();
   if (!ebOn() && EB_LIVE) return listEbayManual(el);
   if (!ebOn()) return openModal(`<div>${mhead('Connect eBay first')}<p>Pick the Simulator (no account needed) or set up the eBay Sandbox in Settings → eBay.</p><div class="sheet-foot"><a class="btn pri" href="#/settings" data-act="close">Open Settings</a></div></div>`, { narrow: true });
+  if (c.ebay && c.ebay.lot && c.ebay.status === 'lot') return openLotManage(c.ebay.lot);
   if (c.ebay && c.ebay.listingId && c.ebay.status !== 'ended') return openEbayManage(c);
   const price = suggestedPrice(c); const t = typeof listingTitle === 'function' ? listingTitle(c) : cardName(c);
   openModal(`<form data-form="ebList" data-id="${c.id}">${mhead('List on ' + ebModeName())}
     <div class="eb-mode ${cfg.mode}">${cfg.mode === 'sim' ? 'Simulator: nothing is sent to eBay.' : cfg.mode === 'live' ? '<b>LIVE eBay:</b> this posts a real listing. Real buyers can buy it at this price.' : 'eBay Sandbox: a test listing on eBay\'s practice site. No real buyers.'}</div>
     ${field('Title (80 characters max)', `<input name="title" id="eb-title" value="${esc(t)}" maxlength="80" required><small class="muted"><span id="eb-tlen">${t.length}</span>/80</small>`)}
-    <div class="fgrid">${field('Price', money_inp('price', price, 'required id="eb-price"'))}${field('Photos', `<input value="${[c.front && 'front', c.back && 'back'].filter(Boolean).join(' + ') || 'none'}" disabled>`)}</div>
+    <div class="fgrid">${field('Price', money_inp('price', price, 'required id="eb-price"'))}${field('Photos', `<input value="${[c.front && 'front', c.back && 'back'].filter(Boolean).join(' + ') || 'none'}" disabled>`)}${field('Package weight (oz, packed)', inp('oz', c.graded ? cfg.ozSlab : cfg.ozRaw, 'inputmode="decimal"'))}</div>
+    <label class="chk"><input type="checkbox" name="studio" ${c.graded && !c.frontOrig ? 'disabled' : 'checked'}> Studio photo first: your ${c.graded ? 'slab' : 'card'} on a clean gray backdrop, exactly as photographed. Your original photos are included after it.</label>
+    <div class="eb-studio" id="eb-studio">${c.graded && !c.frontOrig ? '<small class="muted">Studio photo needs a photo of the whole slab. Use Re-read slab label on the card page first.</small>' : '<small class="muted">Making the studio photo…</small>'}</div>
     <label class="chk"><input type="checkbox" name="bestOffer" checked> Accept offers, with automatic answers</label>
     <div class="fgrid">${field('Auto-accept at (% of price)', inp('accept', cfg.accept, 'inputmode="numeric" id="eb-acc"'))}${field('Auto-decline under (% of price)', inp('decline', cfg.decline, 'inputmode="numeric" id="eb-dec"'))}</div>
     <div class="calc" id="eb-calc"></div>
@@ -4653,7 +4735,7 @@ A.listEbay = el => {
     <div id="eb-errs"></div>
     ${mfoot('Post listing')}</form>`);
   const f = $('#modal-root form'); const upd = () => {
-    const fd = new FormData(f); const o = { title: fd.get('title'), price: fd.get('price'), bestOffer: fd.get('bestOffer') === 'on', accept: num(fd.get('accept')), decline: num(fd.get('decline')) };
+    const fd = new FormData(f); const o = { title: fd.get('title'), price: fd.get('price'), bestOffer: fd.get('bestOffer') === 'on', accept: num(fd.get('accept')), decline: num(fd.get('decline')), oz: num(fd.get('oz')) };
     const L = ebayListing(c, o); const p = num(o.price);
     $('#eb-tlen').textContent = String(o.title || '').length;
     $('#eb-calc').innerHTML = `<div><span>Fees (about 13.25% + $0.40)</span><b>${money(p * 0.1325 + 0.4)}</b></div><div><span>You keep before shipping</span><b>${money(p - p * 0.1325 - 0.4)}</b></div><div><span>Profit vs cost ${money(unitCost(c))}</span><b class="${cls(p - p * 0.1325 - 0.4 - unitCost(c))}">${money(p - p * 0.1325 - 0.4 - unitCost(c), 1)}</b></div>${o.bestOffer ? `<div class="eb-offers"><span>Automatic offer answers</span><b>Accept ${money(p * o.accept / 100)}+ · decline under ${money(p * o.decline / 100)}</b></div>` : ''}`;
@@ -4661,15 +4743,18 @@ A.listEbay = el => {
     $('#eb-errs').innerHTML = L.errs.length ? `<div class="warn">${L.errs.map(esc).join('<br>')}</div>` : '';
   };
   f.addEventListener('input', upd); upd();
+  if (!(c.graded && !c.frontOrig)) studioForCard(c).then(b => { const box = $('#eb-studio'); if (!box) return; if (!b) { box.innerHTML = "<small class='muted'>Couldn't find the card's edges in the photo, so the listing will use your original photos only.</small>"; const t = f.querySelector('[name=studio]'); if (t) { t.checked = false; t.disabled = true; } return; } const u = URL.createObjectURL(b); box.innerHTML = `<img src="${u}" alt="Studio photo preview">`; });
 };
+const b64OfBlob = async (blob, name = 'studio.jpg') => { const buf = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000)); return { base64: btoa(s), type: blob.type || 'image/jpeg', name }; };
 FORMS.ebList = async f => {
   const c = cardById(f.dataset.id); const fd = new FormData(f); const cfg = ebCfg();
-  const o = { title: fd.get('title'), price: fd.get('price'), bestOffer: fd.get('bestOffer') === 'on', accept: num(fd.get('accept')), decline: num(fd.get('decline')) };
+  const o = { title: fd.get('title'), price: fd.get('price'), bestOffer: fd.get('bestOffer') === 'on', accept: num(fd.get('accept')), decline: num(fd.get('decline')), oz: num(fd.get('oz')) };
   const L = ebayListing(c, o); if (L.errs.length) return toast(L.errs[0]);
   const btn = f.querySelector('[type=submit]');
   if (ebIsLive() && f.dataset.sure !== '1') { f.dataset.sure = '1'; btn.textContent = `Tap again to list for ${money(num(o.price))}`; return; } btn.disabled = true; btn.textContent = 'Uploading photos…';
   try {
-    for (const side of ['front', 'back']) if (c[side]) { const img = await b64OfFile(c[side]); if (img) { const r = await ebay('image', img); L.inventoryItem.product.imageUrls.push(r.imageUrl); } }
+    if (fd.get('studio') === 'on') { const sb = await studioForCard(c); if (sb) { const r = await ebay('image', await b64OfBlob(sb)); L.inventoryItem.product.imageUrls.push(r.imageUrl); } }
+    for (const side of c.graded && c.frontOrig ? ['frontOrig', 'front', 'back'] : ['front', 'back']) if (c[side]) { const img = await b64OfFile(c[side]); if (img) { const r = await ebay('image', img); L.inventoryItem.product.imageUrls.push(r.imageUrl); } }
     btn.textContent = 'Posting…';
     const r = await ebay('list', { inventoryItem: L.inventoryItem, offer: L.offer });
     const was = c.status;
@@ -4713,6 +4798,7 @@ async function ebSync(loud) {
     const lineTotal = o.lines.reduce((a, l) => a + num(l.price) * (l.qty || 1), 0) || 1;
     for (const l of o.lines) {
       const key = o.orderId + ':' + l.lineItemId; if (S.txns.some(t => t.ebayLine === key && !t.purged)) continue;
+      if (String(l.sku).startsWith('LOT-')) { n += await syncLotLine(o, l, key, lineTotal); continue; }
       const c = S.cards.find(x => live(x) && x.code === l.sku); if (!c) continue;
       const share = num(l.price) * (l.qty || 1) / lineTotal; const q = Math.min(l.qty || 1, c.qty || 1);
       const gross = r2(num(l.price) * q + num(o.shipping) * share), fees = r2(num(o.fee) * share), cost = r2(unitCost(c) * q), net = r2(gross - fees);
@@ -4844,14 +4930,14 @@ function ebaySettingsPanel() {
       ${field('Worker key', inp('key', ebKey(), `type="password" placeholder="${EB_LIVE ? 'the live DUGOUT_KEY (kept on this device only)' : 'the DUGOUT_KEY secret'}" autocomplete="off"`))}
       ${field('Phone alerts (ntfy topic)', inp('ntfy', cfg.ntfy, 'placeholder="dugout-deals-7f3k2" autocomplete="off"'))}
       ${field('Auto-accept offers at (% of price)', inp('accept', cfg.accept, 'inputmode="numeric"'))}${field('Auto-decline under (% of price)', inp('decline', cfg.decline, 'inputmode="numeric"'))}
-      ${field('Offer to watchers (% off)', inp('offerPct', cfg.offerPct, 'inputmode="numeric"'))}${field('Stale after (days)', inp('staleDays', cfg.staleDays, 'inputmode="numeric"'))}${field('Price drop for stale (%)', inp('dropPct', cfg.dropPct, 'inputmode="numeric"'))}
+      ${field('Offer to watchers (% off)', inp('offerPct', cfg.offerPct, 'inputmode="numeric"'))}${field('Stale after (days)', inp('staleDays', cfg.staleDays, 'inputmode="numeric"'))}${field('Price drop for stale (%)', inp('dropPct', cfg.dropPct, 'inputmode="numeric"'))}${field('Raw card package (oz)', inp('ozRaw', cfg.ozRaw, 'inputmode="decimal"'))}${field('Slab package (oz)', inp('ozSlab', cfg.ozSlab, 'inputmode="decimal"'))}
       <div class="row wide"><button class="btn pri" type="submit">Save</button><button class="btn" type="button" data-act="ebTest">Test connection</button>${(cfg.mode === 'sandbox' || cfg.mode === 'live') && cfg.worker ? `<a class="btn" href="${esc(cfg.worker.replace(/\/+$/, ''))}/auth/start?key=${encodeURIComponent(ebKey())}" target="_blank" rel="noopener">Sign in to ${cfg.mode === 'live' ? 'eBay' : 'eBay Sandbox'} ↗</a>` : ''}<button class="btn" type="button" data-act="ebSetup">Load shipping and return policies</button></div>
     </form>
     ${st ? `<form class="fgrid" data-form="ebPolicies">${field('Shipping policy', `<select name="fulfillmentPolicyId">${opts(st.fulfillment.map(p => [p.id, p.name]), st.chosen && st.chosen.fulfillmentPolicyId)}</select>`)}${field('Payment policy', `<select name="paymentPolicyId">${opts(st.payment.map(p => [p.id, p.name]), st.chosen && st.chosen.paymentPolicyId)}</select>`)}${field('Return policy', `<select name="returnPolicyId">${opts(st.ret.map(p => [p.id, p.name]), st.chosen && st.chosen.returnPolicyId)}</select>`)}<div class="row wide"><button class="btn" type="submit">Use these policies</button>${st.chosen ? '<small class="muted">Saved</small>' : ''}</div></form>` : ''}
     <small class="muted">Your eBay keys live in your worker, not in Dugout. ${EB_LIVE ? 'The worker key stays on this device, so enter it once on your iPhone and once on your PC.' : 'This test build keeps its own separate data and never syncs to your real inventory.'}</small>
   </section>`;
 }
-FORMS.ebCfg = async f => { const fd = new FormData(f); const cfg = ebCfg(); for (const k of ['mode', 'worker', 'ntfy']) cfg[k] = String(fd.get(k) || '').trim(); setEbKey(String(fd.get('key') || '').trim()); for (const k of ['accept', 'decline', 'offerPct', 'staleDays', 'dropPct']) cfg[k] = Math.max(1, num(fd.get(k)) || cfg[k]);
+FORMS.ebCfg = async f => { const fd = new FormData(f); const cfg = ebCfg(); for (const k of ['mode', 'worker', 'ntfy']) cfg[k] = String(fd.get(k) || '').trim(); setEbKey(String(fd.get('key') || '').trim()); for (const k of ['accept', 'decline', 'offerPct', 'staleDays', 'dropPct']) cfg[k] = Math.max(1, num(fd.get(k)) || cfg[k]); for (const k of ['ozRaw', 'ozSlab']) cfg[k] = Math.min(160, Math.max(0.5, num(fd.get(k)) || cfg[k]));
   if (cfg.decline >= cfg.accept) { cfg.decline = Math.max(1, cfg.accept - 10); toast('Auto-decline must be below auto-accept, so it was lowered to ' + cfg.decline + '%'); }
   await saveSettings(); await pushWatches(); toast('eBay settings saved'); route(); };
 A.ebTest = async el => { const f = el && el.closest('form[data-form=ebCfg]'); if (f) { const fd = new FormData(f); const cfg = ebCfg(); for (const k of ['mode', 'worker']) cfg[k] = String(fd.get(k) || '').trim(); setEbKey(String(fd.get('key') || '').trim()); await saveSettings(); } // test what's typed, saved or not
@@ -4868,6 +4954,243 @@ FORMS.ebPolicies = async f => { const fd = new FormData(f); const cfg = ebCfg();
     return h.replace('<div class="queue">', '<div class="queue">' + row); }; V.dash.after = vd.after; }
 let ebBootSync = false;
 window.addEventListener('hashchange', () => { if (!ebBootSync && ebOn() && S.cards.length) { ebBootSync = true; ebSync(false).then(n => n && toast(`${n} new eBay sale${n > 1 ? 's' : ''} synced`)).catch(() => {}); } });
+
+/* eBay, part 2: market check (current asking prices), card lots, and the studio group photo for lots. */
+
+const mkMedian = a => { const s = [...a].sort((x, y) => x - y), n = s.length; return n ? (n % 2 ? s[n >> 1] : (s[n / 2 - 1] + s[n / 2]) / 2) : 0; };
+/* ---------- market check: what the same card is listed for right now ---------- */
+
+const marketQuery = c => [c.year, c.brand, c.set && c.set !== c.brand && c.set, c.player, c.number && '#' + c.number, c.parallel && c.parallel !== 'Base' && c.parallel, c.graded && c.gradeCo, c.graded && c.grade]
+  .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+const GRADED_RE = /\b(PSA|BGS|SGC|CGC|TAG|BVG|HGA|graded|slab)\b/i;
+const LOTISH_RE = /\blot\b|\blots\b|\bx\s?\d+\b|\(\d+\)|you pick|pick your|choose/i;
+function marketMatches(c, items) {
+  const last = String(c.player || '').trim().split(/\s+/).pop().toLowerCase();
+  const gNum = String(c.grade || '').replace(/[^\d.]/g, '');
+  return items.filter(x => {
+    const t = String(x.title || ''); const lo = t.toLowerCase();
+    if (!(x.price > 0)) return false;
+    if (last && !lo.includes(last)) return false;
+    if (LOTISH_RE.test(t)) return false;
+    if (c.graded) { if (!lo.includes(String(c.gradeCo || '').toLowerCase())) return false; if (gNum && !new RegExp('(^|[^\\d.])' + gNum.replace('.', '\\.') + '([^\\d.]|$)').test(t)) return false; }
+    else if (GRADED_RE.test(t)) return false;
+    return true;
+  });
+}
+async function marketCheck(c) {
+  const q = marketQuery(c);
+  const r = await ebay('search', { q, mode: 'market', marketPrice: num(c.value) || unitCost(c) || '' });
+  let items = marketMatches(c, r.items || []).map(x => ({ title: x.title, url: x.url, total: r2(num(x.price) + num(x.ship)) }));
+  const m0 = mkMedian(items.map(x => x.total)); if (m0) items = items.filter(x => x.total <= m0 * 3 && x.total >= m0 / 3); // drop odd outliers
+  items.sort((a, b) => a.total - b.total); const t = items.map(x => x.total);
+  const res = { date: today(), q, n: t.length, median: r2(mkMedian(t)), low: t[0] || 0, p25: t[Math.floor((t.length - 1) * 0.25)] || 0, p75: t[Math.floor((t.length - 1) * 0.75)] || 0 };
+  c.market = res; await save('cards', c, { quiet: true });
+  return { ...res, items };
+}
+const marketGap = c => c.market && c.market.n >= 3 && num(c.value) ? (c.market.median - num(c.value)) / num(c.value) : null;
+const offMarket = () => S.cards.filter(live).filter(c => ACTIVE.includes(c.status)).filter(c => { const g = marketGap(c); return g !== null && Math.abs(g) >= 0.25; });
+async function setValue(c, v, src) {
+  v = r2(v); if (!(v > 0) || v === num(c.value)) return;
+  await logTxn({ cardId: c.id, type: 'edit', date: today(), changes: [{ f: 'value', from: String(num(c.value)), to: String(v) }], note: src });
+  c.value = v; c.priceHistory = [...(c.priceHistory || []), { date: today(), value: v }]; c.priceUpdated = today(); await save('cards', c, { quiet: true });
+}
+A.marketCheck = async el => {
+  const c = cardById(el.dataset.id); if (!ebOn()) return toast('Turn on eBay in Settings first');
+  openModal(`<div>${mhead('Market check')}<p class="muted" id="mk-wait">Looking up ${esc(cardName(c))} on ${esc(ebModeName())}…</p></div>`, { narrow: true });
+  let r; try { r = await marketCheck(c); } catch (e) { closeModal(false); return toast(e.message); }
+  const g = marketGap(c); const sold = 'https://www.ebay.com/sch/i.html?' + new URLSearchParams({ _nkw: r.q, LH_Sold: '1', LH_Complete: '1' });
+  openModal(`<div>${mhead('Market check')}
+    <p class="muted" style="margin:0">Asking prices for Buy It Now listings right now, shipping included. These aren't sold prices.</p>
+    <div class="calc"><div><span>Middle price</span><b>${r.n ? money(r.median) : '—'}</b></div><div><span>Typical range</span><b>${r.n ? money(r.p25) + '–' + money(r.p75) : '—'}</b></div><div><span>Your value</span><b>${money(c.value)}${g !== null ? ` <small class="${cls(g)}">${g >= 0 ? '+' : ''}${Math.round(g * 100)}%</small>` : ''}</b></div></div>
+    <small class="muted">${r.n} matching listing${r.n === 1 ? '' : 's'} for "${esc(r.q)}". Lots${c.graded ? ', other graders and other grades' : ' and graded cards'} are left out.</small>
+    ${r.items.length ? `<div class="list">${r.items.slice(0, 8).map(x => `<div class="li"><a class="grow" href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a><b class="num">${money(x.total)}</b></div>`).join('')}</div>` : '<div class="empty">No close matches. Try the sold search on eBay.</div>'}
+    <div class="sheet-foot"><a class="btn" href="${esc(sold)}" target="_blank" rel="noopener">Sold prices on eBay ↗</a><button class="btn" type="button" data-act="close">Close</button>${r.n >= 3 ? `<button class="btn pri" type="button" data-act="marketUse" data-id="${c.id}">Set value to ${money(r.median)}</button>` : ''}</div></div>`, { narrow: true });
+};
+A.marketUse = async el => { const c = cardById(el.dataset.id); if (!c || !c.market) return; await setValue(c, c.market.median, 'Market check (asking prices)'); closeModal(); onChange('cards'); toast('Value updated to ' + money(c.market.median)); };
+A.marketUseAll = async () => { const L = offMarket(); for (const c of L) await setValue(c, c.market.median, 'Market check (asking prices)'); onChange('cards'); toast(`Updated ${L.length} value${L.length === 1 ? '' : 's'}`); };
+let MK_RUN = false;
+async function marketRun(cards, loud) {
+  if (MK_RUN) return 0; MK_RUN = true; let n = 0;
+  try { for (const c of cards) { try { await marketCheck(c); n++; } catch (e) { if (loud) toast(cardName(c) + ': ' + e.message); if (/sign|key|worker|reach/i.test(e.message)) break; } await new Promise(r => setTimeout(r, 350)); } }
+  finally { MK_RUN = false; } return n;
+}
+A.marketAll = async el => {
+  const cards = S.cards.filter(live).filter(c => ACTIVE.includes(c.status) && c.player);
+  el.disabled = true; el.textContent = `Checking ${cards.length} cards…`;
+  const n = await marketRun(cards, true); onChange('cards'); toast(`Checked ${n} card${n === 1 ? '' : 's'}. ${offMarket().length} look off market.`);
+};
+// on its own: up to 30 cards a day that haven't been checked in a week. It only notes the market; values change when you say so.
+async function marketAuto() {
+  if (!ebOn() || MK_RUN) return; const cut = new Date(Date.now() - 7 * 864e5).toLocaleDateString('en-CA');
+  const due = S.cards.filter(live).filter(c => ACTIVE.includes(c.status) && c.player && (!c.market || c.market.date < cut)).slice(0, 30);
+  if (!due.length) return; const n = await marketRun(due, false); if (n) onChange('cards');
+}
+function marketPanel() {
+  const L = offMarket().sort((a, b) => Math.abs(marketGap(b)) - Math.abs(marketGap(a)));
+  const checked = S.cards.filter(live).filter(c => c.market).length;
+  return `<section class="panel" id="market"><h2>Market check <span class="muted" style="margin-left:auto;font-size:.8rem">${checked} cards checked</span></h2>
+    <p class="muted" style="margin:0">Compares your values with what the same card is listed for on eBay right now (Buy It Now, with shipping). Dugout checks up to 30 cards a day on its own and never changes a value without you.</p>
+    ${L.length ? `<div class="list">${L.slice(0, 40).map(c => { const g = marketGap(c); return `<div class="li"><a class="grow" href="#/card/${c.id}">${esc(cardName(c))} <small class="muted">${esc(cardSet(c))}</small></a><span class="num muted">${money(c.value)}</span><span>→</span><b class="num">${money(c.market.median)}</b><small class="${cls(g)}">${g >= 0 ? '+' : ''}${Math.round(g * 100)}%</small><button class="btn sm" type="button" data-act="marketUse" data-id="${c.id}">Use</button></div>`; }).join('')}</div>` : '<div class="empty">No cards more than 25% off the market right now.</div>'}
+    <div class="row"><button class="btn" type="button" data-act="marketAll">Check all cards now</button>${L.length ? `<button class="btn pri" type="button" data-act="marketUseAll">Use market for all ${L.length}</button>` : ''}</div></section>`;
+}
+
+/* ---------- studio group photo for a lot: every card, as photographed, on the same backdrop ---------- */
+async function studioGrid(blobs) {
+  const N = STUDIO, cv = document.createElement('canvas'); cv.width = cv.height = N; const g = cv.getContext('2d');
+  let gr = g.createLinearGradient(0, 0, 0, N); gr.addColorStop(0, '#d9dbde'); gr.addColorStop(0.55, '#e9eaec'); gr.addColorStop(1, '#d4d6d9'); g.fillStyle = gr; g.fillRect(0, 0, N, N);
+  gr = g.createRadialGradient(N / 2, N * 0.45, N * 0.2, N / 2, N * 0.5, N * 0.78); gr.addColorStop(0, 'rgba(255,255,255,.35)'); gr.addColorStop(1, 'rgba(60,64,70,.18)'); g.fillStyle = gr; g.fillRect(0, 0, N, N);
+  const imgs = []; for (const b of blobs) { try { imgs.push(await bitmapOf(b)); } catch (e) {} }
+  const n = imgs.length; if (!n) return null;
+  let best = null; for (let cols = 1; cols <= n; cols++) { const rows = Math.ceil(n / cols); const gap = N * 0.025; const w = Math.min((N * 0.9 - gap * (cols - 1)) / cols, ((N * 0.9 - gap * (rows - 1)) / rows) / 1.4); if (!best || w > best.w) best = { cols, rows, w, gap }; }
+  const { cols, rows, w, gap } = best, h = w * 1.4; const x0 = (N - (cols * w + (cols - 1) * gap)) / 2, y0 = (N - (rows * h + (rows - 1) * gap)) / 2;
+  imgs.forEach((im, i) => {
+    const r = Math.floor(i / cols), k = i % cols; const inRow = Math.min(cols, n - r * cols); const xs = x0 + ((cols - inRow) * (w + gap)) / 2;
+    const x = xs + k * (w + gap), y = y0 + r * (h + gap); const s = Math.min(w / im.width, h / im.height); const dw = im.width * s, dh = im.height * s, dx = x + (w - dw) / 2, dy = y + (h - dh) / 2, rad = dw * 0.03;
+    g.save(); g.filter = `blur(${Math.max(4, Math.round(w * 0.04))}px)`; g.fillStyle = 'rgba(30,34,40,.3)'; roundRect(g, dx + w * 0.02, dy + w * 0.03, dw, dh, rad); g.fill(); g.restore();
+    g.save(); roundRect(g, dx, dy, dw, dh, rad); g.clip(); g.drawImage(im, dx, dy, dw, dh); g.restore();
+    g.save(); roundRect(g, dx, dy, dw, dh, rad); g.strokeStyle = 'rgba(0,0,0,.18)'; g.lineWidth = 1.5; g.stroke(); g.restore();
+  });
+  return cv;
+}
+
+/* ---------- card lots: several singles in one listing ---------- */
+const EB_COND_ENUM = { 1000: 'NEW', 1500: 'NEW_OTHER', 2750: 'LIKE_NEW', 3000: 'USED_EXCELLENT', 4000: 'USED_VERY_GOOD', 5000: 'USED_GOOD', 6000: 'USED_ACCEPTABLE', 7000: 'FOR_PARTS_OR_NOT_WORKING' };
+const lotCards = () => S.cards.filter(live).filter(c => c.status === 'in_stock' && c.front && !(c.ebay && ['active', 'lot'].includes(c.ebay.status)));
+const lotWeight = c => num(c.value) || unitCost(c) || 1;
+const lotUniq = a => [...new Set(a.filter(Boolean).map(x => String(x).trim()).filter(Boolean))];
+function lotAuto(cards) {
+  const one = k => { const u = lotUniq(cards.map(c => c[k])); return u.length === 1 ? u[0] : ''; };
+  const players = lotUniq(cards.map(c => c.player));
+  const head = one('team') || one('player') || one('sport') || 'Sports card';
+  let title = `${head} lot (${cards.length}): ${players.join(', ')}`; if (cards.some(c => c.rookie)) title = title.replace(' lot ', ' RC lot ');
+  if (title.length > 80) title = title.slice(0, 77).replace(/,\s*[^,]*$/, '') + '…';
+  return {
+    title: title.slice(0, 80),
+    aspects: { 'Sport': [one('sport')], 'Player/Athlete': players.slice(0, 30), 'Team': lotUniq(cards.map(c => c.team)).slice(0, 30), 'Manufacturer': lotUniq(cards.map(c => c.brand)).slice(0, 30), 'Number of Cards': [String(cards.length)], 'Graded': [cards.some(c => c.graded) ? 'Yes' : 'No'], 'Autographed': [cards.some(c => c.auto) ? 'Yes' : 'No'], 'Type': ['Sports Trading Card'], 'Year Manufactured': lotUniq(cards.map(c => (String(c.year || '').match(/\d{4}/) || [''])[0])).slice(0, 30) },
+  };
+}
+async function lotInfo() { const cfg = ebCfg(); if (cfg.lotInfo && cfg.lotInfo.at > Date.now() - 7 * 864e5) return cfg.lotInfo; const r = await ebay('lotInfo', {}); cfg.lotInfo = { ...r, at: Date.now() }; await saveSettings(); return cfg.lotInfo; }
+A.lotNew = async () => {
+  if (!ebOn()) return toast('Turn on eBay in Settings first');
+  const cards = lotCards(); if (cards.length < 2) return toast('You need at least 2 in-stock cards with photos to make a lot.');
+  openModal(`<form data-form="lotPick">${mhead('Make a lot')}
+    <p class="muted" style="margin:0">Pick the cards. Only in-stock cards with a front photo that aren't already listed can go in a lot.</p>
+    <input type="search" placeholder="Filter cards…" data-act-input="pickFilter" aria-label="Filter cards"><div class="pick-list">${cards.map(c => `<label data-hay="${esc((c.code + ' ' + cardFull(c)).toLowerCase())}"><input type="checkbox" name="cardIds" value="${c.id}"> <span class="code">${esc(c.code)}</span> ${esc(cardName(c))} <small class="muted">${esc(cardSet(c))} · ${money(c.value)}</small></label>`).join('')}</div>
+    ${mfoot('Next')}</form>`);
+};
+FORMS.lotPick = async f => {
+  const ids = new FormData(f).getAll('cardIds'); if (ids.length < 2) return toast('Pick at least 2 cards');
+  const btn = f.querySelector('[type=submit]'); btn.disabled = true; btn.textContent = 'Checking eBay…';
+  let info; try { info = await lotInfo(); } catch (e) { btn.disabled = false; btn.textContent = 'Next'; return toast(e.message); }
+  openLotForm(ids.map(cardById), info);
+};
+function lotCondition(info, condId, descVal) {
+  const conds = info.conditions || []; const c = conds.find(x => x.id === String(condId)) || conds.find(x => x.id === '4000') || conds[0];
+  if (!c) return { condition: 'USED_VERY_GOOD', descriptors: undefined, label: 'Used' };
+  const d = (c.descriptors || [])[0]; const vals = d ? d.values : [];
+  return { condition: EB_COND_ENUM[c.id] || 'USED_VERY_GOOD', descriptors: d && vals.length ? [{ name: d.id, values: [String(descVal || vals[0].id)] }] : undefined, label: c.name, cond: c, desc: d };
+}
+function openLotForm(cards, info) {
+  const cfg = ebCfg(); const auto = lotAuto(cards); const sum = r2(cards.reduce((a, c) => a + num(c.value), 0)); const cost = r2(cards.reduce((a, c) => a + unitCost(c), 0));
+  const lc = lotCondition(info); const conds = info.conditions || [];
+  const req = (info.aspects || []).filter(a => !(auto.aspects[a.name] || []).filter(Boolean).length || (a.mode === 'SELECTION_ONLY' && a.values.length && !(auto.aspects[a.name] || []).every(v => a.values.includes(v))));
+  const oz = r2(num(cfg.ozRaw) + 0.25 * (cards.length - 1));
+  openModal(`<form data-form="lotList" data-ids="${cards.map(c => c.id).join(',')}">${mhead('List a lot of ' + cards.length + ' on ' + ebModeName())}
+    <div class="eb-mode ${cfg.mode}">${cfg.mode === 'live' ? '<b>LIVE eBay:</b> this posts a real listing. When it sells, every card in it is marked sold.' : cfg.mode === 'sim' ? 'Simulator: nothing is sent to eBay.' : "eBay Sandbox: a test listing on eBay's practice site."}</div>
+    ${field('Title (80 characters max)', `<input name="title" value="${esc(auto.title)}" maxlength="80" required>`)}
+    <div class="fgrid">${field(`Price (cards add up to ${money(sum)})`, money_inp('price', r2(sum * 0.85), 'required'))}${field('Package weight (oz, packed)', inp('oz', oz, 'inputmode="decimal"'))}
+    ${conds.length ? field('Condition', `<select name="cond">${conds.map(c => `<option value="${esc(c.id)}"${c.id === (lc.cond && lc.cond.id) ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`) : ''}
+    ${lc.desc ? field(lc.desc.name || 'Card condition', `<select name="desc">${lc.desc.values.map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('')}</select>`) : ''}
+    ${req.map(a => field(a.name + ' (eBay requires this)', a.mode === 'SELECTION_ONLY' && a.values.length ? `<select name="asp:${esc(a.name)}">${a.values.map(v => `<option${(auto.aspects[a.name] || [])[0] === v ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>` : `<input name="asp:${esc(a.name)}" value="${esc((auto.aspects[a.name] || []).join(', '))}" required>`)).join('')}</div>
+    <label class="chk"><input type="checkbox" name="bestOffer" checked> Accept offers, auto-accept at ${cfg.accept}% and auto-decline under ${cfg.decline}%</label>
+    <small class="muted">Photos: one studio group photo of all ${cards.length} cards exactly as photographed, then each card's own front${cards.some(c => c.back) ? ' and back' : ''} (eBay allows 24). Cost of these cards: ${money(cost)}.</small>
+    <div class="list">${cards.map(c => `<div class="li"><span class="code">${esc(c.code)}</span><span class="grow">${esc(cardName(c))}</span><span class="num muted">${money(c.value)}</span></div>`).join('')}</div>
+    ${mfoot('Post lot')}</form>`);
+}
+FORMS.lotList = async f => {
+  const cfg = ebCfg(); const fd = new FormData(f); const cards = f.dataset.ids.split(',').map(cardById).filter(Boolean); const info = cfg.lotInfo;
+  const price = r2(num(fd.get('price'))); const title = String(fd.get('title') || '').trim(); const oz = num(fd.get('oz'));
+  if (!title || title.length > 80) return toast('Add a title up to 80 characters'); if (!(price > 0)) return toast('Set a price'); if (!(oz > 0)) return toast('Set a package weight');
+  const bo = fd.get('bestOffer') === 'on'; const acc = r2(price * cfg.accept / 100), dec = r2(price * cfg.decline / 100);
+  const btn = f.querySelector('[type=submit]');
+  if (ebIsLive() && f.dataset.sure !== '1') { f.dataset.sure = '1'; btn.textContent = `Tap again to list the lot for ${money(price)}`; return; }
+  btn.disabled = true; btn.textContent = 'Making photos…';
+  try {
+    const auto = lotAuto(cards); const aspects = {};
+    for (const [k, v] of Object.entries(auto.aspects)) { const vals = v.filter(Boolean); if (vals.length) aspects[k] = vals; }
+    for (const [k, v] of fd.entries()) if (k.startsWith('asp:') && String(v).trim()) aspects[k.slice(4)] = String(v).split(',').map(s => s.trim()).filter(Boolean);
+    const lc = lotCondition(info, fd.get('cond'), fd.get('desc'));
+    const sku = 'LOT-' + Date.now().toString(36).toUpperCase();
+    const desc = `<p><b>${esc(title)}</b></p><p>${cards.length} cards, all pictured:</p><ul>${cards.map(c => `<li>${esc(cardFull(c))}</li>`).join('')}</ul>`;
+    const urls = []; const up = async b => { if (urls.length >= 24) return; const r = await ebay('image', await b64OfBlob(b)); urls.push(r.imageUrl); };
+    const fronts = []; for (const c of cards) { const rec = await fileGet(c.front); if (rec) fronts.push(rec.blob); }
+    const grid = await studioGrid(fronts); if (grid) await up(await canvasBlob(grid));
+    btn.textContent = 'Uploading photos…';
+    for (const b of fronts) await up(b);
+    for (const c of cards) if (c.back && urls.length < 24) { const rec = await fileGet(c.back); if (rec) await up(rec.blob); }
+    const inventoryItem = { availability: { shipToLocationAvailability: { quantity: 1 } }, condition: lc.condition, ...(lc.descriptors ? { conditionDescriptors: lc.descriptors } : {}),
+      packageWeightAndSize: { packageType: 'PACKAGE_THICK_ENVELOPE', weight: { value: r2(oz), unit: 'OUNCE' }, dimensions: { length: 9, width: 6, height: Math.min(4, 0.5 + cards.length * 0.12), unit: 'INCH' } },
+      product: { title, description: desc, aspects, imageUrls: urls } };
+    const offer = { sku, marketplaceId: 'EBAY_US', format: 'FIXED_PRICE', availableQuantity: 1, categoryId: info.categoryId, listingDescription: desc, pricingSummary: { price: { value: price.toFixed(2), currency: 'USD' } },
+      listingPolicies: bo ? { bestOfferTerms: { bestOfferEnabled: true, autoAcceptPrice: { value: acc.toFixed(2), currency: 'USD' }, autoDeclinePrice: { value: dec.toFixed(2), currency: 'USD' } } } : {} };
+    btn.textContent = 'Posting…';
+    const r = await ebay('list', { inventoryItem, offer });
+    cfg.lots = cfg.lots || {}; cfg.lots[sku] = { sku, cardIds: cards.map(c => c.id), title, price, bestOffer: bo, accept: cfg.accept, decline: cfg.decline, offerId: r.offerId, listingId: r.listingId, url: r.url, listedAt: today(), status: 'active', mode: cfg.mode };
+    await saveSettings();
+    const tw = cards.reduce((a, c) => a + lotWeight(c), 0);
+    for (const c of cards) { c.ebay = { mode: cfg.mode, lot: sku, listingId: r.listingId, url: r.url, price: r2(price * lotWeight(c) / tw), listedAt: today(), status: 'lot' }; if (c.status !== 'listed') c.listedAt = today(); c.status = 'listed'; await save('cards', c, { quiet: true }); }
+    closeModal(); onChange('cards'); toast(`Lot listed on ${ebModeName()} · ${r.listingId}`);
+  } catch (e) { btn.disabled = false; btn.textContent = 'Post lot'; toast(e.message); }
+};
+function openLotManage(sku) {
+  const cfg = ebCfg(); const L = (cfg.lots || {})[sku]; if (!L) return toast('That lot is no longer listed');
+  const cards = L.cardIds.map(cardById).filter(Boolean);
+  openModal(`<form data-form="lotReprice" data-sku="${esc(sku)}">${mhead('Lot of ' + cards.length + ' on ' + ebModeName())}
+    <div class="list"><div class="li"><span class="grow">Listing</span><b>${L.url && !L.url.startsWith('#') ? `<a href="${esc(L.url)}" target="_blank" rel="noopener">${esc(L.listingId)} ↗</a>` : esc(L.listingId)}</b></div><div class="li"><span class="grow">Listed</span><b>${fmtDate(L.listedAt)} · ${daysSince(L.listedAt)} days</b></div>
+    ${cards.map(c => `<div class="li"><a class="grow" href="#/card/${c.id}" data-act="close">${esc(cardName(c))}</a><span class="num muted">${money(c.value)}</span></div>`).join('')}</div>
+    ${field('Price', money_inp('price', L.price, 'required'))}
+    <div class="sheet-foot">${cfg.mode === 'sim' ? `<button class="btn" type="button" data-act="lotSimSell" data-sku="${esc(sku)}">Simulate a sale</button>` : ''}<button class="btn danger" type="button" data-act="lotEnd" data-sku="${esc(sku)}">End lot</button><button class="btn" type="button" data-act="close">Close</button><button class="btn pri" type="submit">Change price</button></div></form>`, { narrow: true });
+}
+FORMS.lotReprice = async f => {
+  const cfg = ebCfg(); const L = cfg.lots[f.dataset.sku]; const price = r2(num(new FormData(f).get('price')));
+  try { await ebay('reprice', { sku: L.sku, price, accept: r2(price * L.accept / 100), decline: r2(price * L.decline / 100) }); L.price = price; await saveSettings(); closeModal(); toast('Lot price changed'); route(); } catch (e) { toast(e.message); }
+};
+A.lotEnd = async el => {
+  if (el.dataset.confirm !== '1') { el.dataset.confirm = '1'; el.textContent = 'Tap again to end the lot'; return; }
+  const cfg = ebCfg(); const L = cfg.lots[el.dataset.sku];
+  try { await ebay('end', { sku: L.sku }); L.status = 'ended'; for (const c of L.cardIds.map(cardById).filter(Boolean)) if (c.ebay && c.ebay.lot === L.sku && c.status === 'listed') { c.ebay.status = 'ended'; c.status = 'in_stock'; await save('cards', c, { quiet: true }); } await saveSettings(); closeModal(); onChange('cards'); toast('Lot ended. Its cards are back in stock.'); } catch (e) { toast(e.message); }
+};
+A.lotSimSell = async el => { try { await ebay('sell', { sku: el.dataset.sku }); closeModal(false); toast('A pretend buyer bought the lot. Syncing…'); await ebSync(true); } catch (e) { toast(e.message); } };
+// a sold lot: the sale is shared across its cards by value, so each card's profit stays right
+async function syncLotLine(o, l, key, lineTotal) {
+  const cfg = ebCfg(); const L = (cfg.lots || {})[l.sku]; if (!L) return 0;
+  const cards = L.cardIds.map(cardById).filter(c => c && live(c)); if (!cards.length) return 0;
+  const share = num(l.price) * (l.qty || 1) / lineTotal; const gross = r2(num(l.price) * (l.qty || 1) + num(o.shipping) * share), fees = r2(num(o.fee) * share);
+  const parts = splitCents(gross, cards.map(lotWeight)), fparts = splitCents(fees, cards.map(lotWeight)); let n = 0;
+  for (let i = 0; i < cards.length; i++) {
+    const c = cards[i]; const id = 't_eb_' + (key + '_' + c.id).replace(/[^\w-]/g, '_'); if (S.txns.some(t => t.id === id && !t.purged)) continue;
+    const cost = r2(unitCost(c) * (c.qty || 1)), net = r2(parts[i] - fparts[i]);
+    await logTxn({ id, cardId: c.id, type: 'sell', date: localDay(o.created), qty: c.qty || 1, amount: parts[i], shipping: 0, fees: fparts[i], net, cost, profit: r2(net - cost), platform: 'eBay', ebayLine: key + ':' + c.id, note: `${ebModeName()} order ${o.orderId} · lot of ${cards.length} · shipping label not counted yet` });
+    c.qty = 0; c.status = 'sold'; c.soldAt = localDay(o.created); if (c.ebay) c.ebay.status = 'sold'; await save('cards', c, { quiet: true }); n++;
+  }
+  L.status = 'sold'; return n;
+}
+function lotsPanel() {
+  const cfg = ebCfg(); const L = Object.values(cfg.lots || {}).filter(x => x.status === 'active');
+  return `<section class="panel"><h2>Lots <span class="muted" style="margin-left:auto;font-size:.8rem">several cards, one listing</span></h2>
+    ${L.length ? `<div class="list">${L.map(x => `<div class="li"><a class="grow" href="#" data-act="lotOpen" data-sku="${esc(x.sku)}">${esc(x.title)}</a><span class="num">${money(x.price)}</span><small class="muted">${x.cardIds.length} cards · ${daysSince(x.listedAt)}d</small></div>`).join('')}</div>` : '<div class="empty">No lots listed.</div>'}
+    <div class="row"><button class="btn pri" type="button" data-act="lotNew">Make a lot</button></div></section>`;
+}
+A.lotOpen = el => openLotManage(el.dataset.sku);
+
+/* ---------- hooks ---------- */
+{ const ve = V.ebay; V.ebay = (...a) => { const h = ve(...a); if (!ebOn()) return h; return h + lotsPanel() + marketPanel(); }; V.ebay.after = ve.after; }
+{ const vc = V.card; V.card = (...a) => Promise.resolve(vc(...a)).then(h => { const c = cardById(a[0]); if (!c || !ebOn() || typeof h !== 'string') return h;
+    const btn = `<button class="btn" data-act="marketCheck" data-id="${c.id}" type="button">Market check${c.market && c.market.n ? ' · ' + money(c.market.median) : ''}</button>`;
+    return h.replace(`<button class="btn" data-act="editCard" data-id="${c.id}"`, btn + `<button class="btn" data-act="editCard" data-id="${c.id}"`); }); V.card.after = vc.after; }
+{ const vd = V.dash; V.dash = (...a) => { const h = vd(...a); if (!ebOn() || typeof h !== 'string') return h; const n = offMarket().length; if (!n) return h;
+    return h.replace('<div class="queue">', `<div class="queue"><a class="q due" href="#/ebay"><span class="qn">${n}</span><span class="ql"><b>Values off market</b><small>25%+ from current eBay asking prices · review on the eBay page</small></span><span class="qgo" aria-hidden="true">→</span></a>`); }; V.dash.after = vd.after; }
+setTimeout(() => { marketAuto().catch(() => {}); }, 20000); // after the app settles and sales have synced
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
 async function loadDemo() {
