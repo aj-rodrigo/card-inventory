@@ -446,6 +446,8 @@ details.more > summary::-webkit-details-marker { display: none; }
 
 .calc .eb-offers { grid-column: 1 / -1; }
 .calc .eb-offers b { font-size: .95rem; }
+.eb-mode.live { border-color: var(--neg); background: color-mix(in srgb, var(--neg) 10%, var(--panel2)); }
+.eb-pill.live { color: var(--neg); border-color: var(--neg); }
 </style>
 <div id="app"></div>
 <div id="modal-root"></div>
@@ -4526,11 +4528,18 @@ const EB_GRADER = { PSA: '275010', BGS: '275013', SGC: '275016', CGC: '275015', 
 const EB_GRADE = { '10': '275020', '9.5': '275021', '9': '275022', '8.5': '275023', '8': '275024', '7.5': '275025', '7': '275026', '6.5': '275027', '6': '275028', '5.5': '275029', '5': '2750210', '4.5': '2750211', '4': '2750212', '3.5': '2750213', '3': '2750214', '2.5': '2750215', '2': '2750216', '1.5': '2750217', '1': '2750218', authentic: '2750219' };
 const EB_RAW = { 'Mint': '400010', 'Near Mint-Mint': '400010', 'Near Mint': '400010', 'Excellent-Mint': '400011', 'Excellent': '400011', 'Very Good': '400012', 'Good': '400012', 'Poor': '400013' };
 
-const EB_DEFAULTS = { mode: 'sim', worker: '', key: '', accept: 90, decline: 75, offerPct: 10, staleDays: 21, dropPct: 10, watches: [], orders: [], lastSync: '', ntfy: '', setup: null, sim: null };
+// the real Dugout talks to live eBay only; the test build only to the Simulator or the Sandbox
+const EB_LIVE = !window.DUGOUT_TEST; const EB_ENV = EB_LIVE ? 'production' : 'sandbox';
+const EB_DEFAULTS = { mode: EB_LIVE ? 'off' : 'sim', worker: '', key: '', accept: 90, decline: 75, offerPct: 10, staleDays: 21, dropPct: 10, watches: [], orders: [], lastSync: '', ntfy: '', setup: null, sim: null };
 // always the same object, so changes made across an await are never lost
 const ebCfg = () => { const c = S.settings.ebay || (S.settings.ebay = {}); for (const k in EB_DEFAULTS) if (!(k in c)) c[k] = Array.isArray(EB_DEFAULTS[k]) ? [] : EB_DEFAULTS[k]; return c; };
-const ebOn = () => !!ebCfg().mode && (ebCfg().mode === 'sim' || (ebCfg().worker && ebCfg().key));
-const ebModeName = () => (ebCfg().mode === 'sandbox' ? 'eBay Sandbox' : 'Simulator');
+// in the real Dugout the worker key stays on this device (not in synced data)
+const ebKey = () => { if (!EB_LIVE) return ebCfg().key; try { return localStorage.getItem('dugout.ebkey') || ''; } catch (e) { return ''; } };
+const setEbKey = k => { if (!EB_LIVE) { ebCfg().key = k; return; } try { localStorage.setItem('dugout.ebkey', k); } catch (e) {} };
+const ebModeOk = m => EB_LIVE ? m === 'live' : (m === 'sim' || m === 'sandbox');
+const ebOn = () => { const m = ebCfg().mode; return ebModeOk(m) && (m === 'sim' || !!(ebCfg().worker && ebKey())); };
+const ebIsLive = () => EB_LIVE && ebCfg().mode === 'live';
+const ebModeName = () => ({ sim: 'Simulator', sandbox: 'eBay Sandbox', live: 'eBay' })[ebCfg().mode] || 'eBay';
 const r2s = n => (Math.round(n * 100) / 100).toFixed(2);
 
 /* ---------- the listing, in eBay's own format (built here so it can be checked before anything is sent) ---------- */
@@ -4572,13 +4581,14 @@ function ebayListing(c, o) {
 async function ebay(op, body = {}) {
   const cfg = ebCfg();
   if (cfg.mode === 'sim') { await new Promise(r => setTimeout(r, 120)); return EBSIM[op] ? EBSIM[op](body) : Promise.reject(new Error('The simulator does not do ' + op)); }
-  if (!cfg.worker || !cfg.key) throw new Error('Add your Cloudflare Worker address and key in Settings → eBay first.');
+  if (!ebModeOk(cfg.mode)) throw new Error('eBay is off. Turn it on in Settings → eBay.');
+  if (!cfg.worker || !ebKey()) throw new Error('Add your Cloudflare Worker address and key in Settings → eBay first.');
   const url = cfg.worker.replace(/\/+$/, '') + '/api/' + op;
-  let r; try { r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-dugout-key': cfg.key }, body: JSON.stringify(body) }); }
+  let r; try { r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-dugout-key': ebKey() }, body: JSON.stringify(body) }); }
   catch (e) { throw new Error("Couldn't reach your worker. Check the address and your connection."); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.error) throw new Error(j.error || `eBay said ${r.status}`);
-  if (j.env && j.env !== 'sandbox') throw new Error('Your worker is set to live eBay. This test build only talks to the sandbox.');
+  if (j.env !== EB_ENV) throw new Error(EB_LIVE ? 'That worker is not your live eBay worker (it says ' + (j.env || 'nothing') + '). Use the dugout-ebay-live address.' : 'Your worker is set to live eBay. This test build only talks to the sandbox.');
   return j;
 }
 const b64OfFile = async id => { const rec = await fileGet(id); if (!rec) return null; const buf = new Uint8Array(await rec.blob.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000)); return { base64: btoa(s), type: rec.blob.type || 'image/jpeg', name: rec.name || 'card.jpg' }; };
@@ -4626,13 +4636,15 @@ const EBSIM = {
 
 /* ---------- card page: list / manage on eBay ---------- */
 const suggestedPrice = c => { const cs = typeof compStats === 'function' ? compStats(c) : null; return r2(cs ? cs.avg : num(c.value) || unitCost(c) * 1.3 || 0); };
+const listEbayManual = A.listEbay;
 A.listEbay = el => {
   const c = cardById(el.dataset.id); const cfg = ebCfg();
+  if (!ebOn() && EB_LIVE) return listEbayManual(el);
   if (!ebOn()) return openModal(`<div>${mhead('Connect eBay first')}<p>Pick the Simulator (no account needed) or set up the eBay Sandbox in Settings → eBay.</p><div class="sheet-foot"><a class="btn pri" href="#/settings" data-act="close">Open Settings</a></div></div>`, { narrow: true });
   if (c.ebay && c.ebay.listingId && c.ebay.status !== 'ended') return openEbayManage(c);
   const price = suggestedPrice(c); const t = typeof listingTitle === 'function' ? listingTitle(c) : cardName(c);
   openModal(`<form data-form="ebList" data-id="${c.id}">${mhead('List on ' + ebModeName())}
-    <div class="eb-mode ${cfg.mode}">${cfg.mode === 'sim' ? 'Simulator: nothing is sent to eBay.' : 'eBay Sandbox: a test listing on eBay\'s practice site. No real buyers.'}</div>
+    <div class="eb-mode ${cfg.mode}">${cfg.mode === 'sim' ? 'Simulator: nothing is sent to eBay.' : cfg.mode === 'live' ? '<b>LIVE eBay:</b> this posts a real listing. Real buyers can buy it at this price.' : 'eBay Sandbox: a test listing on eBay\'s practice site. No real buyers.'}</div>
     ${field('Title (80 characters max)', `<input name="title" id="eb-title" value="${esc(t)}" maxlength="80" required><small class="muted"><span id="eb-tlen">${t.length}</span>/80</small>`)}
     <div class="fgrid">${field('Price', money_inp('price', price, 'required id="eb-price"'))}${field('Photos', `<input value="${[c.front && 'front', c.back && 'back'].filter(Boolean).join(' + ') || 'none'}" disabled>`)}</div>
     <label class="chk"><input type="checkbox" name="bestOffer" checked> Accept offers, with automatic answers</label>
@@ -4655,7 +4667,8 @@ FORMS.ebList = async f => {
   const c = cardById(f.dataset.id); const fd = new FormData(f); const cfg = ebCfg();
   const o = { title: fd.get('title'), price: fd.get('price'), bestOffer: fd.get('bestOffer') === 'on', accept: num(fd.get('accept')), decline: num(fd.get('decline')) };
   const L = ebayListing(c, o); if (L.errs.length) return toast(L.errs[0]);
-  const btn = f.querySelector('[type=submit]'); btn.disabled = true; btn.textContent = 'Uploading photos…';
+  const btn = f.querySelector('[type=submit]');
+  if (ebIsLive() && f.dataset.sure !== '1') { f.dataset.sure = '1'; btn.textContent = `Tap again to list for ${money(num(o.price))}`; return; } btn.disabled = true; btn.textContent = 'Uploading photos…';
   try {
     for (const side of ['front', 'back']) if (c[side]) { const img = await b64OfFile(c[side]); if (img) { const r = await ebay('image', img); L.inventoryItem.product.imageUrls.push(r.imageUrl); } }
     btn.textContent = 'Posting…';
@@ -4671,7 +4684,7 @@ FORMS.ebList = async f => {
 };
 function openEbayManage(c) {
   const e = c.ebay; const cfg = ebCfg();
-  openModal(`<form data-form="ebReprice" data-id="${c.id}">${mhead('On ' + (e.mode === 'sandbox' ? 'eBay Sandbox' : 'the Simulator'))}
+  openModal(`<form data-form="ebReprice" data-id="${c.id}">${mhead('On ' + ({ sandbox: 'eBay Sandbox', sim: 'the Simulator', live: 'eBay' })[e.mode] || 'eBay')}
     <div class="list"><div class="li"><span class="grow">Listing</span><b>${e.url && !e.url.startsWith('#') ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.listingId)} ↗</a>` : esc(e.listingId)}</b></div>
     <div class="li"><span class="grow">Price</span><b class="num">${money(e.price)}</b></div><div class="li"><span class="grow">Listed</span><b>${fmtDate(e.listedAt)} · ${daysSince(e.listedAt)} days</b></div>
     ${e.bestOffer ? `<div class="li"><span class="grow">Offers</span><b>accept ≥ ${money(e.price * e.accept / 100)} · decline &lt; ${money(e.price * e.decline / 100)}</b></div>` : ''}</div>
@@ -4704,7 +4717,7 @@ async function ebSync(loud) {
       const c = S.cards.find(x => live(x) && x.code === l.sku); if (!c) continue;
       const share = num(l.price) * (l.qty || 1) / lineTotal; const q = Math.min(l.qty || 1, c.qty || 1);
       const gross = r2(num(l.price) * q + num(o.shipping) * share), fees = r2(num(o.fee) * share), cost = r2(unitCost(c) * q), net = r2(gross - fees);
-      await logTxn({ cardId: c.id, type: 'sell', date: localDay(o.created), qty: q, amount: gross, shipping: 0, fees, net, cost, profit: r2(net - cost), platform: 'eBay', ebayLine: key, note: `${cfg.mode === 'sim' ? 'Simulator' : 'eBay Sandbox'} order ${o.orderId} · shipping label not counted yet` });
+      await logTxn({ id: 't_eb_' + key.replace(/[^\w-]/g, '_'), cardId: c.id, type: 'sell', date: localDay(o.created), qty: q, amount: gross, shipping: 0, fees, net, cost, profit: r2(net - cost), platform: 'eBay', ebayLine: key, note: `${ebModeName()} order ${o.orderId} · shipping label not counted yet` });
       c.qty = (c.qty || 0) - q; if (c.qty <= 0) { c.qty = 0; c.status = 'sold'; c.soldAt = localDay(o.created); }
       if (c.ebay) c.ebay.status = 'sold';
       await save('cards', c, { quiet: true }); n++;
@@ -4721,7 +4734,7 @@ const toShip = () => (ebCfg().orders || []).filter(o => o.status !== 'FULFILLED'
 
 /* ---------- the eBay page: ship, reprice, offers ---------- */
 V.ebay = () => {
-  const cfg = ebCfg(); if (!ebOn()) return `<div class="page-head"><h1>eBay</h1></div><section class="panel"><h2>Not connected</h2><p>Choose the Simulator to try everything with pretend data, or connect the eBay Sandbox.</p><div class="row"><a class="btn pri" href="#/settings">Set up in Settings</a></div></section>`;
+  const cfg = ebCfg(); if (!ebOn()) return `<div class="page-head"><h1>eBay</h1></div><section class="panel"><h2>Not connected</h2><p>${EB_LIVE ? 'Turn on eBay in Settings with your live worker address and key.' : 'Choose the Simulator to try everything with pretend data, or connect the eBay Sandbox.'}</p><div class="row"><a class="btn pri" href="#/settings">Set up in Settings</a></div></section>`;
   const listed = S.cards.filter(live).filter(c => c.ebay && c.ebay.status === 'active');
   const stale = listed.filter(c => daysSince(c.ebay.listedAt) >= cfg.staleDays);
   const ready = S.cards.filter(live).filter(c => c.status === 'in_stock' && c.front && !(c.ebay && c.ebay.status === 'active'));
@@ -4747,12 +4760,14 @@ V.ebay = () => {
   </section>`;
 };
 A.ebDropAll = async el => {
+  if (ebIsLive() && el.dataset.sure !== '1') { el.dataset.sure = '1'; el.textContent = 'Tap again to drop real prices'; return; }
   const cfg = ebCfg(); const stale = S.cards.filter(live).filter(c => c.ebay && c.ebay.status === 'active' && daysSince(c.ebay.listedAt) >= cfg.staleDays);
   el.disabled = true; let ok = 0;
   for (const c of stale) { try { await ebReprice(c, r2(c.ebay.price * (1 - cfg.dropPct / 100))); c.ebay.listedAt = today(); await save('cards', c, { quiet: true }); ok++; } catch (e) { toast(cardName(c) + ': ' + e.message); } }
   onChange('cards'); toast(`Dropped ${ok} price${ok === 1 ? '' : 's'} ${cfg.dropPct}%`);
 };
 A.ebOffers = async el => {
+  if (ebIsLive() && el.dataset.sure !== '1') { el.dataset.sure = '1'; el.textContent = 'Tap again to send real offers'; return; }
   const cfg = ebCfg(); el.disabled = true;
   try {
     const r = await ebay('eligible'); let sent = 0, items = 0;
@@ -4772,7 +4787,7 @@ V.deals = () => {
   const cfg = ebCfg(); const W = cfg.watches || [];
   return `
   <div class="page-head"><h1>Deals</h1><div class="actions"><span class="pill eb-pill ${cfg.mode}">${ebModeName()}</span><button class="btn" data-act="dfAll" type="button">Check all</button><button class="btn pri" data-act="dfNew" type="button">+ Watch</button></div></div>
-  <p class="muted" style="margin:0">Each watch searches eBay for a card and flags listings priced under its market value. Buying stays your tap: open the listing and buy it on eBay.${cfg.mode === 'sandbox' ? ' Phone alerts run from your worker every 15 minutes.' : ''}</p>
+  <p class="muted" style="margin:0">Each watch searches eBay for a card and flags listings priced under its market value. Buying stays your tap: open the listing and buy it on eBay.${cfg.mode !== 'sim' ? ' Phone alerts run from your worker every 15 minutes.' : ''}</p>
   ${W.length ? W.map(w => dealBlock(w)).join('') : `<section class="panel"><div class="empty">No watches yet. Add one for a card you like to flip, like "Wembanyama Prizm Silver PSA 10".</div><div class="row"><button class="btn pri" data-act="dfNew" type="button">+ Add a watch</button>${S.cards.some(live) ? '<button class="btn" data-act="dfFromNiche" type="button">Add watches from my best niches</button>' : ''}</div></section>`}`;
 };
 function dealBlock(w) {
@@ -4818,29 +4833,30 @@ A.dfFromNiche = async () => { // the players you profit on most become watches
   const cfg = ebCfg(); for (const p of pick) if (!cfg.watches.some(w => w.q === p)) cfg.watches.push({ id: 'w_' + uid(), q: p + ' rookie', market: '', pct: 25, max: '' });
   await saveSettings(); await pushWatches(); route(); toast(`Added ${pick.length} watch${pick.length === 1 ? '' : 'es'}`);
 };
-async function pushWatches() { if (ebCfg().mode !== 'sandbox') return; try { await ebay('watches', { watches: ebCfg().watches, ntfy: ebCfg().ntfy }); } catch (e) { toast('Watches saved here, but not on your worker: ' + e.message); } }
+async function pushWatches() { if (ebCfg().mode === 'sim' || !ebOn()) return; try { await ebay('watches', { watches: ebCfg().watches, ntfy: ebCfg().ntfy }); } catch (e) { toast('Watches saved here, but not on your worker: ' + e.message); } }
 
 /* ---------- settings ---------- */
 function ebaySettingsPanel() {
   const cfg = ebCfg(); const st = cfg.setup;
-  return `<section class="panel" id="ebay-settings"><h2>eBay <span class="pill eb-pill ${cfg.mode}" style="margin-left:8px">test build</span></h2>
+  return `<section class="panel" id="ebay-settings"><h2>eBay <span class="pill eb-pill ${cfg.mode}" style="margin-left:8px">${EB_LIVE ? (cfg.mode === 'live' ? 'LIVE' : 'off') : 'test build'}</span></h2>
     <form class="fgrid" data-form="ebCfg">
-      ${field('Mode', `<select name="mode"><option value="sim"${cfg.mode === 'sim' ? ' selected' : ''}>Simulator (no account, nothing leaves this device)</option><option value="sandbox"${cfg.mode === 'sandbox' ? ' selected' : ''}>eBay Sandbox (through your worker)</option><option disabled>Live eBay (locked in the test build)</option></select>`)}
-      ${field('Worker address', inp('worker', cfg.worker, 'placeholder="https://dugout-ebay.yourname.workers.dev" autocomplete="off"'))}
-      ${field('Worker key', inp('key', cfg.key, 'type="password" placeholder="the DUGOUT_KEY secret" autocomplete="off"'))}
+      ${field('Mode', EB_LIVE ? `<select name="mode"><option value="off"${cfg.mode !== 'live' ? ' selected' : ''}>Off (list by hand, like before)</option><option value="live"${cfg.mode === 'live' ? ' selected' : ''}>Live eBay (through your live worker)</option></select>` : `<select name="mode"><option value="sim"${cfg.mode === 'sim' ? ' selected' : ''}>Simulator (no account, nothing leaves this device)</option><option value="sandbox"${cfg.mode === 'sandbox' ? ' selected' : ''}>eBay Sandbox (through your worker)</option><option disabled>Live eBay (locked in the test build)</option></select>`)}
+      ${field('Worker address', inp('worker', cfg.worker, `placeholder="${EB_LIVE ? 'https://dugout-ebay-live.yourname.workers.dev' : 'https://dugout-ebay.yourname.workers.dev'}" autocomplete="off"`))}
+      ${field('Worker key', inp('key', ebKey(), `type="password" placeholder="${EB_LIVE ? 'the live DUGOUT_KEY (kept on this device only)' : 'the DUGOUT_KEY secret'}" autocomplete="off"`))}
       ${field('Phone alerts (ntfy topic)', inp('ntfy', cfg.ntfy, 'placeholder="dugout-deals-7f3k2" autocomplete="off"'))}
       ${field('Auto-accept offers at (% of price)', inp('accept', cfg.accept, 'inputmode="numeric"'))}${field('Auto-decline under (% of price)', inp('decline', cfg.decline, 'inputmode="numeric"'))}
       ${field('Offer to watchers (% off)', inp('offerPct', cfg.offerPct, 'inputmode="numeric"'))}${field('Stale after (days)', inp('staleDays', cfg.staleDays, 'inputmode="numeric"'))}${field('Price drop for stale (%)', inp('dropPct', cfg.dropPct, 'inputmode="numeric"'))}
-      <div class="row wide"><button class="btn pri" type="submit">Save</button><button class="btn" type="button" data-act="ebTest">Test connection</button>${cfg.mode === 'sandbox' && cfg.worker ? `<a class="btn" href="${esc(cfg.worker.replace(/\/+$/, ''))}/auth/start?key=${encodeURIComponent(cfg.key || '')}" target="_blank" rel="noopener">Sign in to eBay Sandbox ↗</a>` : ''}<button class="btn" type="button" data-act="ebSetup">Load shipping and return policies</button></div>
+      <div class="row wide"><button class="btn pri" type="submit">Save</button><button class="btn" type="button" data-act="ebTest">Test connection</button>${(cfg.mode === 'sandbox' || cfg.mode === 'live') && cfg.worker ? `<a class="btn" href="${esc(cfg.worker.replace(/\/+$/, ''))}/auth/start?key=${encodeURIComponent(ebKey())}" target="_blank" rel="noopener">Sign in to ${cfg.mode === 'live' ? 'eBay' : 'eBay Sandbox'} ↗</a>` : ''}<button class="btn" type="button" data-act="ebSetup">Load shipping and return policies</button></div>
     </form>
     ${st ? `<form class="fgrid" data-form="ebPolicies">${field('Shipping policy', `<select name="fulfillmentPolicyId">${opts(st.fulfillment.map(p => [p.id, p.name]), st.chosen && st.chosen.fulfillmentPolicyId)}</select>`)}${field('Payment policy', `<select name="paymentPolicyId">${opts(st.payment.map(p => [p.id, p.name]), st.chosen && st.chosen.paymentPolicyId)}</select>`)}${field('Return policy', `<select name="returnPolicyId">${opts(st.ret.map(p => [p.id, p.name]), st.chosen && st.chosen.returnPolicyId)}</select>`)}<div class="row wide"><button class="btn" type="submit">Use these policies</button>${st.chosen ? '<small class="muted">Saved</small>' : ''}</div></form>` : ''}
-    <small class="muted">Your eBay keys live in your worker, not in Dugout. This test build keeps its own separate data and never syncs to your real inventory.</small>
+    <small class="muted">Your eBay keys live in your worker, not in Dugout. ${EB_LIVE ? 'The worker key stays on this device, so enter it once on your iPhone and once on your PC.' : 'This test build keeps its own separate data and never syncs to your real inventory.'}</small>
   </section>`;
 }
-FORMS.ebCfg = async f => { const fd = new FormData(f); const cfg = ebCfg(); for (const k of ['mode', 'worker', 'key', 'ntfy']) cfg[k] = String(fd.get(k) || '').trim(); for (const k of ['accept', 'decline', 'offerPct', 'staleDays', 'dropPct']) cfg[k] = Math.max(1, num(fd.get(k)) || cfg[k]);
+FORMS.ebCfg = async f => { const fd = new FormData(f); const cfg = ebCfg(); for (const k of ['mode', 'worker', 'ntfy']) cfg[k] = String(fd.get(k) || '').trim(); setEbKey(String(fd.get('key') || '').trim()); for (const k of ['accept', 'decline', 'offerPct', 'staleDays', 'dropPct']) cfg[k] = Math.max(1, num(fd.get(k)) || cfg[k]);
   if (cfg.decline >= cfg.accept) { cfg.decline = Math.max(1, cfg.accept - 10); toast('Auto-decline must be below auto-accept, so it was lowered to ' + cfg.decline + '%'); }
   await saveSettings(); await pushWatches(); toast('eBay settings saved'); route(); };
-A.ebTest = async () => { try { const r = await ebay('status'); toast(r.connected ? `Connected to ${r.env === 'simulator' ? 'the Simulator' : 'eBay ' + r.env}` : 'Worker found, but not signed in to eBay yet. Use "Sign in to eBay Sandbox".'); } catch (e) { toast(e.message); } };
+A.ebTest = async el => { const f = el && el.closest('form[data-form=ebCfg]'); if (f) { const fd = new FormData(f); const cfg = ebCfg(); for (const k of ['mode', 'worker']) cfg[k] = String(fd.get(k) || '').trim(); setEbKey(String(fd.get('key') || '').trim()); await saveSettings(); } // test what's typed, saved or not
+  try { const r = await ebay('status'); toast(r.connected ? `Connected to ${r.env === 'simulator' ? 'the Simulator' : 'eBay ' + r.env}` : `Worker found, but not signed in to eBay yet. Use "Sign in to ${EB_LIVE ? 'eBay' : 'eBay Sandbox'}".`); } catch (e) { toast(e.message); } };
 A.ebSetup = async () => { try { const r = await ebay('setup', {}); const cfg = ebCfg(); cfg.setup = { fulfillment: r.fulfillment || [], payment: r.payment || [], ret: r.ret || [], chosen: cfg.setup && cfg.setup.chosen }; await saveSettings(); toast(r.fulfillment && r.fulfillment.length ? 'Policies loaded. Pick them below.' : 'No policies yet. Create shipping, payment and return policies on eBay first.'); route(); } catch (e) { toast(e.message); } };
 FORMS.ebPolicies = async f => { const fd = new FormData(f); const cfg = ebCfg(); const ch = { fulfillmentPolicyId: fd.get('fulfillmentPolicyId'), paymentPolicyId: fd.get('paymentPolicyId'), returnPolicyId: fd.get('returnPolicyId') };
   try { await ebay('policies', ch); cfg.setup.chosen = ch; await saveSettings(); toast('Policies saved'); route(); } catch (e) { toast(e.message); } };
@@ -4848,7 +4864,7 @@ FORMS.ebPolicies = async f => { const fd = new FormData(f); const cfg = ebCfg();
 /* ---------- hook into the rest of the app ---------- */
 { const i = NAV.findIndex(n => Array.isArray(n) && n[0] === 'sales'); NAV.splice(i + 1, 0, ['ebay', 'eBay'], ['deals', 'Deals']); }
 { const vs = V.settings; V.settings = (...a) => { const h = vs(...a); return Promise.resolve(h).then(html => html.replace('<div class="cols">', () => ebaySettingsPanel() + '<div class="cols">')); }; V.settings.after = vs.after; }
-{ const vd = V.dash; V.dash = (...a) => { let h = vd(...a); const n = toShip().length;
+{ const vd = V.dash; V.dash = (...a) => { let h = vd(...a); if (EB_LIVE && !ebOn()) return h; const n = toShip().length;
     const row = `<a class="q${n ? ' due' : ''}" href="#/ebay"><span class="qn">${n}</span><span class="ql"><b>Orders to ship</b><small>${ebOn() ? 'From ' + ebModeName() + ' · tap Sync sales on the eBay page' : 'Connect eBay in Settings'}</small></span><span class="qgo" aria-hidden="true">→</span></a>`;
     return h.replace('<div class="queue">', '<div class="queue">' + row); }; V.dash.after = vd.after; }
 let ebBootSync = false;
