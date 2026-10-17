@@ -2417,6 +2417,23 @@ const TEAMS = (() => {
   return t;
 })();
 const TEAM_NAMES = Object.keys(TEAMS).sort((a, b) => b.length - a.length);
+/* the city that goes with each team name, by sport ("Mavericks" -> "Dallas Mavericks") */
+const TEAM_CITY = (() => {
+  const t = { Basketball: {}, Football: {}, Baseball: {}, Hockey: {} };
+  const add = (sport, list) => list.split(';').forEach(x => { const [nick, full] = x.split('='); t[sport][nick.trim()] = full.trim(); });
+  add('Basketball', 'Hawks=Atlanta Hawks;Celtics=Boston Celtics;Nets=Brooklyn Nets;Hornets=Charlotte Hornets;Bulls=Chicago Bulls;Cavaliers=Cleveland Cavaliers;Cavs=Cleveland Cavaliers;Mavericks=Dallas Mavericks;Mavs=Dallas Mavericks;Nuggets=Denver Nuggets;Pistons=Detroit Pistons;Warriors=Golden State Warriors;Rockets=Houston Rockets;Pacers=Indiana Pacers;Clippers=Los Angeles Clippers;Lakers=Los Angeles Lakers;Grizzlies=Memphis Grizzlies;Heat=Miami Heat;Bucks=Milwaukee Bucks;Timberwolves=Minnesota Timberwolves;Pelicans=New Orleans Pelicans;Knicks=New York Knicks;Thunder=Oklahoma City Thunder;Magic=Orlando Magic;76ers=Philadelphia 76ers;Sixers=Philadelphia 76ers;Suns=Phoenix Suns;Trail Blazers=Portland Trail Blazers;Blazers=Portland Trail Blazers;Kings=Sacramento Kings;Spurs=San Antonio Spurs;Raptors=Toronto Raptors;Jazz=Utah Jazz;Wizards=Washington Wizards;SuperSonics=Seattle SuperSonics;Sonics=Seattle SuperSonics;Bullets=Washington Bullets;Bobcats=Charlotte Bobcats;Fever=Indiana Fever;Sky=Chicago Sky;Aces=Las Vegas Aces;Liberty=New York Liberty;Lynx=Minnesota Lynx;Mercury=Phoenix Mercury;Sparks=Los Angeles Sparks;Storm=Seattle Storm;Wings=Dallas Wings;Dream=Atlanta Dream;Sun=Connecticut Sun;Valkyries=Golden State Valkyries');
+  add('Football', 'Cardinals=Arizona Cardinals;Falcons=Atlanta Falcons;Ravens=Baltimore Ravens;Bills=Buffalo Bills;Panthers=Carolina Panthers;Bears=Chicago Bears;Bengals=Cincinnati Bengals;Browns=Cleveland Browns;Cowboys=Dallas Cowboys;Broncos=Denver Broncos;Lions=Detroit Lions;Packers=Green Bay Packers;Texans=Houston Texans;Colts=Indianapolis Colts;Jaguars=Jacksonville Jaguars;Chiefs=Kansas City Chiefs;Raiders=Las Vegas Raiders;Chargers=Los Angeles Chargers;Rams=Los Angeles Rams;Dolphins=Miami Dolphins;Vikings=Minnesota Vikings;Patriots=New England Patriots;Saints=New Orleans Saints;Giants=New York Giants;Jets=New York Jets;Eagles=Philadelphia Eagles;Steelers=Pittsburgh Steelers;49ers=San Francisco 49ers;Niners=San Francisco 49ers;Seahawks=Seattle Seahawks;Buccaneers=Tampa Bay Buccaneers;Bucs=Tampa Bay Buccaneers;Titans=Tennessee Titans;Commanders=Washington Commanders;Redskins=Washington Redskins;Oilers=Houston Oilers');
+  add('Baseball', 'Diamondbacks=Arizona Diamondbacks;Braves=Atlanta Braves;Orioles=Baltimore Orioles;Red Sox=Boston Red Sox;Cubs=Chicago Cubs;White Sox=Chicago White Sox;Reds=Cincinnati Reds;Guardians=Cleveland Guardians;Rockies=Colorado Rockies;Tigers=Detroit Tigers;Astros=Houston Astros;Royals=Kansas City Royals;Angels=Los Angeles Angels;Dodgers=Los Angeles Dodgers;Marlins=Miami Marlins;Brewers=Milwaukee Brewers;Twins=Minnesota Twins;Mets=New York Mets;Yankees=New York Yankees;Athletics=Athletics;Phillies=Philadelphia Phillies;Pirates=Pittsburgh Pirates;Padres=San Diego Padres;Giants=San Francisco Giants;Mariners=Seattle Mariners;Cardinals=St. Louis Cardinals;Rays=Tampa Bay Rays;Rangers=Texas Rangers;Blue Jays=Toronto Blue Jays;Nationals=Washington Nationals;Expos=Montreal Expos;Devil Rays=Tampa Bay Devil Rays;Indians=Cleveland Indians');
+  add('Hockey', 'Ducks=Anaheim Ducks;Bruins=Boston Bruins;Sabres=Buffalo Sabres;Flames=Calgary Flames;Hurricanes=Carolina Hurricanes;Blackhawks=Chicago Blackhawks;Avalanche=Colorado Avalanche;Blue Jackets=Columbus Blue Jackets;Stars=Dallas Stars;Red Wings=Detroit Red Wings;Oilers=Edmonton Oilers;Panthers=Florida Panthers;Kings=Los Angeles Kings;Wild=Minnesota Wild;Canadiens=Montreal Canadiens;Predators=Nashville Predators;Devils=New Jersey Devils;Islanders=New York Islanders;Rangers=New York Rangers;Senators=Ottawa Senators;Flyers=Philadelphia Flyers;Penguins=Pittsburgh Penguins;Sharks=San Jose Sharks;Kraken=Seattle Kraken;Blues=St. Louis Blues;Lightning=Tampa Bay Lightning;Maple Leafs=Toronto Maple Leafs;Canucks=Vancouver Canucks;Golden Knights=Vegas Golden Knights;Capitals=Washington Capitals;Jets=Winnipeg Jets;Utah Hockey Club=Utah Hockey Club;Mammoth=Utah Mammoth;Nordiques=Quebec Nordiques;Whalers=Hartford Whalers;Thrashers=Atlanta Thrashers;Coyotes=Arizona Coyotes');
+  return t;
+})();
+// "Mavericks" -> "Dallas Mavericks"; an already-full name or one we can't place stays as it is
+function fullTeam(team, sport) {
+  const n = String(team || '').trim(); if (!n) return n;
+  for (const sp of sport && TEAM_CITY[sport] ? [sport] : Object.keys(TEAM_CITY)) for (const full of Object.values(TEAM_CITY[sp])) if (full.toLowerCase() === n.toLowerCase()) return full;
+  const key = Object.keys(TEAMS).find(k => k.toLowerCase() === n.toLowerCase()) || n;
+  const sp = sport && TEAM_CITY[sport] ? sport : TEAMS[key]; return (sp && TEAM_CITY[sp] && TEAM_CITY[sp][key]) || n;
+}
 const STOP = new Set(('card cards rookie rc rpa auto autograph autographed autos signed signature patch jersey relic memorabilia mem refractor parallel base insert sp ssp case hit lot of the and with graded raw ' +
   'psa bgs sgc cgc tag beckett bvg gem mint mt nm ex near new sealed nba nfl mlb nhl wnba mls football basketball baseball hockey soccer item items price qty quantity sold by free shipping numbered serial ' +
   'short print variation var image photo color prizms pack box blaster hobby retail first 1st edition bowman topps panini upper deck leaf fleer skybox score chrome draft prospect prospects ' +
@@ -3781,8 +3798,8 @@ const POS_LINE = /^(?:G\/F|F\/C|G|F|C|PG|SG|SF|PF|QB|RB|WR|TE|K|P|LB|DB|CB|S|DE|
 function teamFromPosLine(l) {
   const m = l.match(POS_LINE); if (!m) return null; const t = m[1].trim().toUpperCase();
   for (const n of TEAM_NAMES) if (n.toUpperCase() === t) return n;
-  let best = null, bd = 9; for (const n of TEAM_NAMES) { const u = n.toUpperCase(); if (u.length < 5) continue; const d = lev(t, u, 2); if (d < bd) { bd = d; best = n; } }
-  return bd <= 2 ? best : null;
+  let best = null, bd = 9; for (const n of TEAM_NAMES) { const u = n.toUpperCase(); if (u.length < 5) continue; const d = lev(t, u, 2); if (d < bd || (d === bd && best && Math.abs(u.length - t.length) < Math.abs(best.length - t.length))) { bd = d; best = n; } }
+  return best && bd <= (best.length >= 8 ? 2 : 1) ? best : null; // short names allow one misread letter (BULLS is not BULLETS)
 }
 function parseCardBack(backText, frontText = '') {
   const lines = String(backText || '').split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(l => l.length > 1);
@@ -3807,6 +3824,10 @@ function parseCardBack(backText, frontText = '') {
     if (new RegExp(`\\b(?:${e}|${e.toUpperCase()})\\b`).test(both)) { c.team = n; break; }
   }
   if (!c.sport && c.team && TEAMS[c.team]) c.sport = TEAMS[c.team];
+  // a printed city settles it ("DALLAS MAVERICKS", "LOS ANGELES LAKERS"); otherwise add the team's city
+  if (c.team) { const sp = c.sport || TEAMS[c.team]; const cands = Object.entries(TEAM_CITY).filter(([s2]) => !sp || s2 === sp).map(([, m]) => m[c.team]).filter(Boolean);
+    const printed = cands.find(f => new RegExp(f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*'), 'i').test(both)); c.team = printed || (cands.length === 1 ? cands[0] : fullTeam(c.team, sp));
+    if (!c.sport) for (const [s2, m] of Object.entries(TEAM_CITY)) if (Object.values(m).includes(c.team) && Object.entries(TEAM_CITY).filter(([, m2]) => Object.values(m2).includes(c.team)).length === 1) c.sport = s2; }
   // card number: "CARD 4 OF 21", "No. 136", "#136", or a lone number/code in the top or bottom lines
   let num = all.match(/\bCARD\s*#?\s*([A-Z]{0,4}-?\d{1,4})\b/i) || all.match(/(?:^|\s)(?:No\.?|#)\s?([A-Z]{0,4}-?\d{1,4}[A-Z]?)\b/i);
   const fixCode = l => l.replace(/^([A-Z]{1,5}-?)?([0-9lI|O]{1,4})$/, (m, a, b) => (a || '') + b.replace(/[lI|]/g, '1').replace(/O/g, '0')); // OCR reads 1 as l, 0 as O
@@ -3856,6 +3877,68 @@ function lastNameOnly(text, sport) {
     const near = []; for (const m of pools) for (const k of m.keys()) if (k.length === w.length && lev(k, w, 1) === 1) near.push(...m.get(k));
     if (near.length === 1) return { full: fold(near[0]), score: 2.8, exact: false, gap: 9 }; }
   return null;
+}
+/* the card number: read the top corners and header enlarged, in both polarities, and sideways for landscape cards.
+   Best evidence wins: "CARD 4 OF 21" > "No. 12" / "#12" > a code like MT-11 or HM-JBE > a lone number in a corner. */
+const NUM_POS = /^(?:G|F|C|PG|SG|SF|PF|QB|RB|WR|TE|LB|DB|CB|OF|SS|SP|RP|DH)-/;
+function numberCands(text, region) {
+  const t = String(text || '').toUpperCase(); const out = [];
+  for (const m of t.matchAll(/CARD\s*(?:NO\.?|#)?\s*([A-Z]{0,4}-?\d{1,4})\s*(?:OF|\/)\W{0,3}[A-Z]?\d/g)) out.push([0, m[1]]);
+  for (const m of t.matchAll(/\bCA(?:RD)?\W*\s+(\d{1,3})\s*\n?[\s\S]{0,12}?\bOF\b/g)) out.push([0.5, m[1]]);
+  for (const m of t.matchAll(/(?:^|\s)(?:NO\.|#)\s?([A-Z]{0,4}-?\d{1,4}[A-Z]?)\b/g)) out.push([1, m[1]]);
+  for (const m of t.matchAll(/(?<![\w-])([A-Z]{1,4}-[A-Z0-9]{1,5})(?![\w-])/g)) { const v = m[1];
+    if (NUM_POS.test(v) || /^(ALL|NO|ONE|TWO|RE|CO|NON|PRE|SELF|HALL|MID|LONG|TOP)-/.test(v)) continue;
+    if (/\d/.test(v) || (region !== 'rot' && /^[A-Z]{1,3}-[A-Z]{2,4}$/.test(v))) out.push([2, v]); }
+  if (region === 'tl' || region === 'tr' || region === 'top') for (const line of t.split('\n')) { const l = line.trim();
+    const m = region === 'top' ? l.match(/[\s(|[]\s*(\d{1,3})\s*$/) : l.match(/^([A-Z]{0,4}-?\d{1,3}[A-Z]?)$/);
+    if (m && !/^(19|20)\d\d$/.test(m[1]) && !/\d{2}\s*[-–]\s*\d{2}/.test(l)) out.push([region === 'tr' ? 3 : region === 'top' ? 3.1 : 3.2, m[1]]); } // the top-right number box is the usual spot
+  return out;
+}
+// dark, box-shaped patches near the top corners: where modern cards print the number
+function numberBoxes(bmp) {
+  const W = bmp.width, H = bmp.height, k = Math.min(1, 500 / W); const w = Math.round(W * k), h = Math.round(H * 0.3 * k);
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(bmp, 0, 0, W, H * 0.3, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h).data; const dark = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) dark[i] = (d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11) < 100 ? 1 : 0;
+  const seen = new Int32Array(w * h); const out = []; let id = 0;
+  for (let s0 = 0; s0 < w * h; s0++) { if (!dark[s0] || seen[s0]) continue; id++; const st = [s0]; seen[s0] = id; let n = 0, x0 = w, y0 = h, x1 = 0, y1 = 0;
+    while (st.length) { const p = st.pop(); n++; const x = p % w, y = (p / w) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      for (const q of [p - 1, p + 1, p - w, p + w]) if (q >= 0 && q < w * h && !seen[q] && dark[q] && Math.abs((q % w) - x) <= 1) { seen[q] = id; st.push(q); } }
+    const bw = x1 - x0 + 1, bh = y1 - y0 + 1; const fill = n / (bw * bh);
+    if (bw > w * 0.04 && bw < w * 0.25 && bh > h * 0.06 && bh < h * 0.27 && bw / bh > 1 && bw / bh < 4.5 && fill > 0.55 && y0 > 0 && (x0 > w * 0.5 || x1 < w * 0.5)) out.push({ x: x0 / k, y: y0 / k, w: bw / k, h: bh / k, fill });
+  }
+  return out.sort((a, b) => b.fill - a.fill).slice(0, 2);
+}
+async function readCardNumber(blob, pr) {
+  const bmp = await createImageBitmap(blob); const W = bmp.width, H = bmp.height; const all = [];
+  const crop = async (sx, sy, sw, sh, inv, rot) => { const k = rot ? 1 : 3; const cv = document.createElement('canvas'); cv.width = (rot ? sh : sw) * k; cv.height = (rot ? sw : sh) * k; const g = cv.getContext('2d');
+    g.filter = `grayscale(1) contrast(1.4)${inv ? ' invert(1)' : ''}`; g.imageSmoothingQuality = 'high';
+    if (rot) { g.translate(cv.width / 2, cv.height / 2); g.rotate(rot * Math.PI / 180); g.drawImage(bmp, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh); } else g.drawImage(bmp, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+    return new Promise(r => cv.toBlob(r, 'image/png')); };
+  for (const bx of numberBoxes(bmp)) { // a number printed in its own dark box (Topps Chrome, Prizm): read just that box
+    const cv = document.createElement('canvas'); const pad = 30, k = 3; cv.width = bx.w * k + pad * 2; cv.height = bx.h * k + pad * 2; const g = cv.getContext('2d');
+    g.fillStyle = '#000'; g.fillRect(0, 0, cv.width, cv.height); g.filter = 'grayscale(1)'; g.imageSmoothingQuality = 'high'; g.drawImage(bmp, bx.x, bx.y, bx.w, bx.h, pad, pad, bx.w * k, bx.h * k);
+    const id = g.getImageData(0, 0, cv.width, cv.height); const dd = id.data; for (let i = 0; i < dd.length; i += 4) { const v = 255 - dd[i]; dd[i] = dd[i + 1] = dd[i + 2] = v; } g.putImageData(id, 0, 0);
+    const blob2 = await new Promise(r => cv.toBlob(r, 'image/png'));
+    const reads = []; for (const psm of ['8', '7']) { try { const t = (await readImageText(blob2, pr, psm, { raw: true })).text.toUpperCase().replace(/\s+/g, ''); const m = t.match(/([A-Z]{1,4}-?\d{1,3}|\d{1,3})$/); if (m && !/^(19|20)\d\d$/.test(m[1])) reads.push(m[1].replace(/^[A-Z](?=\d)/, '')); } catch (e) {} }
+    if (reads.length) all.push([1.5, reads.sort((a, b) => b.length - a.length)[0]]); // "14" over a clipped "4"
+  }
+  // stop early once there's strong evidence: each read takes a second or two on a phone
+  const strong = () => all.some(c => c[0] <= 1.5);
+  const steps = [['top', 0, 0, W, H * 0.25, false], ['tr', W * 0.55, 0, W * 0.45, H * 0.28, false], ['top', 0, 0, W, H * 0.25, true], ['tl', 0, 0, W * 0.45, H * 0.28, false]];
+  for (const [name, x, y, w, h, inv] of steps) { if (strong()) break; try { const t = (await readImageText(await crop(x, y, w, h, inv), pr, '11')).text; all.push(...numberCands(t, name)); } catch (e) {} }
+  if (!all.some(c => c[0] <= 2)) for (const rot of [90, -90]) { try { const t = (await readImageText(await crop(0, 0, W, H, false, rot), pr, '11')).text; all.push(...numberCands(t, 'rot').filter(c => c[0] <= 2).map(c => [c[0] + 0.5, c[1]])); } catch (e) {} if (all.some(c => c[0] <= 2.5)) break; }
+  if (bmp.close) bmp.close(); if (!all.length) return null;
+  const best = Math.min(...all.map(c => c[0])); const votes = {}; all.filter(c => c[0] === best).forEach(c => { votes[c[1]] = (votes[c[1]] || 0) + 1; });
+  const num = Object.entries(votes).sort((a, b) => b[1] - a[1])[0][0]; return { num, sure: best <= 2 };
+}
+/* last resort: the number most eBay listings of this exact card use (marked for a check) */
+async function numberFromListings(f) {
+  if (!ebOn() || !f.player || !(f.year || f.set)) return null;
+  try { const q = [f.year, f.brand, f.set, f.player, f.parallel && f.parallel !== 'Base' ? f.parallel : ''].filter(Boolean).join(' '); const r = await ebay('search', { q, mode: 'market' });
+    const last = String(f.player).split(' ').pop().toLowerCase(); const votes = {};
+    for (const x of r.items || []) { const t = String(x.title || ''); if (!t.toLowerCase().includes(last) || LOTISH_RE.test(t)) continue; const m = t.match(/#\s?([A-Z]{0,4}-?\d{1,4}[A-Z]?)\b/i); if (m) votes[m[1].toUpperCase()] = (votes[m[1].toUpperCase()] || 0) + 1; }
+    const top = Object.entries(votes).sort((a, b) => b[1] - a[1]); return top.length && top[0][1] >= 2 && (!top[1] || top[0][1] >= top[1][1] * 2) ? top[0][0] : null;
+  } catch (e) { return null; }
 }
 /* real player names (NBA, MLB incl. prospects, NFL) to fix misreads like "EFF HORNACEK" */
 const PN = { idx: null, loading: null };
@@ -4050,6 +4133,11 @@ FORMS.batchGo = async f => {
       if (m) { it.fields.player = m.full; it.fields.matched = true; }
       else if (it.fields.player && it.fields.player.split(' ').some(w => w.replace(/[^A-Za-z]/g, '').length < 3)) it.fields.player = ''; // a scrap like "Lu Mz" is worse than a blank
       it.fields.conf = BS.opts.read ? conf : '';
+      if (BS.opts.read) {
+        const side = it.b ? it.b.warped : it.f.warped; const rn = await readCardNumber(side, pr).catch(() => null);
+        if (rn && (rn.sure || !it.fields.number)) { it.fields.number = rn.num; it.fields.numberFrom = rn.sure ? '' : 'corner'; }
+        if (!it.fields.number) { const ln = await numberFromListings(it.fields); if (ln) { it.fields.number = ln; it.fields.numberFrom = 'ebay'; } }
+      }
     }
     renderBatchReview();
   } catch (e) { console.error(e); sheet.innerHTML = `${mhead('Stopped')}<p>${esc(e.message)}</p><div class="sheet-foot"><button class="btn" data-act="close" type="button">Close</button><button class="btn pri" type="button" data-act="batch">Try again</button></div>`; }
@@ -4065,7 +4153,7 @@ function renderBatchReview() {
     <div class="fgrid">
       ${field(c.conf === 'high' ? 'Player ✓ Confirmed' : c.conf === 'medium' ? 'Player · Check' : c.conf === 'low' ? 'Player · Not sure' : 'Player', `<input data-k="player" value="${esc(c.player)}" list="dl-bpl" class="${c.conf === 'low' ? 'bs-low' : c.conf === 'medium' ? 'bs-mid' : ''}">`)}${field('Year', `<input data-k="year" value="${esc(c.year)}" inputmode="numeric">`)}
       ${field('Brand', `<input data-k="brand" value="${esc(c.brand)}" list="dl-bbr">`)}${field('Set', `<input data-k="set" value="${esc(c.set)}" list="dl-bset">`)}
-      ${field('Card #', `<input data-k="number" value="${esc(c.number)}">`)}${field('Parallel', `<input data-k="parallel" value="${esc(c.parallel)}" placeholder="Base">`)}${field('Serial', `<input data-k="serial" value="${esc(c.serial || '')}" placeholder="23/99">`)}
+      ${field(c.numberFrom === 'ebay' ? 'Card # · From eBay listings, check it' : c.numberFrom === 'corner' ? 'Card # · Not sure' : 'Card #', `<input data-k="number" value="${esc(c.number)}"${c.numberFrom ? ' class="bs-low"' : ''}>`)}${field('Parallel', `<input data-k="parallel" value="${esc(c.parallel)}" placeholder="Base">`)}${field('Serial', `<input data-k="serial" value="${esc(c.serial || '')}" placeholder="23/99">`)}
       ${field('Sport', `<select data-k="sport">${opts(SPORTS, c.sport, '—')}</select>`)}${field('Team', `<input data-k="team" value="${esc(c.team)}">`)}
       ${field('Paid', `<input data-k="price" inputmode="decimal" placeholder="split from total">`)}${field('Value', `<input data-k="value" inputmode="decimal" placeholder="0.00">`)}
     </div></div>
@@ -6234,8 +6322,12 @@ document.addEventListener('change', async e => {
     if (side === 'front') SNAP.ft = t1; else { SNAP.bt = t1; try { SNAP.bt += '\n' + (await readImageText(r.out, () => {}, '6')).text; } catch (er) {} }
     await loadPlayerNames(); const P = parseCardBack(SNAP.bt, SNAP.ft); const m = matchPlayer(P.cands, P.sport); const conf = m ? nameConfidence(m, !!(SNAP.ft && SNAP.bt)) : 'low';
     if (m) P.player = m.full; P.serial = serialFrom(SNAP.ft) || serialFrom(SNAP.bt) || P.serial;
+    let numSure = P.number && SNAP.bt ? 'high' : 'mid';
+    if (side === 'back' || !SNAP.bt) { try { const rn = await readCardNumber(r.out, () => {}); if (rn && (rn.sure || !P.number)) { P.number = rn.num; numSure = rn.sure ? 'high' : 'mid'; } } catch (er) {} }
+    if (!P.number) { const ln = await numberFromListings(P); if (ln) { P.number = ln; numSure = 'low'; } }
+    if (!document.body.contains(out)) { SNAP.busy = false; return; } // the form was closed while reading
     const filled = []; const set = (k, v, sure) => { if (!v) return; const el = f.querySelector(`[name=${k}]`); if (!el) return; if (el.type === 'checkbox') { if (v) el.checked = true; } else if (el.tagName === 'SELECT') { if ([...el.options].some(o => o.value === v)) el.value = v; else return; } else if (!el.value || el.dataset.snap) { el.value = v; el.dataset.snap = '1'; } else return; filled.push([k, v, sure]); };
-    set('player', P.player, conf); set('year', P.year, P.year ? 'high' : ''); set('brand', P.brand, 'mid'); set('set', P.set, 'mid'); set('number', P.number, P.number && SNAP.bt ? 'high' : 'mid'); set('team', P.team, 'mid'); set('sport', P.sport, 'mid'); set('serial', P.serial, 'mid'); set('parallel', P.parallel, 'low');
+    set('player', P.player, conf); set('year', P.year, P.year ? 'high' : ''); set('brand', P.brand, 'mid'); set('set', P.set, 'mid'); set('number', P.number, numSure); set('team', P.team, 'mid'); set('sport', P.sport, 'mid'); set('serial', P.serial, 'mid'); set('parallel', P.parallel, 'low');
     if (P.rookie) set('rookie', true, 'mid'); if (P.auto) set('auto', true, 'mid');
     f.dispatchEvent(new Event('input', { bubbles: true }));
     const label = { player: 'Player', year: 'Year', brand: 'Brand', set: 'Set', number: 'Card #', team: 'Team', sport: 'Sport', serial: 'Serial', parallel: 'Parallel', rookie: 'Rookie', auto: 'Auto' };
