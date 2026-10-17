@@ -4917,7 +4917,7 @@ function cropFull(bmp, quad, margin) {
 }
 // four corner close-ups cut straight from the original photo, at its own resolution (never enlarged)
 function cornersFrom(bmp, quad, label) {
-  const [cw, ch] = quadSize(quad); const s = Math.max(40, Math.round(Math.min(cw, ch) * 0.22)); const cx = quad.reduce((a, p) => a + p[0], 0) / 4, cy = quad.reduce((a, p) => a + p[1], 0) / 4;
+  const [cw, ch] = quadSize(quad); const s = Math.max(40, Math.round(Math.max(Math.min(cw, ch) * 0.22, Math.min(300, Math.min(cw, ch) * 0.45)))); /* small scans: show more of each corner instead of blowing it up */ const cx = quad.reduce((a, p) => a + p[0], 0) / 4, cy = quad.reduce((a, p) => a + p[1], 0) / 4;
   const cell = Math.min(800, s), gap = Math.max(6, Math.round(cell / 50)), N = cell * 2 + gap * 3; const out = document.createElement('canvas'); out.width = out.height = N; const g = out.getContext('2d');
   g.fillStyle = '#e6e7e9'; g.fillRect(0, 0, N, N); g.imageSmoothingQuality = 'high';
   [[quad[0], 'Top left'], [quad[1], 'Top right'], [quad[3], 'Bottom left'], [quad[2], 'Bottom right']].forEach(([p, name], i) => {
@@ -4936,6 +4936,13 @@ function cutSides(bmp, quad) {
   if (quad.some(p => p[1] < t)) out.push('top'); if (quad.some(p => p[1] > bmp.height - t)) out.push('bottom'); return out;
 }
 const toJpeg = cv => new Promise(r => cv.toBlob(r, 'image/jpeg', 0.93));
+/* eBay refuses photos under 500 pixels on the longest side. A small scan gets a plain resize up to 600 (no sharpening, no edits) */
+const EBAY_MIN = 500;
+async function ebaySize(blob) {
+  try { const bmp = await createImageBitmap(blob); const L = Math.max(bmp.width, bmp.height); if (L >= EBAY_MIN) { bmp.close && bmp.close(); return blob; }
+    const k = 600 / L; const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k); const g = cv.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, 0, cv.width, cv.height); bmp.close && bmp.close(); return toJpeg(cv);
+  } catch (e) { return blob; }
+}
 
 // a 2×2 close-up of the four corners, cut from the straightened photo
 function cornersSheet(cv, label) {
@@ -4990,7 +4997,7 @@ async function listingPhotos(c, { studio = true } = {}) {
       if (!slab) out.corners = (out.corners || []).concat({ blob: await toJpeg(cornersFrom(bmp, quad, side === 'front' ? 'Front' : 'Back')), what: `${side} corners, cut from your photo` });
       if (side === 'front' && studio) out.studio = await toJpeg(studioCompose(warpFull(bmp, quad, 0), slab));
     }
-    out.photos = out.photos.concat(out.corners || []); return out;
+    out.photos = out.photos.concat(out.corners || []); for (const ph of out.photos) ph.blob = await ebaySize(ph.blob); if (out.studio) out.studio = await ebaySize(out.studio); return out;
   })().catch(e => { PHOTO_CACHE.delete(key); throw e; });
   PHOTO_CACHE.set(key, p); return p;
 }
@@ -5171,7 +5178,7 @@ A.listEbay = el => {
     const all = [...(P.studio ? [{ blob: P.studio, what: 'studio' }] : []), ...P.photos];
     box.innerHTML = `<div class="eb-thumbs">${all.map(x => `<a href="${URL.createObjectURL(x.blob)}" target="_blank" rel="noopener" title="${esc(x.what)}"><img src="${URL.createObjectURL(x.blob)}" alt="${esc(x.what)}"></a>`).join('')}</div>${(P.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}<small class="muted">The photos eBay will get, from your full-size originals: ${all.map(x => x.what).join(' · ')}</small>`; }).catch(() => {});
 };
-const b64OfBlob = async (blob, name = 'studio.jpg') => { const buf = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000)); return { base64: btoa(s), type: blob.type || 'image/jpeg', name }; };
+const b64OfBlob = async (blob, name = 'studio.jpg') => { blob = await ebaySize(blob); /* eBay's 500px minimum */ const buf = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000)); return { base64: btoa(s), type: blob.type || 'image/jpeg', name }; };
 // post one card: photos from the full-size originals (studio first if wanted), then the listing. Used by the form and by auto-list.
 async function postListing(c, o, step = () => {}) {
   const cfg = ebCfg(); const L = ebayListing(c, o); if (L.errs.length) throw new Error(L.errs[0]);
