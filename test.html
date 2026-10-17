@@ -4968,14 +4968,27 @@ function studioCompose(subj, slab) {
   gr = g.createLinearGradient(0, hz - 50, 0, hz + 50); gr.addColorStop(0, 'rgba(233,234,236,0)'); gr.addColorStop(0.5, 'rgba(240,241,242,.9)'); gr.addColorStop(1, 'rgba(238,239,240,0)'); g.fillStyle = gr; g.fillRect(0, hz - 50, N, 100);
   gr = g.createRadialGradient(N / 2, N * 0.45, N * 0.2, N / 2, N * 0.5, N * 0.78); gr.addColorStop(0, 'rgba(255,255,255,.35)'); gr.addColorStop(1, 'rgba(60,64,70,.18)'); g.fillStyle = gr; g.fillRect(0, 0, N, N);
   const ar = subj.height / subj.width; const ch = N * (slab ? 0.76 : 0.72), cw = ch / ar;
-  const cx = N / 2, bottom = N * (slab ? 0.87 : 0.85), x = cx - cw / 2, y = bottom - ch;
+  const cx = N / 2, bottom = N * (slab ? 0.84 : 0.83), x = cx - cw / 2, y = bottom - ch;
   g.save(); g.filter = `blur(${Math.round(N * 0.018)}px)`; g.fillStyle = 'rgba(30,34,40,.32)'; roundRect(g, x + N * 0.012, y + N * 0.016, cw, ch, cw * 0.03); g.fill(); g.restore();
-  const footY = bottom + N * 0.06, spread = cw * 0.3;
-  g.save(); g.filter = `blur(${Math.round(N * 0.012)}px)`; g.fillStyle = 'rgba(30,34,40,.28)'; g.beginPath(); g.ellipse(cx, footY + N * 0.006, spread * 1.25, N * 0.014, 0, 0, Math.PI * 2); g.fill(); g.restore();
-  // the stand sits below the card, so it covers nothing
-  const leg = (x1, y1, x2, y2, w) => { g.lineCap = 'round'; g.strokeStyle = 'rgba(150,158,168,.45)'; g.lineWidth = w + 3; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = w - 3; g.stroke(); };
-  const top = bottom + N * 0.012;
-  leg(cx - cw * 0.12, top, cx - spread, footY, N * 0.011); leg(cx + cw * 0.12, top, cx + spread, footY, N * 0.011); leg(cx - cw * 0.3, top, cx + cw * 0.3, top, N * 0.011);
+  // a clear acrylic block stand: the card stands in a slot on top, so the stand sits below the card and covers nothing
+  const d = N * 0.011, bh = N * 0.062, bw = cw * 1.14, bx = cx - bw / 2, top0 = bottom - d, top1 = bottom + d, by1 = top1 + bh, inset = bw * 0.018;
+  g.save(); g.filter = `blur(${Math.round(N * 0.014)}px)`; g.fillStyle = 'rgba(28,32,38,.30)'; g.beginPath(); g.ellipse(cx, by1 + N * 0.004, bw * 0.56, N * 0.016, 0, 0, Math.PI * 2); g.fill(); g.restore(); // soft shadow on the table
+  g.save(); g.filter = `blur(${Math.round(N * 0.003)}px)`; g.fillStyle = 'rgba(20,24,30,.38)'; g.fillRect(bx + N * 0.004, by1 - N * 0.002, bw - N * 0.008, N * 0.006); g.restore(); // contact line
+  // front face: you see the backdrop through it, a little cooler and darker, with a faint upside-down reflection of the card
+  g.save(); roundRect(g, bx, top1, bw, bh, N * 0.006); g.clip();
+  gr = g.createLinearGradient(0, top1, 0, by1); gr.addColorStop(0, 'rgba(205,215,220,.55)'); gr.addColorStop(0.5, 'rgba(225,232,235,.35)'); gr.addColorStop(1, 'rgba(180,192,198,.55)'); g.fillStyle = gr; g.fillRect(bx, top1, bw, bh);
+  g.globalAlpha = 0.16; g.filter = `blur(${Math.round(N * 0.004)}px)`; g.translate(0, top1 * 2); g.scale(1, -1); g.drawImage(subj, 0, subj.height * 0.82, subj.width, subj.height * 0.18, x, top1 - bh * 1.1, cw, bh * 1.1); g.restore();
+  g.save(); // the polished side edges catch a blue-green tint, like real acrylic
+  for (const [ex, dir] of [[bx, 1], [bx + bw, -1]]) { gr = g.createLinearGradient(ex, 0, ex + dir * bw * 0.05, 0); gr.addColorStop(0, 'rgba(120,170,165,.55)'); gr.addColorStop(0.35, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(Math.min(ex, ex + dir * bw * 0.05), top1, bw * 0.05, bh); }
+  g.restore();
+  g.fillStyle = 'rgba(255,255,255,.9)'; g.fillRect(bx + N * 0.004, top1, bw - N * 0.008, Math.max(2, N * 0.0018)); // bright front edge
+  g.fillStyle = 'rgba(110,150,150,.45)'; g.fillRect(bx + N * 0.004, by1 - Math.max(2, N * 0.002), bw - N * 0.008, Math.max(2, N * 0.002)); // bottom edge, seen through the block
+  // top face, seen from a little above: lighter, with the slot the card stands in
+  g.beginPath(); g.moveTo(bx + inset, top0); g.lineTo(bx + bw - inset, top0); g.lineTo(bx + bw, top1); g.lineTo(bx, top1); g.closePath();
+  gr = g.createLinearGradient(0, top0, 0, top1); gr.addColorStop(0, 'rgba(210,220,224,.65)'); gr.addColorStop(1, 'rgba(245,248,249,.85)'); g.fillStyle = gr; g.fill();
+  g.strokeStyle = 'rgba(150,175,178,.55)'; g.lineWidth = Math.max(1.5, N * 0.0008); g.stroke();
+  g.fillStyle = 'rgba(70,85,92,.55)'; g.fillRect(x - cw * 0.03, bottom - N * 0.0012, cw * 1.06, N * 0.0028); // the slot
+  g.fillStyle = 'rgba(255,255,255,.8)'; g.fillRect(x - cw * 0.03, bottom + N * 0.0016, cw * 1.06, Math.max(1, N * 0.0009));
   g.drawImage(subj, x, y, cw, ch); // exactly as photographed, no clipping
   return cv;
 }
