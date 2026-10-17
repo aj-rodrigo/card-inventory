@@ -5192,9 +5192,21 @@ A.listEbay = el => {
     box.innerHTML = `<div class="eb-thumbs">${all.map(x => `<a href="${URL.createObjectURL(x.blob)}" target="_blank" rel="noopener" title="${esc(x.what)}"><img src="${URL.createObjectURL(x.blob)}" alt="${esc(x.what)}"></a>`).join('')}</div>${(P.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}<small class="muted">The photos eBay will get, from your full-size originals: ${all.map(x => x.what).join(' · ')}</small>`; }).catch(() => {});
 };
 const b64OfBlob = async (blob, name = 'studio.jpg') => { blob = await ebaySize(blob); /* eBay's 500px minimum */ const buf = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000)); return { base64: btoa(s), type: blob.type || 'image/jpeg', name }; };
+/* eBay Standard Envelope only takes packages up to 3 oz holding items up to $20. Anything heavier or pricier (a lot, a slab, a big card)
+   goes out on the "heavier packages" shipping policy picked in Settings. Returns that policy's id, or '' to use the usual one. */
+const ENVELOPE_OZ = 3, ENVELOPE_MAX = 20;
+function shipPolicyFor(oz, price) {
+  const st = ebCfg().setup; if (!st || !st.chosen) return '';
+  const pol = (st.fulfillment || []).find(p => p.id === st.chosen.fulfillmentPolicyId); const envelope = pol && /envelope/i.test(pol.name);
+  if (!envelope || (oz <= ENVELOPE_OZ && price <= ENVELOPE_MAX)) return '';
+  const heavy = st.heavyId && (st.fulfillment || []).find(p => p.id === st.heavyId);
+  if (!heavy) throw new Error(`Your shipping policy "${pol.name}" only allows up to ${ENVELOPE_OZ} oz and $${ENVELOPE_MAX}, and this one is ${r2(oz)} oz at ${money(price)}. In Settings → eBay, pick a shipping policy for heavier packages (Ground Advantage, for example). If it isn't listed, make one on eBay, then tap "Load shipping and return policies".`);
+  return heavy.id;
+}
 // post one card: photos from the full-size originals (studio first if wanted), then the listing. Used by the form and by auto-list.
 async function postListing(c, o, step = () => {}) {
   const cfg = ebCfg(); const L = ebayListing(c, o); if (L.errs.length) throw new Error(L.errs[0]);
+  { const sp = shipPolicyFor(L.inventoryItem.packageWeightAndSize.weight.value, num(L.offer.pricingSummary.price ? L.offer.pricingSummary.price.value : L.offer.pricingSummary.auctionStartPrice.value)); if (sp) L.offer.listingPolicies = { ...(L.offer.listingPolicies || {}), fulfillmentPolicyId: sp }; } // checked before any photo uploads
   const P = await listingPhotos(c, { studio: !!o.studio });
   const blobs = [...(o.studio && P.studio ? [P.studio] : []), ...P.photos.map(x => x.blob)].slice(0, 24);
   for (let k = 0; k < blobs.length; k++) { step(`Uploading photo ${k + 1} of ${blobs.length}…`); const r = await ebay('image', await b64OfBlob(blobs[k], `photo-${k + 1}.jpg`)); L.inventoryItem.product.imageUrls.push(r.imageUrl); }
@@ -5388,7 +5400,7 @@ function ebaySettingsPanel() {
       ${field('Offer to watchers (% off)', inp('offerPct', cfg.offerPct, 'inputmode="numeric"'))}${field('Stale after (days)', inp('staleDays', cfg.staleDays, 'inputmode="numeric"'))}${field('Price drop for stale (%)', inp('dropPct', cfg.dropPct, 'inputmode="numeric"'))}${field('Raw card package (oz)', inp('ozRaw', cfg.ozRaw, 'inputmode="decimal"'))}${field('Slab package (oz)', inp('ozSlab', cfg.ozSlab, 'inputmode="decimal"'))}
       <div class="row wide"><button class="btn pri" type="submit">Save</button><button class="btn" type="button" data-act="ebTest">Test connection</button>${(cfg.mode === 'sandbox' || cfg.mode === 'live') && cfg.worker ? `<span id="eb-signin"><button class="btn" type="button" data-act="ebSignIn">Sign in to ${cfg.mode === 'live' ? 'eBay' : 'eBay Sandbox'}</button></span>` : ''}<button class="btn" type="button" data-act="ebSetup">Load shipping and return policies</button></div>
     </form>
-    ${st ? `<form class="fgrid" data-form="ebPolicies">${field('Shipping policy', `<select name="fulfillmentPolicyId">${opts(st.fulfillment.map(p => [p.id, p.name]), st.chosen && st.chosen.fulfillmentPolicyId)}</select>`)}${field('Payment policy', `<select name="paymentPolicyId">${opts(st.payment.map(p => [p.id, p.name]), st.chosen && st.chosen.paymentPolicyId)}</select>`)}${field('Return policy', `<select name="returnPolicyId">${opts(st.ret.map(p => [p.id, p.name]), st.chosen && st.chosen.returnPolicyId)}</select>`)}<div class="row wide"><button class="btn" type="submit">Use these policies</button>${st.chosen ? '<small class="muted">Saved</small>' : ''}</div></form>` : ''}
+    ${st ? `<form class="fgrid" data-form="ebPolicies">${field('Shipping policy', `<select name="fulfillmentPolicyId">${opts(st.fulfillment.map(p => [p.id, p.name]), st.chosen && st.chosen.fulfillmentPolicyId)}</select>`)}${field('Payment policy', `<select name="paymentPolicyId">${opts(st.payment.map(p => [p.id, p.name]), st.chosen && st.chosen.paymentPolicyId)}</select>`)}${field('Return policy', `<select name="returnPolicyId">${opts(st.ret.map(p => [p.id, p.name]), st.chosen && st.chosen.returnPolicyId)}</select>`)}${field('Shipping for heavier packages (lots, slabs, over $20)', `<select name="heavyId"><option value="">None</option>${opts(st.fulfillment.map(p => [p.id, p.name]), st.heavyId || ((st.fulfillment.find(p => !/envelope/i.test(p.name)) || {}).id))}</select>`)}<div class="row wide"><button class="btn" type="submit">Use these policies</button>${st.chosen ? '<small class="muted">Saved</small>' : ''}</div></form>` : ''}
     <small class="muted">Your eBay keys live in your worker, not in Dugout. ${EB_LIVE ? 'The worker key stays on this device, so enter it once on your iPhone and once on your PC.' : 'This test build keeps its own separate data and never syncs to your real inventory.'}</small>
   </section>`;
 }
@@ -5399,7 +5411,7 @@ A.ebTest = async el => { const f = el && el.closest('form[data-form=ebCfg]'); if
   try { const r = await ebay('status'); toast(r.connected ? `Connected to ${r.env === 'simulator' ? 'the Simulator' : 'eBay ' + r.env}` : `Worker found, but not signed in to eBay yet. Use "Sign in to ${EB_LIVE ? 'eBay' : 'eBay Sandbox'}".`); } catch (e) { toast(e.message); } };
 A.ebSetup = async () => { try { const r = await ebay('setup', {}); const cfg = ebCfg(); cfg.setup = { fulfillment: r.fulfillment || [], payment: r.payment || [], ret: r.ret || [], chosen: cfg.setup && cfg.setup.chosen }; await saveSettings(); toast(r.fulfillment && r.fulfillment.length ? 'Policies loaded. Pick them below.' : 'No policies yet. Create shipping, payment and return policies on eBay first.'); route(); } catch (e) { toast(e.message); } };
 FORMS.ebPolicies = async f => { const fd = new FormData(f); const cfg = ebCfg(); const ch = { fulfillmentPolicyId: fd.get('fulfillmentPolicyId'), paymentPolicyId: fd.get('paymentPolicyId'), returnPolicyId: fd.get('returnPolicyId') };
-  try { await ebay('policies', ch); cfg.setup.chosen = ch; await saveSettings(); toast('Policies saved'); route(); } catch (e) { toast(e.message); } };
+  try { await ebay('policies', ch); cfg.setup.chosen = ch; cfg.setup.heavyId = String(fd.get('heavyId') || ''); await saveSettings(); toast('Policies saved'); route(); } catch (e) { toast(e.message); } };
 
 /* ---------- hook into the rest of the app ---------- */
 { const i = NAV.findIndex(n => Array.isArray(n) && n[0] === 'sales'); NAV.splice(i + 1, 0, ['ebay', 'eBay'], ['deals', 'Deals']); }
@@ -5587,6 +5599,7 @@ FORMS.lotList = async f => {
   const bo = fd.get('bestOffer') === 'on'; const acc = r2(price * cfg.accept / 100), dec = r2(price * cfg.decline / 100);
   const btn = f.querySelector('[type=submit]');
   if (ebIsLive() && f.dataset.sure !== '1') { f.dataset.sure = '1'; btn.textContent = `Tap again to list the lot for ${money(price)}`; return; }
+  let shipId = ''; try { shipId = shipPolicyFor(oz, price); } catch (e) { return toast(e.message); } // a lot is rarely envelope-sized: catch it before uploading photos
   btn.disabled = true; btn.textContent = 'Making photos…';
   try {
     const auto = lotAuto(cards); const aspects = {};
@@ -5606,7 +5619,7 @@ FORMS.lotList = async f => {
       packageWeightAndSize: { packageType: 'PACKAGE_THICK_ENVELOPE', weight: { value: r2(oz), unit: 'OUNCE' }, dimensions: { length: 9, width: 6, height: Math.min(4, 0.5 + cards.length * 0.12), unit: 'INCH' } },
       product: { title, description: desc, aspects, imageUrls: urls } };
     const offer = { sku, marketplaceId: 'EBAY_US', format: 'FIXED_PRICE', availableQuantity: 1, categoryId: info.categoryId, listingDescription: desc, pricingSummary: { price: { value: price.toFixed(2), currency: 'USD' } },
-      listingPolicies: bo ? { bestOfferTerms: { bestOfferEnabled: true, autoAcceptPrice: { value: acc.toFixed(2), currency: 'USD' }, autoDeclinePrice: { value: dec.toFixed(2), currency: 'USD' } } } : {} };
+      listingPolicies: { ...(bo ? { bestOfferTerms: { bestOfferEnabled: true, autoAcceptPrice: { value: acc.toFixed(2), currency: 'USD' }, autoDeclinePrice: { value: dec.toFixed(2), currency: 'USD' } } } : {}), ...(shipId ? { fulfillmentPolicyId: shipId } : {}) } };
     btn.textContent = 'Posting…';
     const r = await ebay('list', { inventoryItem, offer });
     cfg.lots = cfg.lots || {}; cfg.lots[sku] = { sku, cardIds: cards.map(c => c.id), title, price, bestOffer: bo, accept: cfg.accept, decline: cfg.decline, offerId: r.offerId, listingId: r.listingId, url: r.url, listedAt: today(), status: 'active', mode: cfg.mode };
