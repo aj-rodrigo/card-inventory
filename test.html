@@ -520,8 +520,7 @@ svg[data-scrub] { touch-action: pan-y; cursor: crosshair; -webkit-user-select: n
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>window.DUGOUT_TEST = true;
-/* Dugout data layer: IndexedDB on this device, with an in-memory cache. */
+<script>/* Dugout data layer: IndexedDB on this device, with an in-memory cache. */
 const STORES = ['cards', 'txns', 'pickups', 'receipts', 'files', 'locations', 'expenses', 'snaps', 'meta'];
 const SYNC_STORES = ['cards', 'txns', 'pickups', 'receipts', 'locations', 'expenses', 'snaps'];
 const DB = { db: null };
@@ -2344,7 +2343,7 @@ async function readImageText(file, onProgress, psm = '6', opts = {}) {
   OCR.progress = m => { if (m.status === 'recognizing text') onProgress && onProgress(m.progress, 'Reading text'); else if (/load|initializ/.test(m.status)) onProgress && onProgress(null, m.status.includes('language') ? 'Downloading text reader (first time only)' : 'Starting text reader'); };
   const w = await ocrWorker();
   await w.setParameters({ tessedit_pageseg_mode: String(psm) }); // 6 = one block (receipts), 11 = sparse text (card backs)
-  const canvas = opts.raw ? await plainCanvas(file) : await prepForOCR(file); // printed labels read best as-is
+  const canvas = opts.exact ? file : opts.raw ? await plainCanvas(file) : await prepForOCR(file); // printed labels read best as-is
   const { data } = await w.recognize(canvas);
   return { text: cleanOCR(data.text || ''), confidence: Math.round(data.confidence || 0) };
 }
@@ -2396,6 +2395,10 @@ const SETS = [
   ['prizm', 'Panini', 'Prizm'], ['select', 'Panini', 'Select'], ['mosaic', 'Panini', 'Mosaic'], ['hoops', 'Panini', 'Hoops'], ['contenders', 'Panini', 'Contenders'], ['immaculate', 'Panini', 'Immaculate'],
   ['flawless', 'Panini', 'Flawless'], ['phoenix', 'Panini', 'Phoenix'], ['origins', 'Panini', 'Origins'], ['spectra', 'Panini', 'Spectra'], ['obsidian', 'Panini', 'Obsidian'], ['absolute', 'Panini', 'Absolute'],
   ['certified', 'Panini', 'Certified'], ['prestige', 'Panini', 'Prestige'], ['chronicles', 'Panini', 'Chronicles'], ['revolution', 'Panini', 'Revolution'], ['zenith', 'Panini', 'Zenith'], ['donruss', 'Panini', 'Donruss'],
+  ['inception', 'Topps', 'Inception'], ['motif', 'Topps', 'Motif'], ['cosmic', 'Topps', 'Cosmic Chrome'], ['midnight', 'Topps', 'Midnight'], ['dynasty', 'Topps', 'Dynasty'], ['tribute', 'Topps', 'Tribute'],
+  ['triple threads', 'Topps', 'Triple Threads'], ['museum collection', 'Topps', 'Museum Collection'], ['archives', 'Topps', 'Archives'], ['big league', 'Topps', 'Big League'], ['gilded', 'Topps', 'Gilded Collection'],
+  ['definitive', 'Topps', 'Definitive'], ['sterling', 'Topps', 'Sterling'], ['transcendent', 'Topps', 'Transcendent'], ['fire', 'Topps', 'Fire'], ['three', 'Topps', 'Three'], ['noir', 'Panini', 'Noir'], ['one and one', 'Panini', 'One and One'],
+  ['eminence', 'Panini', 'Eminence'], ['impeccable', 'Panini', 'Impeccable'], ['luminance', 'Panini', 'Luminance'], ['recon', 'Panini', 'Recon'], ['illusions', 'Panini', 'Illusions'], ['status', 'Panini', 'Status'],
   ['young guns', 'Upper Deck', 'Young Guns'], ['sp authentic', 'Upper Deck', 'SP Authentic'], ['o-pee-chee', 'Upper Deck', 'O-Pee-Chee'], ['opc', 'Upper Deck', 'O-Pee-Chee'],
 ];
 const BRANDS = [['upper deck', 'Upper Deck'], ['panini', 'Panini'], ['topps', 'Topps'], ['bowman', 'Bowman'], ['leaf', 'Leaf'], ['fleer', 'Fleer'], ['skybox', 'SkyBox'], ['score', 'Score']];
@@ -3256,7 +3259,7 @@ function gridOrder(cards) {
 /* Cards found by their straight edges: every card is a 2.5 x 3.5 rectangle, so look for long straight edges that close
    into rectangles of that shape, all the same size. Works when cards touch (top loaders side by side) and on dark
    or busy backgrounds, where telling card from background by colour fails. */
-function edgeCards(bmp) {
+function edgeCards(bmp, o = {}) {
   const k = Math.min(1, 1000 / Math.max(bmp.width, bmp.height)); const W = Math.round(bmp.width * k), H = Math.round(bmp.height * k);
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d', { willReadFrequently: true }); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, 0, W, H);
   const d = g.getImageData(0, 0, W, H).data; const T = 24;
@@ -3268,7 +3271,7 @@ function edgeCards(bmp) {
   for (let i = 0; i < W * H; i++) { if (gx[i] > T && gx[i] > gy[i] * 0.8) Ev[i] = 1; if (gy[i] > T && gy[i] > gx[i] * 0.8) Eh[i] = 1; }
   // allow 2px of tilt or wobble, then running sums so any edge's coverage is one subtraction
   const cv1 = new Float32Array((H + 1) * W), ch1 = new Float32Array(H * (W + 1)); const colSum = new Float32Array(W), rowSum = new Float32Array(H);
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let v = 0, h = 0; for (let s = -2; s <= 2; s++) { const xx = x + s, yy = y + s; if (xx >= 0 && xx < W && Ev[y * W + xx]) v = 1; if (yy >= 0 && yy < H && Eh[yy * W + x]) h = 1; }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let v = 0, h = 0; for (let s = -3; s <= 3; s++) { const xx = x + s, yy = y + s; if (xx >= 0 && xx < W && Ev[y * W + xx]) v = 1; if (yy >= 0 && yy < H && Eh[yy * W + x]) h = 1; }
     cv1[(y + 1) * W + x] = cv1[y * W + x] + v; ch1[y * (W + 1) + x + 1] = ch1[y * (W + 1) + x] + h; colSum[x] += Ev[y * W + x]; rowSum[y] += Eh[y * W + x]; }
   const cvAt = (y, x) => cv1[y * W + x], chAt = (y, x) => ch1[y * (W + 1) + x];
   const peaks = (prof, n, sep) => { const idx = [...prof.keys()].sort((a, b) => prof[b] - prof[a]); const out = []; for (const i of idx) { if (out.every(j => Math.abs(i - j) > sep)) out.push(i); if (out.length >= n) break; } return out.sort((a, b) => a - b); };
@@ -3276,21 +3279,35 @@ function edgeCards(bmp) {
   const side = (x0, y0, x1, y1) => [(cvAt(y1, x0) - cvAt(y0, x0)) / (y1 - y0), (cvAt(y1, x1) - cvAt(y0, x1)) / (y1 - y0), (chAt(y0, x1) - chAt(y0, x0)) / (x1 - x0), (chAt(y1, x1) - chAt(y1, x0)) / (x1 - x0)];
   let cands = [];
   for (let i = 0; i < xs.length; i++) for (let j = i + 1; j < xs.length; j++) {
-    const x0 = xs[i], x1 = xs[j], w = x1 - x0; if (w < 0.08 * W || w > 0.95 * W) continue;
-    for (const y0 of ys) { const t = y0 + w * 1.4; if (t > H) continue; let y1 = ys[0]; for (const y of ys) if (Math.abs(y - t) < Math.abs(y1 - t)) y1 = y;
-      const r = (y1 - y0) / w; if (r < 1.36 || r > 1.44) continue;
-      const S = side(x0, y0, x1, y1); const mn = Math.min(...S); if (mn > 0.45) cands.push({ sc: mn + 0.25 * (S[0] + S[1] + S[2] + S[3]) / 4, x0, y0, x1, y1 }); }
+    const x0 = xs[i], x1 = xs[j], w = x1 - x0; if (w < 0.17 * Math.min(W, H) * 0.714 || w > 0.95 * W) continue; // a card is at least ~1/6 of the scan (9 cards on letter-size glass); smaller boxes are artwork
+    for (const y0 of ys) for (const R0 of (o.upright ? [1.4] : [1.4, 1 / 1.4])) { const t = y0 + w * R0; if (t > H) continue; let y1 = ys[0]; for (const y of ys) if (Math.abs(y - t) < Math.abs(y1 - t)) y1 = y; // upright, or a landscape card lying sideways
+      const r = (y1 - y0) / w; if (R0 > 1 ? (r < 1.36 || r > 1.44) : (r < 0.694 || r > 0.735)) continue;
+      const S = side(x0, y0, x1, y1); const mn = Math.min(...S);
+      if (mn > 0.45) { const wide = (x1 - x0) > (y1 - y0); let split = 0; // two cards side by side (or stacked) look like one card turned sideways: a full-length edge runs down the middle
+        if (wide) for (let f = -0.04; f <= 0.04; f += 0.01) { const xm = Math.round(x0 + (x1 - x0) * (0.5 + f)); split = Math.max(split, (cvAt(y1, xm) - cvAt(y0, xm)) / (y1 - y0)); } // (an upright card often has a line across its middle; that's design, not a gap)
+        if (split > 0.75) continue; }
+      if (mn > 0.45) cands.push({ sc: mn + 0.25 * (S[0] + S[1] + S[2] + S[3]) / 4, x0, y0, x1, y1, short: Math.min(w, y1 - y0) }); }
   }
   if (!cands.length) return { cards: [], score: 0 };
   cands.sort((a, b) => b.sc - a.sc);
   const area = c => (c.x1 - c.x0) * (c.y1 - c.y0); const inside = (a, b) => a.x0 >= b.x0 - 2 && a.y0 >= b.y0 - 2 && a.x1 <= b.x1 + 2 && a.y1 <= b.y1 + 2;
   const ov = (a, b) => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0)) / Math.min(area(a), area(b));
-  const pick = med => { // every card on a sheet is the same size; the card, not the top loader around it, wins
-    let cs = cands.filter(c => Math.abs((c.x1 - c.x0) / med - 1) <= 0.07 && c.sc > 0.9);
-    cs = [...new Set(cs.map(c => { const inner = cs.filter(o => o !== c && inside(o, c) && area(o) >= 0.78 * area(c) && o.sc >= 0.85 * c.sc); return inner.length ? inner.reduce((a, b) => (b.sc > a.sc ? b : a)) : c; }))].sort((a, b) => b.sc - a.sc);
+  if (cands.length > 4000) cands = cands.slice(0, 4000);
+  const pick = med => { // every card on a sheet is the same size
+    const cs = cands.filter(c => Math.abs(c.short / med - 1) <= 0.07 && c.sc > 0.9 && c.short >= 0.17 * Math.min(W, H));
     const out = []; for (const c of cs) if (out.every(o => ov(c, o) < 0.15)) out.push(c); return out;
   };
-  let sel = [], tot = -1; for (const c of cands.slice(0, 40)) { const L = pick(c.x1 - c.x0); const t = L.reduce((a, o) => a + o.sc, 0); if (t > tot + 1e-9) { tot = t; sel = L; } } // the card size that explains the most
+  let sel = [], tot = -1; for (const c of cands.slice(0, 60)) { const L = pick(c.short); const t = L.reduce((a, o) => a + o.sc * area(o), 0); if (t > tot + 1e-9) { tot = t; sel = L; } } /* the card size that covers the most, best-backed */
+  // two sideways "cards" stacked exactly on top of each other are one upright card cut by a line across its middle
+  for (let i = 0; i < sel.length; i++) { const a = sel[i]; if (!(a.x1 - a.x0 > a.y1 - a.y0)) continue; const w = a.x1 - a.x0;
+    const j = sel.findIndex(b => b !== a && b.x1 - b.x0 > b.y1 - b.y0 && Math.abs(b.x0 - a.x0) < w * 0.04 && Math.abs(b.x1 - a.x1) < w * 0.04 && Math.abs(b.y0 - a.y1) < w * 0.04);
+    if (j >= 0) { const b = sel[j]; const u = { x0: Math.min(a.x0, b.x0), x1: Math.max(a.x1, b.x1), y0: a.y0, y1: b.y1 }; const S = side(u.x0, u.y0, u.x1, u.y1); const r = (u.y1 - u.y0) / (u.x1 - u.x0);
+      if (r > 1.3 && r < 1.5 && Math.min(...S) > 0.35) { sel[i] = Object.assign(u, { sc: (a.sc + b.sc) / 2, short: u.x1 - u.x0 }); sel.splice(j, 1); i = -1; } } }
+  // the card, not the top loader around it: a slightly smaller, nearly as strong card shape inside wins
+  // only when (nearly) every box has one, and they're all the same size: real cards are, printed frames aren't
+  const inners = sel.map(c => { const wide = (c.x1 - c.x0) > (c.y1 - c.y0); return cands.filter(o => o !== c && ((o.x1 - o.x0) > (o.y1 - o.y0)) === wide && inside(o, c) && area(o) >= 0.72 * area(c) && area(o) < 0.97 * area(c) && o.sc >= 0.85 * c.sc); });
+  let bestIn = null; for (const L of inners) for (const o of L) { const n = inners.filter(L2 => L2.some(x => Math.abs(x.short / o.short - 1) < 0.035)).length; if (!bestIn || n > bestIn.n) bestIn = { n, s: o.short }; }
+  if (bestIn && bestIn.n >= (sel.length === 1 ? (o.inner ? 1 : 99) : Math.max(2, Math.ceil(sel.length * 0.7)))) sel = sel.map((c, i) => { const L = inners[i].filter(x => Math.abs(x.short / bestIn.s - 1) < 0.035); return L.length ? L.reduce((a, b) => (b.sc > a.sc ? b : a)) : c; });
   const cards = sel.map(c => ({ quad: [[c.x0, c.y0], [c.x1, c.y0], [c.x1, c.y1], [c.x0, c.y1]].map(p => [p[0] / k, p[1] / k]), sc: c.sc }));
   return { cards: gridOrder(cards), score: sel.length ? sel.reduce((a, c) => a + c.sc, 0) / sel.length : 0 };
 }
@@ -3298,8 +3315,9 @@ function edgeCards(bmp) {
 function findCards(bmp) {
   const O = detectCardQuads(bmp); let E = null; try { E = edgeCards(bmp); } catch (e) {}
   const hs = O.cards.map(c => c.hgt || 0).filter(Boolean); const mean = hs.reduce((a, b) => a + b, 0) / (hs.length || 1);
-  const oldShaky = O.merged > 0 || !O.cards.length || hs.some(h => Math.abs(h / mean - 1) > 0.2); // pieces stuck together, or cards of different sizes
-  if (E && E.cards.length && E.score >= 1.05 && (E.cards.length >= O.cards.length || oldShaky)) return { cards: E.cards, merged: 0, by: 'edges' };
+  const shapeOff = c => { const q = c.quad, d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]); const r = (d(q[0], q[3]) + d(q[1], q[2])) / Math.max(1, d(q[0], q[1]) + d(q[3], q[2])); return Math.abs(r - CARD_RATIO) / CARD_RATIO > 0.08 || skewDeg(q) > 6; };
+  const oldShaky = O.merged > 0 || !O.cards.length || hs.some(h => Math.abs(h / mean - 1) > 0.2) || O.cards.some(shapeOff); // pieces stuck together, odd sizes, or not card-shaped
+  if (E && E.cards.length && E.score >= 0.95 && (E.cards.length >= O.cards.length || oldShaky)) return { cards: E.cards, merged: 0, by: 'edges' };
   return O;
 }
 
@@ -3544,10 +3562,19 @@ function insideCard(bmp, quad, opts = {}) {
     .filter(o => Math.abs(o.r.aspect - CARD_RATIO) / CARD_RATIO < 0.06 && o.area > box * 0.5).sort((a, b) => b.area - a.area)[0];
   return c ? { quad: c.q, confidence: c.r.confidence, aspect: c.r.aspect } : null;
 }
-function findCardCorners(bmp, opts = {}) {
+function findCardCornersOld(bmp, opts = {}) {
   const D = detectCardQuads(bmp); if (!D.cards.length) return null;
   const rough = D.cards.slice().sort((a, b) => b.hgt - a.hgt)[0].quad;
   return refineCorners(bmp, rough, opts);
+}
+// a flat scan of one card (scanner glass, cards lying square): the straight-edge finder nails it, so try that first;
+// photos taken at an angle go to the outline finder
+function findCardCorners(bmp, opts = {}) {
+  try { const E = edgeCards(bmp, { inner: !!opts.toploader, upright: bmp.height > bmp.width * 1.15 }); /* a tall photo holds an upright card: never half of one */
+    // one card, or the big one in the middle when bits of neighbouring cards made it into the scan
+    const main = E.cards.length === 1 ? E.cards[0] : E.cards.map(c => ({ c, d: Math.hypot(c.c[0] - bmp.width / 2, c.c[1] - bmp.height / 2), a: quadArea(c.quad) })).filter(o => o.a > bmp.width * bmp.height * 0.22 && o.d < Math.min(bmp.width, bmp.height) * 0.3).sort((x, y) => y.a - x.a).map(o => o.c)[0];
+    if (main && E.score >= 1.0) { const q = main.quad; const r = refineCorners(bmp, q, { flat: true, wide: 0.025 }); const moved = Math.max(...r.quad.map(p => Math.min(...q.map(h => Math.hypot(p[0] - h[0], p[1] - h[1]))))) / Math.sqrt(quadArea(q)); return moved < 0.03 ? r : { quad: orderQuad(q), confidence: 0.65, aspect: CARD_RATIO }; } } catch (e) {}
+  return findCardCornersOld(bmp, opts);
 }
 const flatAspect = q => { const d = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]); return (d(q[1], q[2]) + d(q[3], q[0])) / (d(q[0], q[1]) + d(q[2], q[3])); };
 // how far from a rectangle: the worst corner's difference from 90 degrees
@@ -3815,8 +3842,9 @@ function parseCardBack(backText, frontText = '') {
   else if (s2 && (+s2[1] + 1) % 100 === +s2[2]) c.year = String((+s2[1] >= 40 ? 1900 : 2000) + +s2[1]);
   else if (y) c.year = y[1];
   // brand + set from the lines that mention them (reading order decides)
-  const brandLines = [...lines, ...fl].filter(l => /©|panini|topps|upper deck|bowman|fleer|donruss|leaf|prizm|chrome|select|optic|mosaic|hoops|young guns|score|heritage|finest|contenders|phoenix|stadium club|update/i.test(l)).join(' ');
+  const brandLines = [...lines, ...fl].filter(l => /©|panini|topps|upper deck|bowman|fleer|donruss|leaf|prizm|chrome|select|optic|mosaic|hoops|young guns|score|heritage|finest|contenders|phoenix|stadium club|update|inception|motif/i.test(l)).join(' ');
   const t = parseCardTitle(brandLines); c.brand = t.brand; c.set = t.set; if (!c.year && t.year) c.year = t.year;
+  const pf = productFacts(lines.join('\n'), fl.join('\n')); if (pf.brand) c.brand = pf.brand; if (pf.set) c.set = pf.set; if (pf.year) c.year = pf.year; c.yearFrom = pf.yearFrom || '';
   // sport from the league licensing line, then from the team name
   c.sport = /\bWNBA\b|\bNBA\b|national basketball/i.test(both) ? 'Basketball' : /\bNFL(?:PA)?\b|national football league/i.test(both) ? 'Football' : /\bMLB(?:PA)?\b|major league baseball/i.test(both) ? 'Baseball' : /\bNHL(?:PA)?\b|national hockey league/i.test(both) ? 'Hockey' : /\bMLS\b|\bFIFA\b|premier league|\bUEFA\b/i.test(both) ? 'Soccer' : '';
   for (const l of [...lines.slice(0, 20), ...fl]) { const tm = teamFromPosLine(l); if (tm) { c.team = tm; break; } } // "G • TRAIL BLAZERS"
@@ -3879,6 +3907,40 @@ function lastNameOnly(text, sport) {
     if (near.length === 1) return { full: fold(near[0]), score: 2.8, exact: false, gap: 9 }; }
   return null;
 }
+// cards scanned together are usually from the same product: fill a blank year, brand or set from the rest (marked to check)
+function sheetConsensus(items) {
+  // the same card twice on one sheet (team and number match): a name read on one fills the other
+  items.forEach(it => { const f = it.fields; if (!f || (f.player && f.matched) || !f.team || !f.number) return; const tw = items.find(o => o !== it && o.fields && o.fields.matched && o.fields.player && o.fields.team === f.team && o.fields.number === f.number); if (tw) { f.player = tw.fields.player; f.matched = true; if (f.conf === "low" || !f.conf) f.conf = "medium"; (f.guess = f.guess || {}).player = true; } });
+  for (const k of ['brand', 'set', 'year']) {
+    const votes = {}; items.forEach(it => { const v = it.fields && it.fields[k]; if (v) votes[v] = (votes[v] || 0) + 1; });
+    const top = Object.entries(votes).sort((a, b) => b[1] - a[1])[0]; if (!top || top[1] < 2) continue; const filled = items.filter(it => it.fields && it.fields[k]).length; if (top[1] < filled * 0.5) continue;
+    items.forEach(it => { if (!it.fields) return; if (!it.fields[k] || (k === 'year' && it.fields.yearFrom === 'copyright' && it.fields.year !== top[0] && top[1] >= 2)) { if (k === 'set' && it.fields.brand && votesBrandOf(items, top[0]) && votesBrandOf(items, top[0]) !== it.fields.brand) return; it.fields[k] = top[0]; (it.fields.guess = it.fields.guess || {})[k] = true; } });
+  }
+}
+const votesBrandOf = (items, set) => { const it = items.find(x => x.fields && x.fields.set === set && x.fields.brand); return it ? it.fields.brand : ''; };
+const wordCount = t => (String(t || '').match(/\b[A-Za-z]{4,}\b/g) || []).filter(w => /[aeiouAEIOU]/.test(w)).length;
+/* words every card back prints; upside-down text makes letter soup that wordCount can't tell from words */
+const BACK_WORDS = new Set('THE AND WITH FOR HIS HAS WAS FROM THAT INTO OVER INC ALL RIGHTS RESERVED COMPANY REGISTERED TRADEMARKS PROPERTIES PLAYERS ASSOCIATION NATIONAL BORN HOME DRAFTED RECORD CAREER POINTS GAMES SEASON TEAM ROOKIE CARD WWW COM CODE TOPPS PANINI NBA NFL MLB NHL BASKETBALL FOOTBALL BASEBALL HOCKEY LEAGUE PLAYER WIN WINS RECORD ARE OCTOBER NOVEMBER DECEMBER JANUARY FEBRUARY MARCH APRIL HIGH SCHOOL COLLEGE'.split(' '));
+const realWords = t => (String(t || '').toUpperCase().match(/[A-Z]{3,}/g) || []).filter(w => BACK_WORDS.has(w)).length;
+/* the name from the write-up: the header name is often misread ("LaMeie BALL") but the bio says "LaMelo bagged 38" and "Ball's creativity" */
+function nameFromBio(text, sport, team) {
+  const idx = PN.idx || {}; const pools = sport && idx[sport] ? [idx[sport]] : Object.values(idx); if (!pools.length) return null;
+  const T = fold(text); const words = new Set((T.toUpperCase().match(/[A-Z][A-Z'.]+/g) || []).map(w => w.replace(/'S$|[.']/g, '')));
+  const lines = T.split(/\n+/).map(l => l.trim()).filter(Boolean); let best = null, n = 0;
+  for (const m of pools) for (const w of words) { if (w.length < 3 || !m.has(w)) continue;
+    // the last name has to stand on a line of its own with one word in front (the header) or start a sentence in the bio
+    const hdr = lines.find(l => new RegExp(`^\\S+\\s+${w}$`, 'i').test(l)); const Wt = w[0] + w.slice(1).toLowerCase(); const flat = T.replace(/\n+/g, ' '); const bio = new RegExp(`(?:^|[.!?]\\s+)${Wt}(?:'s)?\\b`).test(flat) || lines.some(l => new RegExp(`^${Wt}(?:'s)?\\s`).test(l));
+    if (!hdr && !bio) continue;
+    for (const full of m.get(w)) { const f = splitName(full).first; if (!f || f.length < 3) continue; const fw = f.split(' ')[0]; const fo = fold(full).split(' ')[0].replace(/[^A-Za-z]/g, '');
+      const inBio = fo.length >= 3 && new RegExp(`\\b${fo}\\b`).test(T); /* as printed, capital first: "Victor set a record", not the word "will" */ const near = hdr ? lev(fw, nkey(hdr.split(/\s+/)[0]), 3) : 9;
+      const sc = (inBio ? 3 : 0) + (near <= Math.max(1, Math.floor(fw.length * 0.4)) ? 2 : 0) + (hdr ? 1 : 0);
+      if (sc < 3) continue; if (!best || sc > best.sc) { best = { full: fold(full), sc }; n = 1; } else if (sc === best.sc && full !== best.full) n++; } }
+  return best && n === 1 ? { full: best.full, score: 1.5, exact: false } : null;
+}
+async function rotateBlob(blob, deg) {
+  const bmp = await createImageBitmap(blob); const side = deg % 180 !== 0; const cv = document.createElement('canvas'); cv.width = side ? bmp.height : bmp.width; cv.height = side ? bmp.width : bmp.height;
+  const g = cv.getContext('2d'); g.translate(cv.width / 2, cv.height / 2); g.rotate(deg * Math.PI / 180); g.drawImage(bmp, -bmp.width / 2, -bmp.height / 2); if (bmp.close) bmp.close(); return new Promise(r => cv.toBlob(r, 'image/jpeg', 0.92));
+}
 /* the card number: read the top corners and header enlarged, in both polarities, and sideways for landscape cards.
    Best evidence wins: "CARD 4 OF 21" > "No. 12" / "#12" > a code like MT-11 or HM-JBE > a lone number in a corner. */
 const NUM_POS = /^(?:G|F|C|PG|SG|SF|PF|QB|RB|WR|TE|LB|DB|CB|OF|SS|SP|RP|DH)-/;
@@ -3895,19 +3957,23 @@ function numberCands(text, region) {
     if (m && !/^(19|20)\d\d$/.test(m[1]) && !/\d{2}\s*[-–]\s*\d{2}/.test(l)) out.push([region === 'tr' ? 3 : region === 'top' ? 3.1 : 3.2, m[1]]); } // the top-right number box is the usual spot
   return out;
 }
-// dark, box-shaped patches near the top corners: where modern cards print the number
+// dark, box-shaped patches near the top of the card: where modern cards print the number. Found row by row, so a
+// box that touches a dark header band or the card edge still counts, and the white digits inside don't split it.
 function numberBoxes(bmp) {
-  const W = bmp.width, H = bmp.height, k = Math.min(1, 500 / W); const w = Math.round(W * k), h = Math.round(H * 0.3 * k);
-  const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(bmp, 0, 0, W, H * 0.3, 0, 0, w, h);
-  const d = g.getImageData(0, 0, w, h).data; const dark = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) dark[i] = (d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11) < 100 ? 1 : 0;
-  const seen = new Int32Array(w * h); const out = []; let id = 0;
-  for (let s0 = 0; s0 < w * h; s0++) { if (!dark[s0] || seen[s0]) continue; id++; const st = [s0]; seen[s0] = id; let n = 0, x0 = w, y0 = h, x1 = 0, y1 = 0;
-    while (st.length) { const p = st.pop(); n++; const x = p % w, y = (p / w) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
-      for (const q of [p - 1, p + 1, p - w, p + w]) if (q >= 0 && q < w * h && !seen[q] && dark[q] && Math.abs((q % w) - x) <= 1) { seen[q] = id; st.push(q); } }
-    const bw = x1 - x0 + 1, bh = y1 - y0 + 1; const fill = n / (bw * bh);
-    if (bw > w * 0.04 && bw < w * 0.25 && bh > h * 0.06 && bh < h * 0.27 && bw / bh > 1 && bw / bh < 4.5 && fill > 0.55 && y0 > 0 && (x0 > w * 0.5 || x1 < w * 0.5)) out.push({ x: x0 / k, y: y0 / k, w: bw / k, h: bh / k, fill });
+  const W = bmp.width, H = bmp.height, k = Math.min(1, 500 / W); const w = Math.round(W * k), h = Math.round(H * 0.32 * k);
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(bmp, 0, 0, W, H * 0.32, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h).data; const dark = y => { const row = new Uint8Array(w); for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; row[x] = (d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11) < 95 ? 1 : 0; } return row; };
+  const gap = Math.round(w * 0.03); const tracks = []; const done = [];
+  for (let y = 0; y < h; y++) {
+    const row = dark(y); for (let x = 0, last = -99; x < w; x++) { if (row[x]) { if (x - last <= gap && x - last > 1) for (let f = last + 1; f < x; f++) row[f] = 1; last = x; } } // close gaps left by the digits
+    const runs = []; for (let x = 0; x < w;) { if (!row[x]) { x++; continue; } let e = x; while (e < w && row[e]) e++; const L = e - x; if (L >= w * 0.05 && L <= w * 0.3) runs.push([x, e - 1]); x = e; }
+    for (const t of tracks) t.hit = false;
+    for (const [a, b] of runs) { const t = tracks.find(t => !t.hit && Math.abs(t.a - a) <= 3 && Math.abs(t.b - b) <= 3); if (t) { t.hit = true; t.y1 = y; t.n++; } else tracks.push({ a, b, y0: y, y1: y, n: 1, hit: true }); }
+    for (let i = tracks.length - 1; i >= 0; i--) if (!tracks[i].hit) { done.push(tracks[i]); tracks.splice(i, 1); }
   }
-  return out.sort((a, b) => b.fill - a.fill).slice(0, 2);
+  done.push(...tracks);
+  return done.filter(t => { const bw = t.b - t.a + 1, bh = t.y1 - t.y0 + 1; return bh >= h * 0.045 && bh <= h * 0.3 && bw / bh > 0.9 && bw / bh < 5; })
+    .map(t => ({ x: t.a / k, y: t.y0 / k, w: (t.b - t.a + 1) / k, h: (t.y1 - t.y0 + 1) / k, fill: 1 })).slice(0, 3);
 }
 async function readCardNumber(blob, pr) {
   const bmp = await createImageBitmap(blob); const W = bmp.width, H = bmp.height; const all = [];
@@ -3915,20 +3981,34 @@ async function readCardNumber(blob, pr) {
     g.filter = `grayscale(1) contrast(1.4)${inv ? ' invert(1)' : ''}`; g.imageSmoothingQuality = 'high';
     if (rot) { g.translate(cv.width / 2, cv.height / 2); g.rotate(rot * Math.PI / 180); g.drawImage(bmp, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh); } else g.drawImage(bmp, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
     return new Promise(r => cv.toBlob(r, 'image/png')); };
-  for (const bx of numberBoxes(bmp)) { // a number printed in its own dark box (Topps Chrome, Prizm): read just that box
-    const cv = document.createElement('canvas'); const pad = 30, k = 3; cv.width = bx.w * k + pad * 2; cv.height = bx.h * k + pad * 2; const g = cv.getContext('2d');
-    g.fillStyle = '#000'; g.fillRect(0, 0, cv.width, cv.height); g.filter = 'grayscale(1)'; g.imageSmoothingQuality = 'high'; g.drawImage(bmp, bx.x, bx.y, bx.w, bx.h, pad, pad, bx.w * k, bx.h * k);
-    const id = g.getImageData(0, 0, cv.width, cv.height); const dd = id.data; for (let i = 0; i < dd.length; i += 4) { const v = 255 - dd[i]; dd[i] = dd[i + 1] = dd[i + 2] = v; } g.putImageData(id, 0, 0);
-    const blob2 = await new Promise(r => cv.toBlob(r, 'image/png'));
-    const reads = []; for (const psm of ['8', '7']) { try { const t = (await readImageText(blob2, pr, psm, { raw: true })).text.toUpperCase().replace(/\s+/g, ''); const m = t.match(/([A-Z]{1,4}-?\d{1,3}|\d{1,3})$/); if (m && !/^(19|20)\d\d$/.test(m[1])) reads.push(m[1].replace(/^[A-Z](?=\d)/, '')); } catch (e) {} }
-    if (reads.length) all.push([1.5, reads.sort((a, b) => b.length - a.length)[0]]); // "14" over a clipped "4"
+  const boxReads = [];
+  for (const bx of numberBoxes(bmp)) { // a number printed in its own dark box (Topps Chrome, Prizm, Inception): read just that box
+    const ins = Math.round(Math.min(bx.w, bx.h) * 0.08); const sx = bx.x + ins, sy = bx.y + ins, sw = bx.w - ins * 2, sh = bx.h - ins * 2; if (sw < 8 || sh < 8) continue;
+    const k = 80 / sh, pad = 32; /* digits ~80px tall with a white margin: what the reader likes best */ const cv = document.createElement('canvas'); cv.width = Math.round(sw * k) + pad * 2; cv.height = Math.round(sh * k) + pad * 2; const g = cv.getContext('2d', { willReadFrequently: true });
+    g.imageSmoothingQuality = 'high'; g.drawImage(bmp, sx, sy, sw, sh, pad, pad, sw * k, sh * k);
+    const id = g.getImageData(pad, pad, Math.round(sw * k), Math.round(sh * k)); const dd = id.data; let mn = 255, mx = 0; for (let i = 0; i < dd.length; i += 4) { const v = dd[i] * 0.3 + dd[i + 1] * 0.59 + dd[i + 2] * 0.11; dd[i] = v; if (v < mn) mn = v; if (v > mx) mx = v; }
+    const hist = new Array(256).fill(0); for (let i = 0; i < dd.length; i += 4) hist[dd[i] | 0]++; const tot = dd.length / 4; let sumAll = 0; for (let v = 0; v < 256; v++) sumAll += v * hist[v];
+    let wB = 0, sB = 0, bestV = -1, th = (mn + mx) / 2; for (let v = 0; v < 256; v++) { wB += hist[v]; if (!wB || wB === tot) continue; sB += v * hist[v]; const mB = sB / wB, mF = (sumAll - sB) / (tot - wB), btw = wB * (tot - wB) * (mB - mF) ** 2; if (btw > bestV) { bestV = btw; th = v; } } // Otsu
+    { const BW = id.width, BH = id.height; const on = new Uint8Array(BW * BH); for (let i = 0; i < BW * BH; i++) on[i] = dd[i * 4] > th ? 1 : 0;
+      // light marks touching the edge are the box's frame or the card's glare, not digits: they turn a 5 into a 9
+      const st = []; for (let x = 0; x < BW; x++) st.push(x, (BH - 1) * BW + x); for (let y = 0; y < BH; y++) st.push(y * BW, y * BW + BW - 1);
+      while (st.length) { const i = st.pop(); if (!on[i]) continue; on[i] = 0; const x = i % BW; if (x > 0) st.push(i - 1); if (x < BW - 1) st.push(i + 1); if (i >= BW) st.push(i - BW); if (i < BW * (BH - 1)) st.push(i + BW); }
+      for (let i = 0; i < BW * BH; i++) { const v = on[i] ? 0 : 255; dd[i * 4] = dd[i * 4 + 1] = dd[i * 4 + 2] = v; } } // light digits on a dark box -> black on white
+    g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.putImageData(id, pad, pad);
+    const blob2 = await new Promise(r => cv.toBlob(r, 'image/png')); const reads = [];
+    for (const psm of ['8', '7', '10']) { try { const t = (await readImageText(blob2, pr, psm, { exact: true })).text.toUpperCase().replace(/[^A-Z0-9-]/g, ''); const m = t.match(/^([A-Z]{1,4}-?\d{1,3}|\d{1,3}|[A-Z]{1,3}-[A-Z]{2,4})$/); if (m && !/^(19|20)\d\d$/.test(m[1])) reads.push(m[1].replace(/^[A-Z](?=\d+$)/, '').replace(/^0+(?=\d)/, '')); } catch (e) {} if (reads.length >= 2 && reads[0] === reads[1]) break; }
+    if (!reads.length) continue; const cnt = {}; reads.forEach(r => { cnt[r] = (cnt[r] || 0) + 1; }); const best = Object.entries(cnt).sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0];
+    boxReads.push({ v: best[0], agree: best[1], right: bx.x + bx.w / 2 > W * 0.62, aspect: bx.w / bx.h });
   }
+  // the top-right number box is the usual spot; a centred box is a logo unless it's the only one (Inception)
+  boxReads.sort((a, b) => (b.right - a.right) || (b.agree - a.agree));
+  if (boxReads.length) all.push([/^[A-Z]{2,}\d/.test(boxReads[0].v) ? 2.2 : boxReads[0].agree >= 2 || boxReads.length === 1 ? 1.5 : 2.2, boxReads[0].v]); // letters run into digits with no dash ("IE686") is a logo, not a code
   // stop early once there's strong evidence: each read takes a second or two on a phone
   const strong = () => all.some(c => c[0] <= 1.5);
   const steps = [['top', 0, 0, W, H * 0.25, false], ['tr', W * 0.55, 0, W * 0.45, H * 0.28, false], ['top', 0, 0, W, H * 0.25, true], ['tl', 0, 0, W * 0.45, H * 0.28, false]];
   for (const [name, x, y, w, h, inv] of steps) { if (strong()) break; try { const t = (await readImageText(await crop(x, y, w, h, inv), pr, '11')).text; all.push(...numberCands(t, name)); } catch (e) {} }
   if (!all.some(c => c[0] <= 2)) for (const rot of [90, -90]) { try { const t = (await readImageText(await crop(0, 0, W, H, false, rot), pr, '11')).text; all.push(...numberCands(t, 'rot').filter(c => c[0] <= 2).map(c => [c[0] + 0.5, c[1]])); } catch (e) {} if (all.some(c => c[0] <= 2.5)) break; }
-  if (bmp.close) bmp.close(); if (!all.length) return null;
+  if (bmp.close) bmp.close(); for (const c of all) c[1] = String(c[1]).replace(/^0+(?=\d)/, ''); all.splice(0, all.length, ...all.filter(c => c[1] !== '0')); /* "05" is 5; a lone 0 is a stat, not a card number */ if (!all.length) return null;
   const best = Math.min(...all.map(c => c[0])); const votes = {}; all.filter(c => c[0] === best).forEach(c => { votes[c[1]] = (votes[c[1]] || 0) + 1; });
   const num = Object.entries(votes).sort((a, b) => b[1] - a[1])[0][0]; return { num, sure: best <= 2 };
 }
@@ -3940,6 +4020,30 @@ async function numberFromListings(f) {
     for (const x of r.items || []) { const t = String(x.title || ''); if (!t.toLowerCase().includes(last) || LOTISH_RE.test(t)) continue; const m = t.match(/#\s?([A-Z]{0,4}-?\d{1,4}[A-Z]?)\b/i); if (m) votes[m[1].toUpperCase()] = (votes[m[1].toUpperCase()] || 0) + 1; }
     const top = Object.entries(votes).sort((a, b) => b[1] - a[1]); return top.length && top[0][1] >= 2 && (!top[1] || top[0][1] >= top[1][1] * 2) ? top[0][0] : null;
   } catch (e) { return null; }
+}
+/* what product a card is from, read the way a collector would: the "2017-18 PANINI - DONRUSS OPTIC BASKETBALL"
+   line, the "TOPPS AND TOPPS CHROME ARE REGISTERED TRADEMARKS" line, the seasons in the stat table, then the
+   copyright year (basketball and hockey sets are named for the season that starts the year before: © 2026 = 2025-26). */
+function productFacts(back, front = '') {
+  const U = (String(back) + '\n' + String(front)).toUpperCase().replace(/[‐-―]/g, '-'); const out = {};
+  const sportWord = '(BASKETBALL|FOOTBALL|BASEBALL|HOCKEY|SOCCER)';
+  const norm = (brand, phrase) => { const t = parseCardTitle(`${brand} ${phrase}`); if (t.set) return { brand: t.brand || titleCase(brand), set: t.set };
+    const ph = phrase.trim().toLowerCase(); const B0 = titleCase(brand); if (ph.length >= 5) for (const [k, b, s] of [...SETS.filter(e => e[1] === B0), ...SETS.filter(e => e[1] !== B0)]) { /* the printed brand's sets first */ const kk = k.replace(/^(topps|panini|bowman|upper deck|leaf|donruss)\s+/, ''); if (lev(kk, ph, 1) <= 1 || lev(s.toLowerCase(), ph, 1) <= 1) return { brand: b || titleCase(brand), set: s }; } /* one misread letter: "HROME" is Chrome */
+    const p = phrase.replace(/\b(UPDATES?|SERIES)\b/g, '').replace(/\s+/g, ' ').trim(); return { brand: titleCase(brand), set: p ? p.split(' ').map(titleCase).join(' ') : '' }; };
+  let m;
+  m = U.match(new RegExp(String.raw`\b((?:19|20)\d\d)(?:\s*-\s*(\d\d))?\s+(PANINI|TOPPS|UPPER DECK|BOWMAN|LEAF|FLEER|SKYBOX)\s*-?\s*([A-Z' &]{2,40}?)\s+` + sportWord));
+  if (m) { Object.assign(out, norm(m[3], m[4])); out.year = m[1]; out.yearFrom = 'product'; }
+  if (!out.set) { const t2 = U.match(/TOPPS\s+AND\s+TOPPS\s+([A-Z][A-Z' &]{2,30}?)\s+ARE\b/); if (t2) Object.assign(out, norm('TOPPS', t2[1])); }
+  if (!out.set && /^\s*CHROME\b/m.test(U) && /TOPPS/.test(U)) Object.assign(out, { brand: 'Topps', set: 'Chrome' }); // the "CHROME  @TOPPS" header on Topps Chrome backs
+  if (!out.year) { const s = U.match(/\b(\d\d)\s*-\s*(\d\d)\s+(?:NBA|NHL|NCAA)\b/); if (s && (+s[1] + 1) % 100 === +s[2]) { out.year = String((+s[1] >= 40 ? 1900 : 2000) + +s[1]); out.yearFrom = 'season'; } }
+  const sport = /\bNBA\b|\bWNBA\b|BASKETBALL/.test(U) ? 'Basketball' : /\bNHL\b|HOCKEY/.test(U) ? 'Hockey' : /\bNFL\b|FOOTBALL/.test(U) ? 'Football' : /\bMLB\b|BASEBALL/.test(U) ? 'Baseball' : '';
+  if (!out.year) { // the latest season in the stat table; the card comes out the season after
+    let best = -1; for (const s of U.matchAll(/(?:^|\s)(\d\d)\s*-\s*(\d\d)\s+(?:[A-Z]{2,4}\b|CAREER)/gm)) if ((+s[1] + 1) % 100 === +s[2]) best = Math.max(best, +s[1]);
+    if (best >= 0 && (sport === 'Basketball' || sport === 'Hockey')) { out.year = String((best >= 40 ? 1900 : 2000) + best + 1); out.yearFrom = 'stats'; }
+  }
+  if (!out.year) { const cy = U.match(/(?:©|\(C\)|COPYRIGHT)\s*©?\s*((?:19|20)\d\d)/); if (cy) { out.year = String(+cy[1] - (sport === 'Basketball' || sport === 'Hockey' ? 1 : 0)); out.yearFrom = 'copyright'; } }
+  if (!out.brand) { const b = U.match(/(?:©|\(C\))\s*\d{4}\s+(?:THE\s+)?(TOPPS|PANINI|UPPER DECK|LEAF)/); if (b) out.brand = titleCase(b[1]); }
+  return out;
 }
 /* real player names (NBA, MLB incl. prospects, NFL) to fix misreads like "EFF HORNACEK" */
 const PN = { idx: null, loading: null };
@@ -4091,9 +4195,13 @@ FORMS.batchGo = async f => {
         // lock onto the exact card edges (best fit to a 2.5 x 3.5 card); flag fits that need a look
         let fit = null;
         // in top loaders, find the card inside the plastic first; then lock onto its exact edges
-        const fitIn = (bm, q) => { const inner = BS.opts.toploader ? insideCard(bm, q, { flat: mode !== 'photos' }) : null; return inner && inner.confidence >= 0.3 ? inner : refineCorners(bm, q, { toploader: BS.opts.toploader, flat: mode !== 'photos' }); };
-        if (!c.whole) { fit = fitIn(fs.bmp, fq); fq = fit.quad; }
-        if (bq && !pairs[i].whole) { const bf = fitIn(bs.bmp, bq); bq = bf.quad; it.backCheck = !cornersOK(bf); }
+        const fitIn = (bm, q, byEdges) => {
+          if (byEdges) { // the straight-edge finder already sits on the card: only fine-tune, and never let it wander onto a neighbour
+            const r = refineCorners(bm, q, { flat: true, wide: 0.025 }); const sz = Math.sqrt(quadArea(q)); const moved = Math.max(...r.quad.map(p => Math.min(...q.map(h => Math.hypot(p[0] - h[0], p[1] - h[1]))))) / sz;
+            return moved < 0.03 ? r : { quad: orderQuad(q), confidence: 0.65, aspect: CARD_RATIO }; }
+          const inner = BS.opts.toploader ? insideCard(bm, q, { flat: mode !== 'photos' }) : null; return inner && inner.confidence >= 0.3 ? inner : refineCorners(bm, q, { toploader: BS.opts.toploader, flat: mode !== 'photos' }); };
+        if (!c.whole) { fit = fitIn(fs.bmp, fq, F2.by === 'edges'); fq = fit.quad; }
+        if (bq && !pairs[i].whole) { const bf = fitIn(bs.bmp, bq, B2.by === 'edges'); bq = bf.quad; it.backCheck = !cornersOK(bf); }
         it.cornerCheck = c.whole || !cornersOK(fit) || !!it.backCheck;
         const edge = (q, bm) => q && q.some(p => p[0] < bm.width * 0.004 || p[1] < bm.height * 0.004 || p[0] > bm.width * 0.996 || p[1] > bm.height * 0.996);
         it.offEdge = mode !== 'photos' && (edge(fq, fs.bmp) || (bq && edge(bq, bs.bmp))); // part of the card is outside the scanned area
@@ -4112,10 +4220,12 @@ FORMS.batchGo = async f => {
       if (BS.opts.read) {
         // pass 1: back, sparse text
         if (it.b) bt = (await readImageText(it.b.warped, pr, '11')).text;
+        // a back printed sideways or upside down (landscape inserts, relic cards): turn it until the words read
+        if (it.b && (wordCount(bt) < 14 || realWords(bt) < 4)) { for (const deg of [90, 270, 180]) { try { const rb = await rotateBlob(it.b.warped, deg); const t2 = (await readImageText(rb, pr, '11')).text; if (realWords(t2) > Math.max(realWords(bt) * 1.5, 3) || (realWords(t2) >= realWords(bt) && wordCount(t2) > Math.max(wordCount(bt) * 1.5, 10))) { bt = t2; it.b.read = rb; } } catch (e) {} if (realWords(bt) >= 8) break; } }
         let c = parseCardBack(bt); m = matchPlayer(c.cands, c.sport); conf = nameConfidence(m, false);
         // pass 2: back again as one block of text; two reads naming the same player confirms it
         if (conf !== 'high' && it.b) {
-          const bt2 = (await readImageText(it.b.warped, pr, '6')).text; const c2 = parseCardBack(bt2); const m2 = matchPlayer(c2.cands, c.sport || c2.sport);
+          const bt2 = (await readImageText(it.b.read || it.b.warped, pr, '6')).text; const c2 = parseCardBack(bt2); const m2 = matchPlayer(c2.cands, c.sport || c2.sport);
           const agree = m && m2 && m.full === m2.full;
           if (agree) { conf = nameConfidence(m, true); } else if (m2 && (!m || m2.score < m.score)) { m = m2; conf = nameConfidence(m2, false); bt = bt + '\n' + bt2; }
         }
@@ -4131,15 +4241,18 @@ FORMS.batchGo = async f => {
       }
       if (BS.opts.serial && !ft) ft = (await readImageText(it.f.warped, pr, '11')).text;
       it.text = bt; it.fields = parseCardBack(bt, ft); it.fields.serial = serialFrom(ft) || serialFrom(bt) || '';
+      if (!m && BS.opts.read && bt) { const mb = nameFromBio(bt, it.fields.sport); if (mb) { m = mb; conf = 'medium'; } } // header misread: find the name in the write-up
       if (m) { it.fields.player = m.full; it.fields.matched = true; }
       else if (it.fields.player && it.fields.player.split(' ').some(w => w.replace(/[^A-Za-z]/g, '').length < 3)) it.fields.player = ''; // a scrap like "Lu Mz" is worse than a blank
       it.fields.conf = BS.opts.read ? conf : '';
       if (BS.opts.read) {
-        const side = it.b ? it.b.warped : it.f.warped; const rn = await readCardNumber(side, pr).catch(() => null);
+        const side = it.b ? (it.b.read || it.b.warped) : it.f.warped; const rn = await readCardNumber(side, pr).catch(() => null);
         if (rn && (rn.sure || !it.fields.number)) { it.fields.number = rn.num; it.fields.numberFrom = rn.sure ? '' : 'corner'; }
+        if (it.fields.number === '0') it.fields.number = '';
         if (!it.fields.number) { const ln = await numberFromListings(it.fields); if (ln) { it.fields.number = ln; it.fields.numberFrom = 'ebay'; } }
       }
     }
+    sheetConsensus(BS.items);
     renderBatchReview();
   } catch (e) { console.error(e); sheet.innerHTML = `${mhead('Stopped')}<p>${esc(e.message)}</p><div class="sheet-foot"><button class="btn" data-act="close" type="button">Close</button><button class="btn pri" type="button" data-act="batch">Try again</button></div>`; }
 };
@@ -4152,8 +4265,8 @@ function renderBatchReview() {
     return `<fieldset data-bi="${i}" class="bs-item${c.conf && c.conf !== 'high' ? ' bs-unsure' : ''}"><legend>Card ${i + 1}${dupOf.length ? ` <span class="pill st-listed">Already have ${dupOf.map(d => esc(d.code)).join(', ')}</span>` : ''}</legend>${it.offEdge && !it.loose ? '<div class="warn" style="margin-bottom:8px">This card runs off the edge of the scan, so part of it is cut off. Move it in from the edge of the glass and rescan, or fix it later with Straighten.</div>' : it.cornerCheck && !it.loose ? '<div class="warn" style="margin-bottom:8px">Corners may be slightly off on this one. Check it with Straighten after saving.</div>' : ''}${it.loose ? '<div class="warn" style="margin-bottom:8px">Couldn\'t find this card\'s edges, so the whole photo was used. Use Straighten on the card page after saving.</div>' : ''}
     <div class="bs-grid"><div class="bs-imgs"><img src="${blobURL(it.f.warped)}" alt="Front ${i + 1}">${it.b ? `<img src="${blobURL(it.b.warped)}" alt="Back ${i + 1}">` : '<div class="bs-noback">No back</div>'}</div>
     <div class="fgrid">
-      ${field(c.conf === 'high' ? 'Player ✓ Confirmed' : c.conf === 'medium' ? 'Player · Check' : c.conf === 'low' ? 'Player · Not sure' : 'Player', `<input data-k="player" value="${esc(c.player)}" list="dl-bpl" class="${c.conf === 'low' ? 'bs-low' : c.conf === 'medium' ? 'bs-mid' : ''}">`)}${field('Year', `<input data-k="year" value="${esc(c.year)}" inputmode="numeric">`)}
-      ${field('Brand', `<input data-k="brand" value="${esc(c.brand)}" list="dl-bbr">`)}${field('Set', `<input data-k="set" value="${esc(c.set)}" list="dl-bset">`)}
+      ${field(c.conf === 'high' ? 'Player ✓ Confirmed' : c.conf === 'medium' ? 'Player · Check' : c.conf === 'low' ? 'Player · Not sure' : 'Player', `<input data-k="player" value="${esc(c.player)}" list="dl-bpl" class="${c.conf === 'low' ? 'bs-low' : c.conf === 'medium' ? 'bs-mid' : ''}">`)}${field((c.guess || {}).year ? 'Year · Same as the others' : 'Year', `<input data-k="year" value="${esc(c.year)}" inputmode="numeric"${(c.guess || {}).year ? ' class="bs-mid"' : ''}>`)}
+      ${field((c.guess || {}).brand ? 'Brand · Same as the others' : 'Brand', `<input data-k="brand" value="${esc(c.brand)}" list="dl-bbr"${(c.guess || {}).brand ? ' class="bs-mid"' : ''}>`)}${field((c.guess || {}).set ? 'Set · Same as the others' : 'Set', `<input data-k="set" value="${esc(c.set)}" list="dl-bset"${(c.guess || {}).set ? ' class="bs-mid"' : ''}>`)}
       ${field(c.numberFrom === 'ebay' ? 'Card # · From eBay listings, check it' : c.numberFrom === 'corner' ? 'Card # · Not sure' : 'Card #', `<input data-k="number" value="${esc(c.number)}"${c.numberFrom ? ' class="bs-low"' : ''}>`)}${field('Parallel', `<input data-k="parallel" value="${esc(c.parallel)}" placeholder="Base">`)}${field('Serial', `<input data-k="serial" value="${esc(c.serial || '')}" placeholder="23/99">`)}
       ${field('Sport', `<select data-k="sport">${opts(SPORTS, c.sport, '—')}</select>`)}${field('Team', `<input data-k="team" value="${esc(c.team)}">`)}
       ${field('Paid', `<input data-k="price" inputmode="decimal" placeholder="split from total">`)}${field('Value', `<input data-k="value" inputmode="decimal" placeholder="0.00">`)}
