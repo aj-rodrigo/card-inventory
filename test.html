@@ -4292,9 +4292,9 @@ function renderBatchReview() {
     ${field('From pickup', `<select name="pickup">${opts(pickups.map(p => [p.id, fmtDate(p.date) + ' · ' + (p.location || 'Pickup')]), '', 'None')}</select>`)}
     ${field('First slot in the box (counts up)', inp('slot0', '', 'placeholder="A1 or Row B 12"'))}
   </div>
-  <div class="row"><span class="muted">Fill blank fields on all cards:</span>
+  <div class="row"><span class="muted">Same on every card:</span>
     <input id="bs-fill-set" placeholder="Set" value="${esc(common('set'))}" style="width:130px" aria-label="Set for all"><input id="bs-fill-year" placeholder="Year" value="${esc(common('year'))}" style="width:80px" aria-label="Year for all"><input id="bs-fill-brand" placeholder="Brand" value="${esc(common('brand'))}" style="width:110px" aria-label="Brand for all"><select id="bs-fill-sport" style="width:auto" aria-label="Sport for all">${opts(SPORTS, common('sport'), 'Sport')}</select>
-    <button class="btn sm" type="button" data-act="bsFill">Fill blanks</button></div></fieldset>
+    <button class="btn sm" type="button" data-act="bsFill">Fill blanks</button><button class="btn sm" type="button" data-act="bsFill" data-all="1" title="Replaces what's there on every card">Apply to all cards</button></div></fieldset>
   <div style="display:flex;flex-direction:column;gap:12px">${BS.items.map(row).join('')}</div>
   ${platformList()}${dl('dl-bpl', all.map(x => x.player))}${dl('dl-bbr', ['Panini', 'Topps', 'Upper Deck', 'Bowman', 'Donruss', 'Fleer', ...all.map(x => x.brand)])}${dl('dl-bset', all.map(x => x.set))}
   <div class="sheet-foot"><label class="chk" style="margin-right:auto"><input type="checkbox" name="labels" checked> Print QR labels after saving</label><button class="btn" type="button" data-act="close">Cancel</button><button class="btn pri" type="submit">Add ${n} card${n === 1 ? '' : 's'}</button></div></form>`;
@@ -4317,10 +4317,11 @@ Object.assign(A, {
     it[k] = { warped: await canvasBlob(warpCard(src, q)), orig: cur.orig, quad: q }; bmp.close && bmp.close();
     renderBatchReview(); bsRestoreShared();
   },
-  bsFill: () => {
-    bsCollect(); const v = { set: $('#bs-fill-set').value.trim(), year: $('#bs-fill-year').value.trim(), brand: $('#bs-fill-brand').value.trim(), sport: $('#bs-fill-sport').value };
-    BS.items.forEach(it => Object.entries(v).forEach(([k, x]) => { if (x && !it.fields[k]) it.fields[k] = x; }));
-    renderBatchReview(); bsRestoreShared(); toast('Blank fields filled');
+  bsFill: el => { // "Fill blanks" keeps what's read; "Apply to all cards" replaces it. Boxes left empty change nothing either way
+    bsCollect(); const all = !!(el && el.dataset.all); const v = { set: $('#bs-fill-set').value.trim(), year: $('#bs-fill-year').value.trim(), brand: $('#bs-fill-brand').value.trim(), sport: $('#bs-fill-sport').value };
+    if (!Object.values(v).some(Boolean)) return toast('Type a set, year, brand or sport first');
+    let n = 0; BS.items.forEach(it => Object.entries(v).forEach(([k, x]) => { if (x && (all || !it.fields[k]) && it.fields[k] !== x) { it.fields[k] = x; n++; if (it.fields.guess) delete it.fields.guess[k]; } }));
+    renderBatchReview(); bsRestoreShared(); toast(all ? `Applied to all ${BS.items.length} cards` : n ? 'Blank fields filled' : 'No blank fields to fill');
   },
 });
 FORMS.batchSave = async f => {
