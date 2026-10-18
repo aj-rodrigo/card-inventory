@@ -4140,16 +4140,17 @@ function openBatch(mode) {
     <li>Raw cards with white borders: cover them with <b>black paper</b> before closing the lid.</li>
     <li>Scan at <b>300 dpi, color, JPG</b>. Then flip each card over <b>in its own spot</b> and scan again for the backs.</li>
   </ol>
-  <div class="fgrid">
-    ${field('Front scans', '<input type="file" name="fronts" accept="image/*,application/pdf" multiple required>')}
-    ${field('Back scans (same order)', '<input type="file" name="backs" accept="image/*,application/pdf" multiple>')}
-  </div>
+  <div id="bs-sheets">${bsSheetRow(1)}</div>
+  <div class="row"><button class="btn" type="button" data-act="bsAddSheet">+ Add another sheet</button><small class="muted">Each sheet: its front scan and its back scan. A PDF with several pages counts as several sheets.</small></div>
   <label class="chk"><input type="checkbox" name="mirrored"> I flipped the whole sheet instead of each card (backs are mirrored)</label>`}
   <label class="chk"><input type="checkbox" name="read" checked> Read the card backs to fill in player, year, set and number</label>
   <label class="chk"><input type="checkbox" name="serial" ${S.settings.readSerial === false ? '' : 'checked'}> Look for serial numbers like 23/99 on the fronts (a little slower)</label>
   <label class="chk"><input type="checkbox" name="toploader" ${S.settings.toploader ? 'checked' : ''}> Cards are in top loaders or sleeves</label>
   ${mfoot('Find cards')}</form>`);
 }
+// one scanner sheet: its front scan and its back scan side by side, so they can't get out of order
+const bsSheetRow = n => `<div class="fgrid bs-sheet" data-n="${n}">${field(`Sheet ${n} front`, `<input type="file" name="front_${n}" accept="image/*,application/pdf" multiple${n === 1 ? ' required' : ''}>`)}${field(`Sheet ${n} back`, `<input type="file" name="back_${n}" accept="image/*,application/pdf" multiple>`)}</div>`;
+A.bsAddSheet = () => { const box = $('#bs-sheets'); if (!box) return; const n = box.querySelectorAll('.bs-sheet').length + 1; box.insertAdjacentHTML('beforeend', bsSheetRow(n)); const inp = box.querySelector(`[name=front_${n}]`); if (inp) inp.click(); };
 FORMS.batchGo = async f => {
   const fd = new FormData(f); const mode = fd.get('mode') || 'scanner';
   BS.opts = { read: fd.get('read') === 'on', serial: fd.get('serial') === 'on', toploader: fd.get('toploader') === 'on', mirrored: fd.get('mirrored') === 'on', mode };
@@ -4166,7 +4167,7 @@ FORMS.batchGo = async f => {
     else fronts = photos;
     if (order !== 'fronts' && order !== 'auto' && photos.length % 2) toast('Odd number of photos: the last card has no back photo');
   } else {
-    fronts = fd.getAll('fronts').filter(x => x && x.size); backs = fd.getAll('backs').filter(x => x && x.size);
+    for (const row of f.querySelectorAll('.bs-sheet')) { const n = row.dataset.n; const ff = fd.getAll('front_' + n).filter(x => x && x.size), bb = fd.getAll('back_' + n).filter(x => x && x.size); if (ff.length) fronts.push({ f: ff, b: bb }); else if (bb.length) return toast(`Sheet ${n} has a back scan but no front scan`); }
     if (!fronts.length) return toast('Choose at least one front scan');
   }
   const sheet = $('#modal-root .sheet');
@@ -4175,7 +4176,9 @@ FORMS.batchGo = async f => {
     BS.items = []; BS.merged = 0; BS.sheets = [];
     const pairsN = mode === 'photos' ? fronts.length : null;
     // scanner sheets are few and may be PDFs, so load them up front; photos load one pair at a time
-    const fS = mode === 'photos' ? null : await sheetsFromFiles(fronts), bS = mode === 'photos' ? null : await sheetsFromFiles(backs);
+    let fS = null, bS = null;
+    if (mode !== 'photos') { fS = []; bS = []; for (const row of fronts) { const a = await sheetsFromFiles(row.f), b = row.b.length ? await sheetsFromFiles(row.b) : []; // each sheet keeps its own back, even when one is missing
+      if (b.length && b.length !== a.length) toast(`${a.length} front page${a.length > 1 ? 's' : ''} but ${b.length} back page${b.length > 1 ? 's' : ''} in one sheet: they're paired in order`); fS.push(...a); a.forEach((_, i) => bS.push(b[i] || null)); } }
     const total = mode === 'photos' ? pairsN : fS.length;
     for (let s = 0; s < total; s++) {
       prog(mode === 'photos' ? `Finding card ${s + 1} of ${total}` : `Finding cards on sheet ${s + 1} of ${total}`, s / total * 0.4);
@@ -4210,7 +4213,7 @@ FORMS.batchGo = async f => {
       }
       for (const sh of [fs, bs]) if (sh && mode === 'photos') { sh.src = null; sh.bmp.close && sh.bmp.close(); } // free memory
     }
-    if (fS) [...fS, ...bS].forEach(sh => { sh.src = null; });
+    if (fS) [...fS, ...bS].filter(Boolean).forEach(sh => { sh.src = null; });
     if (!BS.items.length) { sheet.innerHTML = `${mhead('No cards found')}<p>Dugout couldn't find card edges. Put black paper over white-bordered cards, leave a gap between cards, and try again.</p><div class="sheet-foot"><button class="btn pri" type="button" data-act="batch">Try again</button></div>`; return; }
     await loadPlayerNames();
     for (let i = 0; i < BS.items.length; i++) {
