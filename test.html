@@ -5178,18 +5178,30 @@ function studioCompose(subj, slab) {
 
 // everything a single listing uploads, in order
 const PHOTO_CACHE = new Map();
+// which way the card's top edge runs in the stored corners: 0 when corner 1 is top-left, 90/180/270 when Straighten turned it
+function quarterTurn(q) { if (!q || q.length !== 4) return 0; const a = Math.atan2(q[1][1] - q[0][1], q[1][0] - q[0][0]) * 180 / Math.PI; return ((Math.round(-a / 90) * 90) % 360 + 360) % 360; }
+// turn a picture clockwise by 90/180/270 and say where any point ends up
+function turnBitmap(bmp, deg) {
+  const W = bmp.width, H = bmp.height, side = deg % 180 !== 0; const cv = document.createElement('canvas'); cv.width = side ? H : W; cv.height = side ? W : H; const g = cv.getContext('2d');
+  g.translate(cv.width / 2, cv.height / 2); g.rotate(deg * Math.PI / 180); g.drawImage(bmp, -W / 2, -H / 2);
+  const pt = ([x, y]) => deg === 90 ? [H - y, x] : deg === 180 ? [W - x, H - y] : deg === 270 ? [y, W - x] : [x, y];
+  return { bmp: cv, pt };
+}
 async function listingPhotos(c, { studio = true } = {}) {
-  const key = [c.id, c.frontOrig || c.front, c.backOrig || c.back, JSON.stringify(c.frontQuad || ''), JSON.stringify(c.backQuad || ''), studio].join('|');
+  const key = [c.id, c.frontOrig || c.front, c.backOrig || c.back, JSON.stringify(c.frontQuad || ''), JSON.stringify(c.backQuad || ''), studio, c.frontRot || 0, c.backRot || 0].join('|');
   if (PHOTO_CACHE.has(key)) return PHOTO_CACHE.get(key);
   const p = (async () => {
     const slab = !!c.graded; const out = { studio: null, photos: [] };
     for (const side of ['front', 'back']) {
       const id = c[side + 'Orig'] || c[side]; if (!id) continue; const rec = await fileGet(id); if (!rec) continue;
-      const { bmp, quad, whole } = await locate(rec.blob, { slab, quad: slab ? null : c[side + 'Quad'], cropped: !c[side + 'Orig'] });
+      let { bmp, quad, whole } = await locate(rec.blob, { slab, quad: slab ? null : c[side + 'Quad'], cropped: !c[side + 'Orig'] });
+      // turn the photo the way the card reads: the turn made in Straighten (the order of its corners) plus any turn set in the listing form
+      const turn = ((quarterTurn(c[side + 'Quad']) + (+c[side + 'Rot'] || 0)) % 360 + 360) % 360;
+      if (turn) { const R = turnBitmap(bmp, turn); if (quad) quad = orderQuad(quad.map(R.pt)); bmp = R.bmp; if (whole) quad = [[0, 0], [bmp.width, 0], [bmp.width, bmp.height], [0, bmp.height]]; }
       if (!quad) { out.photos.push({ blob: rec.blob, what: `${side} (original photo)` }); continue; }
       const full = cropFull(bmp, quad, whole ? 0 : slab ? 0.04 : 0.06);
       if (!whole) { const cut = cutSides(bmp, quad); if (cut.length) (out.warn = out.warn || []).push(`The card runs into the ${cut.join(' and ')} edge of the ${side} photo, so that edge can't be shown in full. Rescan with a little space around the card.`); }
-      out.photos.push({ blob: whole ? rec.blob : await toJpeg(full), what: whole ? `${side} (your photo, as taken)` : `${side}, your photo cropped around the card (no edits)` });
+      out.photos.push({ blob: whole ? (turn ? await toJpeg(bmp) : rec.blob) : await toJpeg(full), what: whole ? `${side} (your photo, as taken)` : `${side}, your photo cropped around the card (no edits)` });
       if (!slab) out.corners = (out.corners || []).concat({ blob: await toJpeg(cornersFrom(bmp, quad, side === 'front' ? 'Front' : 'Back')), what: `${side} corners, cut from your photo` });
       if (side === 'front' && studio) out.studio = await toJpeg(studioCompose(warpFull(bmp, quad, 0), slab));
     }
@@ -5369,10 +5381,11 @@ A.listEbay = el => {
     $('#eb-errs').innerHTML = L.errs.length ? `<div class="warn">${L.errs.map(esc).join('<br>')}</div>` : '';
   };
   f.addEventListener('input', upd); upd();
-  listingPhotos(c, { studio: !(c.graded && !c.frontOrig) }).then(P => { const box = $('#eb-studio'); if (!box) return; const t = f.querySelector('[name=studio]');
+  const showThumbs = () => listingPhotos(c, { studio: !(c.graded && !c.frontOrig) }).then(P => { const box = $('#eb-studio'); if (!box) return; const t = f.querySelector('[name=studio]');
     if (!P.studio && t) { t.checked = false; t.disabled = true; }
     const all = [...(P.studio ? [{ blob: P.studio, what: 'studio' }] : []), ...P.photos];
-    box.innerHTML = `<div class="eb-thumbs">${all.map(x => `<a href="${URL.createObjectURL(x.blob)}" target="_blank" rel="noopener" title="${esc(x.what)}"><img src="${URL.createObjectURL(x.blob)}" alt="${esc(x.what)}"></a>`).join('')}</div>${(P.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}<small class="muted">The photos eBay will get, from your full-size originals: ${all.map(x => x.what).join(' · ')}</small>`; }).catch(() => {});
+    box.innerHTML = `<div class="eb-thumbs">${all.map(x => `<a href="${URL.createObjectURL(x.blob)}" target="_blank" rel="noopener" title="${esc(x.what)}"><img src="${URL.createObjectURL(x.blob)}" alt="${esc(x.what)}"></a>`).join('')}</div>${(P.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}<div class="row"><span class="muted">Card upside down or sideways?</span><button class="btn sm" type="button" data-act="ebRot" data-side="front" data-id="${c.id}">↻ Turn front</button>${c.back ? `<button class="btn sm" type="button" data-act="ebRot" data-side="back" data-id="${c.id}">↻ Turn back</button>` : ''}</div><small class="muted">The photos eBay will get, from your full-size originals: ${all.map(x => x.what).join(' · ')}</small>`; }).catch(() => {});
+  f._thumbs = showThumbs; showThumbs();
 };
 const b64OfBlob = async (blob, name = 'studio.jpg') => { blob = await ebaySize(blob); /* eBay's 500px minimum */ const buf = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000)); return { base64: btoa(s), type: blob.type || 'image/jpeg', name }; };
 /* eBay Standard Envelope only takes packages up to 3 oz holding items up to $20. Anything heavier or pricier (a lot, a slab, a big card)
@@ -5602,6 +5615,10 @@ FORMS.ebPolicies = async f => { const fd = new FormData(f); const cfg = ebCfg();
 // the Today row for orders to ship lives in ops.js (Ship Mode)
 let ebBootSync = false;
 window.addEventListener('hashchange', () => { if (!ebBootSync && ebOn() && S.cards.length) { ebBootSync = true; ebSync(false).then(n => n && toast(`${n} new eBay sale${n > 1 ? 's' : ''} synced`)).catch(() => {}); } });
+
+// turn the listing photos a quarter at a time (a sideways or landscape card); remembered on the card for next time
+A.ebRot = async el => { const c = cardById(el.dataset.id); if (!c) return; const k = el.dataset.side + 'Rot'; c[k] = ((+c[k] || 0) + 90) % 360; await save('cards', c, { quiet: true });
+  const box = $('#eb-studio'); if (box) box.style.opacity = '.5'; const f = $('#modal-root form'); if (f && f._thumbs) await f._thumbs(); if (box) box.style.opacity = ''; };
 
 /* eBay, part 2: market check (current asking prices), card lots, and the studio group photo for lots. */
 
