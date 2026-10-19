@@ -5724,6 +5724,7 @@ const EB_COND_ENUM = { 1000: 'NEW', 1500: 'NEW_OTHER', 2750: 'LIKE_NEW', 3000: '
 const lotCards = () => S.cards.filter(live).filter(c => c.status === 'in_stock' && c.front && !(c.ebay && ['active', 'lot'].includes(c.ebay.status)));
 const lotWeight = c => num(c.value) || unitCost(c) || 1;
 const lotUniq = a => [...new Set(a.filter(Boolean).map(x => String(x).trim()).filter(Boolean))];
+const LOT_SINGLE = ['Year Manufactured', 'Season', 'Sport', 'Graded', 'Autographed', 'Number of Cards', 'Type', 'Vintage', 'Original/Licensed Reprint', 'Card Condition', 'Language', 'Country/Region of Manufacture'];
 function lotAuto(cards) {
   const one = k => { const u = lotUniq(cards.map(c => c[k])); return u.length === 1 ? u[0] : ''; };
   const players = lotUniq(cards.map(c => c.player));
@@ -5734,7 +5735,7 @@ function lotAuto(cards) {
   if (title.length > 80) title = title.slice(0, 77).replace(/,\s*[^,]*$/, '') + '…';
   return {
     title: title.slice(0, 80),
-    aspects: { 'Sport': [one('sport')], 'Player/Athlete': players.slice(0, 30), 'Team': lotUniq(cards.map(c => c.team)).slice(0, 30), 'Manufacturer': lotUniq(cards.map(c => c.brand)).slice(0, 30), 'Number of Cards': [String(cards.length)], 'Graded': [cards.some(c => c.graded) ? 'Yes' : 'No'], 'Autographed': [cards.some(c => c.auto) ? 'Yes' : 'No'], 'Type': ['Sports Trading Card'], 'Year Manufactured': lotUniq(cards.map(c => (String(c.year || '').match(/\d{4}/) || [''])[0])).slice(0, 30) },
+    aspects: { 'Sport': [one('sport')], 'Player/Athlete': players.slice(0, 30), 'Team': lotUniq(cards.map(c => c.team)).slice(0, 30), 'Manufacturer': lotUniq(cards.map(c => c.brand)).slice(0, 30), 'Number of Cards': [String(cards.length)], 'Graded': [cards.some(c => c.graded) ? 'Yes' : 'No'], 'Autographed': [cards.some(c => c.auto) ? 'Yes' : 'No'], 'Type': ['Sports Trading Card'], 'Year Manufactured': [(u => u.length === 1 ? u[0] : '')(lotUniq(cards.map(c => (String(c.year || '').match(/\d{4}/) || [''])[0]).filter(Boolean)))] }, // eBay takes one year only: left off when the lot mixes years
   };
 }
 async function lotInfo() { const cfg = ebCfg(); if (cfg.lotInfo && cfg.lotInfo.at > Date.now() - 7 * 864e5) return cfg.lotInfo; const r = await ebay('lotInfo', {}); cfg.lotInfo = { ...r, at: Date.now() }; await saveSettings(); return cfg.lotInfo; }
@@ -5788,6 +5789,7 @@ FORMS.lotList = async f => {
     const auto = lotAuto(cards); const aspects = {};
     for (const [k, v] of Object.entries(auto.aspects)) { const vals = v.filter(Boolean); if (vals.length) aspects[k] = vals; }
     for (const [k, v] of fd.entries()) if (k.startsWith('asp:') && String(v).trim()) aspects[k.slice(4)] = String(v).split(',').map(s => s.trim()).filter(Boolean);
+    for (const k of LOT_SINGLE) if (aspects[k] && aspects[k].length > 1) { if (k === 'Year Manufactured' && !(info.aspects || []).some(a => a.name === k)) delete aspects[k]; else aspects[k] = aspects[k].slice(0, 1); } // eBay allows one value for these
     const lc = lotCondition(info, fd.get('cond'), fd.get('desc'));
     const sku = 'LOT-' + Date.now().toString(36).toUpperCase();
     const desc = `<p><b>${esc(title)}</b></p><p>${cards.length} cards, all pictured:</p><ul>${cards.map(c => `<li>${esc(cardFull(c))}</li>`).join('')}</ul>`;
