@@ -3464,8 +3464,10 @@ Object.assign(A, {
   stAuto: () => { const sl = ST.side === 'front' && ST.card && ST.card.slabLabel ? findSlab(ST.bmp) : null; if (sl) { ST.quad = sl.card; drawHandles(); stPreview(); return toast('Card found inside the slab'); }
     const cw = ST.card && ST.card[ST.side + 'CardW']; if (cw) { let r = null; const W = ST.bmp.width, H = ST.bmp.height; try { r = cardInBox(ST.bmp, [[0, 0], [W, 0], [W, H], [0, H]], { width: cw, grow: 0 }); } catch (e) {} if (r && r.score >= 0.6) { ST.quad = r.quad.map(p => p.slice()); drawHandles(); stPreview(); return toast('Corners found'); } }
     const r = findCardCorners(ST.bmp, { toploader: !!S.settings.toploader }); if (!r) return toast('Couldn\'t find the card edges. Drag the dots by hand.'); ST.quad = r.quad; drawHandles(); stPreview(); toast(cornersOK(r) ? 'Corners found' : 'Corners found. Low contrast here, so give them a quick check.'); },
-  stSnap: () => { // the card-sized box inside the loader whose four sides are real edges with lid colour just outside
-    const w = ST.card && ST.card[ST.side + 'CardW']; let r = null; try { r = cardInBox(ST.bmp, ST.quad, w ? { width: w, grow: 0.25 } : { grow: 0.25 }); } catch (e) {}
+  stSnap: async el => { // the card-sized box inside the loader whose four sides are real edges with lid colour just outside
+    if (el) { el.disabled = true; el.textContent = 'Finding the card…'; } await new Promise(r => setTimeout(r, 30)); // let the button update before the search runs
+    const w = ST.card && ST.card[ST.side + 'CardW']; let r = null; try { r = cardInBoxTilted(ST.bmp, ST.quad, w ? { width: w, grow: 0.25 } : { grow: 0.25 }); } catch (e) {}
+    if (el) { el.disabled = false; el.textContent = 'Snap inside top loader'; }
     if (!r || r.score < 0.5) { const r2 = refineCorners(ST.bmp, ST.quad, { toploader: true }); ST.quad = r2.quad; drawHandles(); stPreview(); return toast('Couldn\'t lock onto the card cleanly. Check the corners.'); }
     ST.quad = r.quad.map(p => p.slice()); drawHandles(); stPreview(); toast(r.score >= 0.85 ? 'Snapped to the card inside the loader' : 'Snapped. Low contrast here, so give the corners a quick look'); },
   stFit: () => { const r = refineCorners(ST.bmp, ST.quad, {}); ST.quad = r.quad; drawHandles(); stPreview(); toast('Snapped to the nearest card edges'); },
@@ -3664,7 +3666,12 @@ function cardInBox(bmp, quad, opts0 = {}) {
   const X1 = Math.min(bmp.width, Math.ceil(Math.max(...xs) + bw * grow)), Y1 = Math.min(bmp.height, Math.ceil(Math.max(...ys) + bh * grow));
   const k = Math.min(1, (opts.res || 420) / Math.max(X1 - X0, Y1 - Y0)); const W = Math.max(8, Math.round((X1 - X0) * k)), H = Math.max(8, Math.round((Y1 - Y0) * k));
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d', { willReadFrequently: true }); g.imageSmoothingQuality = 'high';
-  g.drawImage(bmp, X0, Y0, X1 - X0, Y1 - Y0, 0, 0, W, H); const d = g.getImageData(0, 0, W, H).data;
+  g.drawImage(bmp, X0, Y0, X1 - X0, Y1 - Y0, 0, 0, W, H);
+  const ang = opts.angle || 0, ca = Math.cos(ang), sa = Math.sin(ang);
+  if (ang) { // turn the region so a crooked card sits square; fill the uncovered corners with the region's edge colour
+    const e = g.getImageData(0, 0, W, H).data; let r = 0, gg = 0, bb = 0, n = 0; for (let x = 0; x < W; x += 3) for (const y of [0, H - 1]) { const i = (y * W + x) * 4; r += e[i]; gg += e[i + 1]; bb += e[i + 2]; n++; }
+    g.fillStyle = `rgb(${r / n | 0},${gg / n | 0},${bb / n | 0})`; g.fillRect(0, 0, W, H); g.save(); g.translate(W / 2, H / 2); g.rotate(-ang); g.drawImage(bmp, X0, Y0, X1 - X0, Y1 - Y0, -W / 2, -H / 2, W, H); g.restore(); }
+  const d = g.getImageData(0, 0, W, H).data;
   const L = new Float32Array(W * H); for (let i = 0; i < W * H; i++) L[i] = d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11;
   // colour edges too: a red border on a dark background can have little brightness difference
   const C = (i, j) => Math.abs(d[i * 4] - d[j * 4]) + Math.abs(d[i * 4 + 1] - d[j * 4 + 1]) + Math.abs(d[i * 4 + 2] - d[j * 4 + 2]);
@@ -3690,9 +3697,10 @@ function cardInBox(bmp, quad, opts0 = {}) {
   // a side past the edge of the scan can't be seen: count it as half there, and judge the other sides on what is visible
   const vcov = (x, a, b) => { if (x < 1 || x > W - 2) return 0.5; a = Math.max(0, a); b = Math.min(H, b); return b - a < 8 ? 0.5 : (cv1[b * W + x] - cv1[a * W + x]) / (b - a); };
   const hcov = (y, a, b) => { if (y < 1 || y > H - 2) return 0.5; a = Math.max(0, a); b = Math.min(W, b); return b - a < 8 ? 0.5 : (ch1[y * (W + 1) + b] - ch1[y * (W + 1) + a]) / (b - a); };
-  const offL = X0 === 0, offT = Y0 === 0, offR = X1 === bmp.width, offB = Y1 === bmp.height; // the region runs to the edge of the scan there
+  const offL = !ang && X0 === 0, offT = !ang && Y0 === 0, offR = !ang && X1 === bmp.width, offB = !ang && Y1 === bmp.height; // the region runs to the edge of the scan there
   const ins = s => Math.round(s * 0.06); // skip the rounded corners
-  const want = opts.width ? opts.width * k : 0; const wMin = want ? Math.round(want * (1 - (opts.wTol || 0.015))) : Math.round(Math.min(W, H / 1.4) * 0.5), wMax = want ? Math.round(want * (1 + (opts.wTol || 0.015))) : Math.min(W - 2, Math.round((H - 2) / 1.355));
+  const want = opts.width ? opts.width * k : 0; let wMin = want ? Math.round(want * (1 - (opts.wTol || 0.015))) : Math.round(Math.min(W, H / 1.4) * 0.5), wMax = want ? Math.round(want * (1 + (opts.wTol || 0.015))) : Math.min(W - 2, Math.round((H - 2) / 1.355));
+  if (!want && opts.wRange) { wMin = Math.max(wMin, Math.round(opts.wRange[0] * k)); wMax = Math.min(wMax, Math.round(opts.wRange[1] * k)); } // the card is about as wide as the box you drew, or the loader's 5/6
   if (opts.mask !== false) { // the card is the solid patch that isn't lid/table colour; thin plastic lines are wiped out first
     const fg = new Uint8Array(W * H); const T = (opts.fgT || 70);
     for (let i = 0; i < W * H; i++) fg[i] = (Math.abs(d[i * 4] - bg[0]) + Math.abs(d[i * 4 + 1] - bg[1]) + Math.abs(d[i * 4 + 2] - bg[2])) > T ? 1 : 0;
@@ -3722,7 +3730,7 @@ function cardInBox(bmp, quad, opts0 = {}) {
       const [x0, l] = bestOf(Math.max(1, mb.x0 - m), mb.x0 + m, v => vcov(v, mb.y0 + 5, mb.y1 - 5)); const [x1, rr] = bestOf(mb.x1 - m, Math.min(W - 2, mb.x1 + m), v => vcov(v, mb.y0 + 5, mb.y1 - 5));
       const [y0, tp] = bestOf(Math.max(1, mb.y0 - m), mb.y0 + m, v => hcov(v, x0 + 5, x1 - 5)); const [y1, bt] = bestOf(mb.y1 - m, Math.min(H - 2, mb.y1 + m), v => hcov(v, x0 + 5, x1 - 5));
       Object.assign(sn, { x0, x1, y0, y1, sc: Math.min(l, rr, tp, bt) * 0.6 + (l + rr + tp + bt) / 10 });
-      const back = (x, y) => [X0 + x / k, Y0 + y / k];
+      const back = (x, y) => { const u = x - W / 2, v = y - H / 2; return [X0 + (W / 2 + u * ca - v * sa) / k, Y0 + (H / 2 + u * sa + v * ca) / k]; };
       const rt = (sn.y1 - sn.y0) / (sn.x1 - sn.x0); if (rt >= 1.33 && rt <= 1.47) /* else: not card-shaped (merged with a neighbour), use the edge search */
       return { by: 'mask', ratio: (sn.y1 - sn.y0) / (sn.x1 - sn.x0), quad: [back(sn.x0, sn.y0), back(sn.x1, sn.y0), back(sn.x1, sn.y1), back(sn.x0, sn.y1)], score: sn.sc, width: (sn.x1 - sn.x0) / k };
     }
@@ -3745,7 +3753,7 @@ function cardInBox(bmp, quad, opts0 = {}) {
   let pick = best; if (opts.outer) for (const c of all) if (c.sc >= best.sc - 0.04 && (c.x1 - c.x0) > (pick.x1 - pick.x0) * 1.01 && c.x0 <= best.x0 + 2 && c.x1 >= best.x1 - 2 && c.y0 <= best.y0 + 2 && c.y1 >= best.y1 - 2) pick = c;
   // how clearly it won: the best box somewhere else (not just a pixel or two over). Close runners-up mean "check this one"
   let alt = 0; const md = (pick.x1 - pick.x0) * 0.03; for (const c of all) if ((Math.abs(c.x0 - pick.x0) > md || Math.abs(c.y0 - pick.y0) > md) && c.sc > alt) alt = c.sc;
-  const back = (x, y) => [X0 + x / k, Y0 + y / k];
+  const back = (x, y) => { const u = x - W / 2, v = y - H / 2; return [X0 + (W / 2 + u * ca - v * sa) / k, Y0 + (H / 2 + u * sa + v * ca) / k]; };
   return { margin: pick.sc - alt, ratio: (pick.y1 - pick.y0) / (pick.x1 - pick.x0), quad: [back(pick.x0, pick.y0), back(pick.x1, pick.y0), back(pick.x1, pick.y1), back(pick.x0, pick.y1)], score: pick.sc, width: (pick.x1 - pick.x0) / k };
 }
 // every card on one sheet is the same size and stretched the same way: fit each, then refit all to the typical size
@@ -3771,6 +3779,22 @@ async function fileDpi(file) {
         if (m === 0xDA) break; i += 2 + len; } }
   } catch (e) {}
   return 0;
+}
+
+/* a card can sit crooked on the glass or turned inside its loader: try it turned a few degrees each way and keep the best fit.
+   Coarse first (small copy, whole region), then finer angles and full detail only right around that answer, so it stays quick on a phone */
+function cardInBoxTilted(bmp, quad, opts = {}) {
+  const deg = Math.PI / 180; let width = opts.width;
+  const run = (q, o) => { try { return cardInBox(bmp, q, { ...opts, coarse: true, ...o }); } catch (e) { return null; } };
+  if (!width) { const xs = quad.map(p => p[0]), qw = Math.max(...xs) - Math.min(...xs); // the box drawn is around the card or around the loader
+    const r0 = run(quad, { res: 360, width: 0, wRange: [qw * 0.74, qw * 1.06], ratios: [1.38, 1.4, 1.42] }); if (!r0) return null; width = r0.width; }
+  const tol = opts.width ? 0.007 : 0.03;
+  let best = null, ba = 0; for (let a = -8; a <= 8; a += 1) { const r = run(quad, { width, wTol: opts.width ? 0.012 : 0.04, res: 300, angle: a * deg }); if (r && (!best || r.score > best.score)) { best = r; ba = a; } }
+  if (!best) return null;
+  let b2 = best, a2 = ba; for (let a = ba - 0.75; a <= ba + 0.751; a += 0.25) { const r = run(best.quad, { width, wTol: tol, res: 600, grow: 0.08, angle: a * deg }); if (r && r.score > b2.score) { b2 = r; a2 = a; } }
+  const fin = run(b2.quad, { width, wTol: tol, res: opts.res || 1100, grow: 0.03, angle: a2 * deg }) || b2;
+  // how clearly it won is judged on the wide search, not the tight final one
+  fin.margin = Math.min(fin.margin == null ? 1 : fin.margin, best.margin == null ? 1 : best.margin + 0.02); fin.angle = a2; return fin;
 }
 
 /* Recent sales (comps): record what a card has actually sold for on the market, then show the average of the
@@ -4353,7 +4377,9 @@ FORMS.batchGo = async f => {
           const inner = BS.opts.toploader ? insideCard(bm, q, { flat: mode !== 'photos' }) : null; return inner && inner.confidence >= 0.3 ? inner : refineCorners(bm, q, { toploader: BS.opts.toploader, flat: mode !== 'photos' }); };
         // in top loaders on a scanner: look for the card-sized box whose edges are all real, with lid colour around it, not on it
         const inLoader = (sh, q) => { if (mode === 'photos' || !BS.opts.toploader) return null; const w = sh.dpi ? 2.5 * sh.dpi * (sh.scale || 1) : 0;
-          const r = cardInBox(sh.bmp, q, w ? { width: w, grow: 0.22 } : { grow: 0.22 }); return r && r.score >= 0.6 ? { quad: r.quad, confidence: Math.min(1, r.score), aspect: CARD_RATIO, loaderScore: r.score >= 0.85 && r.margin >= 0.03 ? r.score : Math.min(r.score, 0.8), cardW: r.width } : null; }; // a close runner-up somewhere else: worth a look
+          let r = cardInBox(sh.bmp, q, w ? { width: w, grow: 0.22 } : { grow: 0.22 });
+          if (!r || r.score < 1 || r.margin < 0.03) { const t = cardInBoxTilted(sh.bmp, q, w ? { width: w, grow: 0.22 } : { grow: 0.22 }); if (t && (!r || t.score > r.score + 0.02)) r = t; } // crooked in its loader? try it turned
+          return r && r.score >= 0.6 ? { quad: r.quad, confidence: Math.min(1, r.score), aspect: CARD_RATIO, loaderScore: r.score >= 0.85 && r.margin >= 0.03 ? r.score : Math.min(r.score, 0.8), cardW: r.width } : null; }; // a close runner-up somewhere else: worth a look
         if (!c.whole) { fit = inLoader(fs, fq) || fitIn(fs.bmp, fq, F2.by === 'edges'); fq = fit.quad; }
         if (bq && !pairs[i].whole) { const bf = inLoader(bs, bq) || fitIn(bs.bmp, bq, B2.by === 'edges'); bq = bf.quad; it.backCheck = bf.loaderScore ? bf.loaderScore < 0.85 : !cornersOK(bf); it.bCardW = bf.cardW; }
         if (fit && fit.loaderScore) it.fCardW = fit.cardW;
