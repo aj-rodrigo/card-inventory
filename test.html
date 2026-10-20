@@ -5296,7 +5296,8 @@ async function ebay(op, body = {}) {
   if (!ebModeOk(cfg.mode)) throw new Error('eBay is off. Turn it on in Settings → eBay.');
   if (!cfg.worker || !ebKey()) throw new Error('Add your Cloudflare Worker address and key in Settings → eBay first.');
   const url = cfg.worker.replace(/\/+$/, '') + '/api/' + op;
-  let r; try { r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-dugout-key': ebKey() }, body: JSON.stringify(body) }); }
+  const raw = body instanceof Blob; // a photo goes as raw bytes: the worker has nothing to decode, so it stays under Cloudflare's CPU limit
+  let r; try { r = await fetch(url, { method: 'POST', headers: { 'content-type': raw ? (body.type || 'image/jpeg') : 'application/json', 'x-dugout-key': ebKey(), ...(raw ? { 'x-dugout-name': body.name || 'card.jpg' } : {}) }, body: raw ? body : JSON.stringify(body) }); }
   catch (e) { throw new Error("Couldn't reach your worker. Check the address and your connection."); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.error) throw new Error(j.error || `eBay said ${r.status}`);
@@ -5387,6 +5388,11 @@ A.listEbay = el => {
     box.innerHTML = `<div class="eb-thumbs">${all.map(x => `<a href="${URL.createObjectURL(x.blob)}" target="_blank" rel="noopener" title="${esc(x.what)}"><img src="${URL.createObjectURL(x.blob)}" alt="${esc(x.what)}"></a>`).join('')}</div>${(P.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}<div class="row"><span class="muted">Card upside down or sideways?</span><button class="btn sm" type="button" data-act="ebRot" data-side="front" data-id="${c.id}">↻ Turn front</button>${c.back ? `<button class="btn sm" type="button" data-act="ebRot" data-side="back" data-id="${c.id}">↻ Turn back</button>` : ''}</div><small class="muted">The photos eBay will get, from your full-size originals: ${all.map(x => x.what).join(' · ')}</small>`; }).catch(() => {});
   f._thumbs = showThumbs; showThumbs();
 };
+// upload one photo: raw bytes first; a worker from before v1.16.16 only understands base64, so fall back to that
+async function ebUploadPhoto(blob, name = 'card.jpg') {
+  const b = await ebaySize(blob); const f = new File([b], name, { type: b.type || 'image/jpeg' });
+  try { return await ebay('image', f); } catch (e) { if (!/No photo sent/.test(e.message)) throw e; return ebay('image', await b64OfBlob(b, name)); }
+}
 const b64OfBlob = async (blob, name = 'studio.jpg') => { blob = await ebaySize(blob); /* eBay's 500px minimum */ const buf = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000)); return { base64: btoa(s), type: blob.type || 'image/jpeg', name }; };
 /* eBay Standard Envelope only takes packages up to 3 oz holding items up to $20. Anything heavier or pricier (a lot, a slab, a big card)
    goes out on the "heavier packages" shipping policy picked in Settings. Returns that policy's id, or '' to use the usual one. */
@@ -5405,7 +5411,7 @@ async function postListing(c, o, step = () => {}) {
   { const sp = shipPolicyFor(L.inventoryItem.packageWeightAndSize.weight.value, num(L.offer.pricingSummary.price ? L.offer.pricingSummary.price.value : L.offer.pricingSummary.auctionStartPrice.value)); if (sp) L.offer.listingPolicies = { ...(L.offer.listingPolicies || {}), fulfillmentPolicyId: sp }; } // checked before any photo uploads
   const P = await listingPhotos(c, { studio: !!o.studio });
   const blobs = [...(o.studio && P.studio ? [P.studio] : []), ...P.photos.map(x => x.blob)].slice(0, 24);
-  for (let k = 0; k < blobs.length; k++) { step(`Uploading photo ${k + 1} of ${blobs.length}…`); const r = await ebay('image', await b64OfBlob(blobs[k], `photo-${k + 1}.jpg`)); L.inventoryItem.product.imageUrls.push(r.imageUrl); }
+  for (let k = 0; k < blobs.length; k++) { step(`Uploading photo ${k + 1} of ${blobs.length}…`); const r = await ebUploadPhoto(blobs[k], `photo-${k + 1}.jpg`); L.inventoryItem.product.imageUrls.push(r.imageUrl); }
   step('Posting…');
   const r = await ebay('list', { inventoryItem: L.inventoryItem, offer: L.offer });
   const was = c.status; const auction = o.format === 'AUCTION';
@@ -5810,7 +5816,7 @@ FORMS.lotList = async f => {
     const lc = lotCondition(info, fd.get('cond'), fd.get('desc'));
     const sku = 'LOT-' + Date.now().toString(36).toUpperCase();
     const desc = `<p><b>${esc(title)}</b></p><p>${cards.length} cards, all pictured:</p><ul>${cards.map(c => `<li>${esc(cardFull(c))}</li>`).join('')}</ul>`;
-    const urls = []; const up = async b => { if (urls.length >= 24) return; const r = await ebay('image', await b64OfBlob(b)); urls.push(r.imageUrl); };
+    const urls = []; const up = async b => { if (urls.length >= 24) return; const r = await ebUploadPhoto(b, `lot-${urls.length + 1}.jpg`); urls.push(r.imageUrl); };
     const fronts = []; for (const c of cards) { const rec = await fileGet(c.front); if (rec) fronts.push(rec.blob); }
     const grid = await studioGrid(fronts); if (grid) await up(await canvasBlob(grid));
     btn.textContent = 'Uploading photos…';
