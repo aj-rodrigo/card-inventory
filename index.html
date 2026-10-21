@@ -7503,7 +7503,7 @@ function selPaint() {
   let bar = $('#sel-bar'); if (!SELM.on) { if (bar) bar.remove(); return; }
   if (!bar) { bar = document.createElement('div'); bar.id = 'sel-bar'; document.body.appendChild(bar); }
   const n = SELM.ids.size;
-  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span><button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
+  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
 }
 // while selecting, a tap picks the card instead of opening it
 document.addEventListener('click', e => {
@@ -7552,6 +7552,23 @@ FORMS.bulkEdit = async f => {
     await save('cards', c, { quiet: true }); await logTxn({ cardId: c.id, type: 'edit', date: today(), changes, note: 'Bulk edit' }); n++;
   }
   closeModal(); SELM.on = false; SELM.ids.clear(); onChange('cards'); toast(n ? `Updated ${n} card${n === 1 ? '' : 's'}` : 'Nothing changed: they already matched');
+};
+
+/* the group photo a lot listing would use, for any cards you pick: save it or share it without posting anything */
+A.lotPhoto = async el => {
+  const cards = [...SELM.ids].map(cardById).filter(c => c && !c.purged && c.front); if (cards.length < 2) return toast('Pick at least 2 cards that have a front photo');
+  if (el) { el.disabled = true; el.textContent = 'Making photo…'; }
+  try {
+    // each card's front as it would go on eBay (cropped from your original, turned the way it reads), falling back to the saved front
+    const fronts = []; for (const c of cards) { let b = null; try { const P = await listingPhotos(c, { studio: false }); b = P.photos[0] && P.photos[0].blob; } catch (e) {} if (!b) { const rec = await fileGet(c.front); b = rec && rec.blob; } if (b) fronts.push(b); }
+    const cv = await studioGrid(fronts); if (!cv) throw new Error('No photos to use');
+    const blob = await canvasBlob(cv); const url = URL.createObjectURL(blob); const name = `lot-${cards.length}-cards.jpg`;
+    openModal(`<div>${mhead(`Lot photo · ${cards.length} cards`)}<img src="${url}" alt="Lot photo" style="width:100%;border-radius:10px;display:block">
+      <small class="muted">${esc(cards.map(c => cardName(c)).join(' · '))}</small>
+      <div class="sheet-foot"><a class="btn" href="${url}" download="${name}">Download</a>${navigator.canShare ? '<button class="btn pri" type="button" data-act="lotPhotoShare">Share / Save to Photos</button>' : ''}</div></div>`);
+    A.lotPhotoShare = async () => { try { await navigator.share({ files: [new File([blob], name, { type: 'image/jpeg' })], title: 'Lot photo' }); } catch (e) {} };
+  } catch (e) { toast(e.message); }
+  if (el) { el.disabled = false; el.textContent = 'Lot photo'; }
 };
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
