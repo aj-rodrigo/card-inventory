@@ -7559,8 +7559,7 @@ A.lotPhoto = async el => {
   const cards = [...SELM.ids].map(cardById).filter(c => c && !c.purged && c.front); if (cards.length < 2) return toast('Pick at least 2 cards that have a front photo');
   if (el) { el.disabled = true; el.textContent = 'Making photo…'; }
   try {
-    // each card's front as it would go on eBay (cropped from your original, turned the way it reads), falling back to the saved front
-    const fronts = []; for (const c of cards) { let b = null; try { const P = await listingPhotos(c, { studio: false }); b = P.photos[0] && P.photos[0].blob; } catch (e) {} if (!b) { const rec = await fileGet(c.front); b = rec && rec.blob; } if (b) fronts.push(b); }
+    const fronts = []; for (const c of cards) { const rec = await fileGet(c.front); if (rec) fronts.push(rec.blob); } // just the card: its straightened front, no loader or background
     const cv = await studioGrid(fronts); if (!cv) throw new Error('No photos to use');
     const blob = await canvasBlob(cv); const url = URL.createObjectURL(blob); const name = `lot-${cards.length}-cards.jpg`;
     openModal(`<div>${mhead(`Lot photo · ${cards.length} cards`)}<img src="${url}" alt="Lot photo" style="width:100%;border-radius:10px;display:block">
