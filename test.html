@@ -7556,18 +7556,24 @@ FORMS.bulkEdit = async f => {
 
 /* the group photo a lot listing would use, for any cards you pick: save it or share it without posting anything */
 A.lotPhoto = async el => {
-  const cards = [...SELM.ids].map(cardById).filter(c => c && !c.purged && c.front); if (cards.length < 2) return toast('Pick at least 2 cards that have a front photo');
-  if (el) { el.disabled = true; el.textContent = 'Making photo…'; }
+  const side = el && el.dataset.side === 'back' ? 'back' : 'front'; // the same cards, same order, fronts or backs
+  const picked = [...SELM.ids].map(cardById).filter(c => c && !c.purged); const cards = picked.filter(c => c[side]);
+  if (cards.length < 2) return toast(`Pick at least 2 cards that have a ${side} photo`);
+  if (el && !el.closest('.sheet-foot')) { el.disabled = true; el.textContent = 'Making photo…'; }
   try {
-    const fronts = []; for (const c of cards) { const rec = await fileGet(c.front); if (rec) fronts.push(rec.blob); } // just the card: its straightened front, no loader or background
-    const cv = await studioGrid(fronts); if (!cv) throw new Error('No photos to use');
-    const blob = await canvasBlob(cv); const url = URL.createObjectURL(blob); const name = `lot-${cards.length}-cards.jpg`;
-    openModal(`<div>${mhead(`Lot photo · ${cards.length} cards`)}<img src="${url}" alt="Lot photo" style="width:100%;border-radius:10px;display:block">
+    const imgs = []; for (const c of cards) { const rec = await fileGet(c[side]); if (rec) imgs.push(rec.blob); } // just the card: its straightened photo, no loader or background
+    const cv = await studioGrid(imgs); if (!cv) throw new Error('No photos to use');
+    const blob = await canvasBlob(cv); const url = URL.createObjectURL(blob); const name = `lot-${cards.length}-cards-${side}s.jpg`;
+    const missing = picked.length - cards.length; const other = side === 'front' ? 'back' : 'front';
+    openModal(`<div>${mhead(`Lot photo · ${cards.length} ${side}s`)}
+      <div class="seg" role="group" style="margin-bottom:8px"><button type="button" data-act="lotPhoto" data-side="front" class="${side === 'front' ? 'on' : ''}">Fronts</button><button type="button" data-act="lotPhoto" data-side="back" class="${side === 'back' ? 'on' : ''}">Backs</button></div>
+      <img src="${url}" alt="Lot photo, ${side}s" style="width:100%;border-radius:10px;display:block">
+      ${missing ? `<div class="warn">${missing} card${missing > 1 ? 's have' : ' has'} no ${side} photo, so ${missing > 1 ? 'they\'re' : 'it\'s'} left out.</div>` : ''}
       <small class="muted">${esc(cards.map(c => cardName(c)).join(' · '))}</small>
       <div class="sheet-foot"><a class="btn" href="${url}" download="${name}">Download</a>${navigator.canShare ? '<button class="btn pri" type="button" data-act="lotPhotoShare">Share / Save to Photos</button>' : ''}</div></div>`);
     A.lotPhotoShare = async () => { try { await navigator.share({ files: [new File([blob], name, { type: 'image/jpeg' })], title: 'Lot photo' }); } catch (e) {} };
   } catch (e) { toast(e.message); }
-  if (el) { el.disabled = false; el.textContent = 'Lot photo'; }
+  const bb = $('#sel-bar [data-act=lotPhoto]'); if (bb) { bb.disabled = false; bb.textContent = 'Lot photo'; }
 };
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
