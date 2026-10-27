@@ -520,6 +520,11 @@ svg[data-scrub] { touch-action: pan-y; cursor: crosshair; -webkit-user-select: n
 #inv-results.selecting tr.is-sel td { background: color-mix(in srgb, var(--acc) 18%, transparent); }
 #sel-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 40; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--acc); border-radius: 12px; padding: 8px 10px; box-shadow: 0 8px 24px rgba(0,0,0,.4); width: min(640px, calc(100% - 24px)); }
 #sel-bar .spacer { flex: 1; }
+.ms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; max-height: 60vh; overflow: auto; }
+.ms-item { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; }
+.ms-item img { width: 100%; aspect-ratio: 5 / 7; object-fit: cover; border-radius: 6px; border: 2px solid var(--line); }
+.ms-item.ms-check img { border-color: var(--acc); }
+.ms-fail { aspect-ratio: 5 / 7; display: grid; place-items: center; text-align: center; border: 2px dashed var(--line); border-radius: 6px; padding: 8px; color: var(--muted, #888); }
 </style>
 <div id="app"></div>
 <div id="modal-root"></div>
@@ -3467,6 +3472,7 @@ Object.assign(A, {
   stSide: el => { if (el.dataset.v === ST.side) return; stStash(); openStraighten(ST.card.id, el.dataset.v, true); },
   stAuto: () => { const sl = ST.side === 'front' && ST.card && ST.card.slabLabel ? findSlab(ST.bmp) : null; if (sl) { ST.quad = sl.card; drawHandles(); stPreview(); return toast('Card found inside the slab'); }
     const cw = ST.card && ST.card[ST.side + 'CardW']; if (cw) { let r = null; const W = ST.bmp.width, H = ST.bmp.height; try { r = cardInBox(ST.bmp, [[0, 0], [W, 0], [W, H], [0, H]], { width: cw, grow: 0 }); } catch (e) {} if (r && r.score >= 0.6) { ST.quad = r.quad.map(p => p.slice()); drawHandles(); stPreview(); return toast('Corners found'); } }
+    { const a = typeof autoCorners === 'function' ? autoCorners(ST.bmp, !!S.settings.toploader, ST.card && ST.card[ST.side + 'CardW'], ST.quad) : null; if (a) { ST.quad = a.quad.map(p => p.slice()); drawHandles(); stPreview(); return toast(a.sure ? 'Corners found' : 'Corners found. Give them a quick check.'); } } // same finder as Bulk add
     const r = findCardCorners(ST.bmp, { toploader: !!S.settings.toploader }); if (!r) return toast('Couldn\'t find the card edges. Drag the dots by hand.'); ST.quad = r.quad; drawHandles(); stPreview(); toast(cornersOK(r) ? 'Corners found' : 'Corners found. Low contrast here, so give them a quick check.'); },
   stSnap: async el => { // the card-sized box inside the loader whose four sides are real edges with lid colour just outside
     if (el) { el.disabled = true; el.textContent = 'Finding the card…'; } await new Promise(r => setTimeout(r, 30)); // let the button update before the search runs
@@ -3812,11 +3818,29 @@ function plainCards(bmp, o = {}) {
   const ring = []; const rw = Math.max(3, Math.round(Math.min(W, H) * 0.015));
   for (let y = 0; y < H; y += 2) for (let x = 0; x < W; x += 2) if (x < rw || y < rw || x >= W - rw || y >= H - rw) ring.push(y * W + x);
   const med = a => { a.sort((p, q) => p - q); return a[a.length >> 1]; };
-  const bg = [0, 1, 2].map(c => med(ring.map(i => d[i * 4 + c])));
+  let bg = [0, 1, 2].map(c => med(ring.map(i => d[i * 4 + c])));
+  if (o.dropEdge && !(o.near && o.near.length === 4)) { // the edge of a photo cut from a sheet is partly other cards: the lid is the most common colour there, not the middle one
+    const bins = new Map(); for (const i of ring) { const key = (d[i * 4] >> 4) * 256 + (d[i * 4 + 1] >> 4) * 16 + (d[i * 4 + 2] >> 4); bins.set(key, (bins.get(key) || 0) + 1); }
+    const top = [...bins.entries()].sort((x, y) => y[1] - x[1])[0][0]; const pick = ring.filter(i => (d[i * 4] >> 4) * 256 + (d[i * 4 + 1] >> 4) * 16 + (d[i * 4 + 2] >> 4) === top);
+    bg = [0, 1, 2].map(c => med(pick.map(i => d[i * 4 + c]))); }
+  if (o.bgPick != null) { // try a given one of the edge's main colours as the lid (a photo cut from a sheet: the edge is lid and other cards)
+    const bins = new Map(); for (const i of ring) { const key = (d[i * 4] >> 5) * 64 + (d[i * 4 + 1] >> 5) * 8 + (d[i * 4 + 2] >> 5); bins.set(key, (bins.get(key) || 0) + 1); }
+    const tops = [...bins.entries()].sort((x, y) => y[1] - x[1]).filter(e => e[1] > ring.length * 0.03); const t = tops[o.bgPick]; if (!t) return { cards: [], bad: 0, ok: false };
+    const pick = ring.filter(i => (d[i * 4] >> 5) * 64 + (d[i * 4 + 1] >> 5) * 8 + (d[i * 4 + 2] >> 5) === t[0]); bg = [0, 1, 2].map(c => med(pick.map(i => d[i * 4 + c]))); }
+  if (o.near && o.near.length === 4) { // roughly where the card is already known: the lid is what lies just outside that outline
+    // (the outside edge of a photo cut from a sheet is often half neighbouring cards, so it can't be trusted for the lid colour)
+    const q = o.near.map(([x, y]) => [x * k, y * k]); const cx = q.reduce((a, p) => a + p[0], 0) / 4, cy = q.reduce((a, p) => a + p[1], 0) / 4; const band = [];
+    for (let e = 0; e < 4; e++) { const a = q[e], b = q[(e + 1) % 4]; for (let t = 0.1; t <= 0.9; t += 0.02) { const x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t;
+      for (const f of [1.04, 1.06]) { const X = Math.round(cx + (x - cx) * f), Y = Math.round(cy + (y - cy) * f); if (X >= 0 && Y >= 0 && X < W && Y < H) band.push(Y * W + X); } } }
+    if (band.length > 20) bg = [0, 1, 2].map(c => med(band.map(i => d[i * 4 + c]))); }
   const dist = i => Math.abs(d[i * 4] - bg[0]) + Math.abs(d[i * 4 + 1] - bg[1]) + Math.abs(d[i * 4 + 2] - bg[2]);
-  const noise = med(ring.map(dist)); const T = Math.max(o.minT || 42, noise * 5);
+  if (o.debug) o.debug.push({ bg });
+  const nl = ring.map(dist).filter(v => v < 90); const noise = nl.length > 10 ? med(nl) : 10; /* the lid's own grain (pieces of other cards around the edge don't count) */ const T = Math.max(o.minT || 42, noise * 5);
   // the lid varies a little across the glass (shading, scanner streaks): judge each pixel against the lid colour nearby too
   let fg = new Uint8Array(W * H); for (let i = 0; i < W * H; i++) fg[i] = dist(i) > T ? 1 : 0;
+  if (o.dropEdge) { // a photo cut from a sheet around one card: slivers of the neighbouring cards touch its edge; they aren't this card
+    const st0 = []; for (let x = 0; x < W; x++) st0.push(x, (H - 1) * W + x); for (let y = 0; y < H; y++) st0.push(y * W, y * W + W - 1);
+    while (st0.length) { const i = st0.pop(); if (!fg[i]) continue; fg[i] = 0; const x = i % W; if (x > 0) st0.push(i - 1); if (x < W - 1) st0.push(i + 1); if (i >= W) st0.push(i - W); if (i < W * (H - 1)) st0.push(i + W); } }
   // wipe out thin lines and specks, then fill holes left by printing that happens to match the lid
   const box = (src, r, keep) => { const I = new Int32Array((W + 1) * (H + 1)); for (let y = 0; y < H; y++) { let row = 0; for (let x = 0; x < W; x++) { row += src[y * W + x]; I[(y + 1) * (W + 1) + x + 1] = I[y * (W + 1) + x + 1] + row; } }
     const out = new Uint8Array(W * H); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const a = Math.max(0, x - r), b = Math.max(0, y - r), c = Math.min(W, x + r + 1), e = Math.min(H, y + r + 1); const n = I[e * (W + 1) + c] - I[b * (W + 1) + c] - I[e * (W + 1) + a] + I[b * (W + 1) + a]; out[y * W + x] = keep(n, (c - a) * (e - b)) ? 1 : 0; } return out; };
@@ -3837,7 +3861,7 @@ function plainCards(bmp, o = {}) {
     const edge = []; for (const i of c.pts) { const x = i % W, y = (i / W) | 0; if (x === 0 || y === 0 || x === W - 1 || y === H - 1 || out[i - 1] || out[i + 1] || out[i - W] || out[i + W]) edge.push([x + 0.5, y + 0.5]); }
     const R = minRect(hull(edge)); if (!R) continue;
     const [w, h] = R.size, ratio = Math.max(w, h) / Math.min(w, h), fill = c.pts.length / (w * h);
-    if (ratio < 1.3 || ratio > 1.5 || fill < 0.9) { bad++; continue; } // touching cards, or not a card: let the other finders have it
+    if (ratio < 1.3 || ratio > 1.5 || fill < 0.9) { bad++; if (o.debug) o.debug.push({ ratio, fill, w, h }); continue; } // touching cards, or not a card: let the other finders have it
     const grow = r * 0.5; const cx = R.c[0], cy = R.c[1]; // the opening shaved about r/2 off each side
     const quad = R.pts.map(([x, y]) => { const dx = x - cx, dy = y - cy, L = Math.hypot(dx, dy); return [(x + dx / L * grow * 1.41) / k, (y + dy / L * grow * 1.41) / k]; });
     cards.push({ quad: orderQuad(quad), c: [cx / k, cy / k], hgt: Math.max(w, h) / k, area: w * h }); }
@@ -7618,7 +7642,7 @@ function selPaint() {
   let bar = $('#sel-bar'); if (!SELM.on) { if (bar) bar.remove(); return; }
   if (!bar) { bar = document.createElement('div'); bar.id = 'sel-bar'; document.body.appendChild(bar); }
   const n = SELM.ids.size;
-  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
+  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massStraighten">Straighten</button>' : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
 }
 // while selecting, a tap picks the card instead of opening it
 document.addEventListener('click', e => {
@@ -7689,6 +7713,55 @@ A.lotPhoto = async el => {
     A.lotPhotoShare = async () => { try { await navigator.share({ files: [new File([blob], name, { type: 'image/jpeg' })], title: 'Lot photo' }); } catch (e) {} };
   } catch (e) { toast(e.message); }
   const bb = $('#sel-bar [data-act=lotPhoto]'); if (bb) { bb.disabled = false; bb.textContent = 'Lot photo'; }
+};
+
+/* ---------- straighten many cards at once, front and back ---------- */
+// the best corners for one photo: raw card on a plain background -> its exact outline; in a loader -> the card inside it; else the general finder
+function autoCorners(bmp, loader, cardW, near) {
+  const W = bmp.width, H = bmp.height;
+  if (!loader) { try { let P = plainCards(bmp, { res: 1200, dropEdge: true, near }); if (!P.cards.length) P = plainCards(bmp, { res: 1200, near });
+    if (!near) { // no earlier outline to go by: try each main colour around the edge as the lid, and keep the one that gives a card in the middle
+      const mid = r => r.cards.some(c => { const xs = c.quad.map(p => p[0]), ys = c.quad.map(p => p[1]); return Math.min(...xs) < W / 2 && Math.max(...xs) > W / 2 && Math.min(...ys) < H / 2 && Math.max(...ys) > H / 2 && quadArea(c.quad) > W * H * 0.25; });
+      if (!mid(P)) for (const k of [0, 1, 2, 3, 4]) { const T = plainCards(bmp, { res: 1200, dropEdge: true, bgPick: k }); if (mid(T)) { P = T; break; } } } if (P.cards.length) { const big = P.cards.map(c => ({ c, a: quadArea(c.quad) })).sort((x, y) => y.a - x.a)[0];
+    if (big.a > W * H * 0.25) return { quad: big.c.quad, sure: P.ok, how: 'outline' }; } } catch (e) {} }
+  if (loader) { try { const r = cardInBoxTilted(bmp, [[0, 0], [W, 0], [W, H], [0, H]], cardW ? { width: cardW, grow: 0 } : { grow: 0 }); if (r && r.score >= 0.6) return { quad: r.quad, sure: r.score >= 0.85 && (r.margin == null || r.margin >= 0.03), how: 'loader' }; } catch (e) {} }
+  const r = findCardCorners(bmp, { toploader: loader }); return r ? { quad: r.quad, sure: cornersOK(r), how: 'edges' } : null;
+}
+const MS = { items: [] };
+A.massStraighten = () => {
+  const cards = [...SELM.ids].map(cardById).filter(c => c && !c.purged && (c.front || c.back)); if (!cards.length) return toast('Pick some cards with photos');
+  openModal(`<form data-form="massGo">${mhead(`Straighten ${cards.length} card${cards.length === 1 ? '' : 's'}`)}
+    <p class="muted" style="margin:0">Finds the corners on the front and back of every card you picked and shows you the result first. Nothing changes until you save, and your original photos are always kept, so you can redo any card.</p>
+    ${field('These cards are', `<select name="loader"><option value="0"${S.settings.toploader ? '' : ' selected'}>Raw (no top loader)</option><option value="1"${S.settings.toploader ? ' selected' : ''}>In top loaders</option></select>`)}
+    <div class="row"><label class="chk"><input type="checkbox" name="front" checked> Fronts</label><label class="chk"><input type="checkbox" name="back" checked> Backs</label></div>
+    ${mfoot('Find corners')}</form>`, { narrow: true });
+};
+FORMS.massGo = async f => {
+  const fd = new FormData(f); const loader = fd.get('loader') === '1'; const sides = ['front', 'back'].filter(s => fd.get(s) === 'on'); if (!sides.length) return toast('Pick fronts, backs or both');
+  const cards = [...SELM.ids].map(cardById).filter(c => c && !c.purged); const sheet = $('#modal-root .sheet'); MS.items = [];
+  let done = 0; const total = cards.length * sides.length;
+  for (const c of cards) for (const side of sides) {
+    done++; if (sheet) sheet.innerHTML = `${mhead('Straightening')}<p class="muted">Finding corners: ${done} of ${total}…</p>`; await new Promise(r => setTimeout(r, 10));
+    const id = c[side + 'Orig'] || c[side]; if (!id) continue; const rec = await fileGet(id); if (!rec) continue;
+    try { const bmp = await bitmapOf(rec.blob); const r = autoCorners(bmp, loader, c[side + 'CardW'], c[side + 'Orig'] && c[side + 'Quad']); if (!r) { MS.items.push({ c, side, fail: true }); continue; }
+      const src = bitmapPixels(bmp, 2400); const blob = await canvasBlob(warpCard(src, r.quad)); bmp.close && bmp.close();
+      MS.items.push({ c, side, blob, quad: r.quad, sure: r.sure, url: URL.createObjectURL(blob) }); } catch (e) { MS.items.push({ c, side, fail: true }); } }
+  const n = MS.items.filter(x => !x.fail).length, unsure = MS.items.filter(x => !x.fail && !x.sure).length;
+  openModal(`<form data-form="massSave">${mhead(`Check ${n} photo${n === 1 ? '' : 's'}`)}
+    <p class="muted" style="margin:0">Untick any that look wrong; those keep their current photo.${unsure ? ` <b>${unsure}</b> marked "check" were harder to find.` : ''}</p>
+    <div class="ms-grid">${MS.items.map((x, i) => x.fail ? `<div class="ms-item"><div class="ms-fail">Couldn't find the corners</div><small>${esc(x.c.code)} · ${x.side}</small></div>`
+      : `<label class="ms-item${x.sure ? '' : ' ms-check'}"><img src="${x.url}" alt="${esc(cardName(x.c))} ${x.side}"><span><input type="checkbox" name="i${i}" checked> ${esc(x.c.code)} · ${x.side}${x.sure ? '' : ' · check'}</span></label>`).join('')}</div>
+    ${mfoot(`Save`)}</form>`);
+};
+FORMS.massSave = async f => {
+  const fd = new FormData(f); const btn = f.querySelector('[type=submit]'); btn.disabled = true; btn.textContent = 'Saving…'; const touched = new Set(); let n = 0;
+  for (const [i, x] of MS.items.entries()) { if (x.fail || fd.get('i' + i) !== 'on') continue; const c = cardById(x.c.id); const side = x.side;
+    if (!c[side + 'Orig']) c[side + 'Orig'] = c[side]; // keep the untouched photo so it can be redone
+    if (c[side] && c[side] !== c[side + 'Orig']) await fileDel(c[side]);
+    c[side] = await fileSave(x.blob, side + '.jpg'); c[side + 'Quad'] = x.quad.map(p => [Math.round(p[0]), Math.round(p[1])]); touched.add(c); n++; }
+  for (const c of touched) await save('cards', c, { quiet: true });
+  MS.items.forEach(x => x.url && URL.revokeObjectURL(x.url)); MS.items = [];
+  closeModal(); SELM.on = false; SELM.ids.clear(); onChange('cards'); toast(`Straightened ${n} photo${n === 1 ? '' : 's'} on ${touched.size} card${touched.size === 1 ? '' : 's'}`);
 };
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
