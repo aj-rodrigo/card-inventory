@@ -3326,7 +3326,7 @@ function edgeCards(bmp, o = {}) {
 }
 // pick the better reading of a sheet: straight-edge rectangles when they hold up, else the colour-based finder
 function findCards(bmp, o = {}) {
-  try { const P = plainCards(bmp); if (P.ok) return P; } catch (e) {} // raw cards with space around them on a plain lid: exact outlines
+  try { const P = plainCards(bmp, { cardW: o.cardW }); if (P.ok) return P; } catch (e) {} // raw cards with space around them on a plain lid: exact outlines
   const O = detectCardQuads(bmp); let E = null; try { E = edgeCards(bmp); } catch (e) {}
   const hs = O.cards.map(c => c.hgt || 0).filter(Boolean); const mean = hs.reduce((a, b) => a + b, 0) / (hs.length || 1);
   const shapeOff = c => { const q = c.quad, d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]); const r = (d(q[0], q[3]) + d(q[1], q[2])) / Math.max(1, d(q[0], q[1]) + d(q[3], q[2])); return Math.abs(r - CARD_RATIO) / CARD_RATIO > 0.08 || skewDeg(q) > 6; };
@@ -3838,6 +3838,11 @@ function plainCards(bmp, o = {}) {
   const nl = ring.map(dist).filter(v => v < 90); const noise = nl.length > 10 ? med(nl) : 10; /* the lid's own grain (pieces of other cards around the edge don't count) */ const T = Math.max(o.minT || 42, noise * 5);
   // the lid varies a little across the glass (shading, scanner streaks): judge each pixel against the lid colour nearby too
   let fg = new Uint8Array(W * H); for (let i = 0; i < W * H; i++) fg[i] = dist(i) > T ? 1 : 0;
+  // a dark lid on a flatbed scans with fine horizontal streaks (sensor noise row to row). Only bare glass shows them: a card pressed on
+  // the glass doesn't, but a clear sleeve or the gap around it does. Where the lid is streaky, "no streaks" marks card, even a dark
+  // chrome border that scans the same grey as the lid and the sleeve around it
+  if (o.streak !== false) { try { const Sg = streakGrid(bmp, W, H); const lidS = med(ring.map(i => Sg[i]));
+    if (lidS > 5) { const thr = Math.max(3, lidS * 0.35); for (let i = 0; i < W * H; i++) fg[i] = Sg[i] < thr ? 1 : 0; if (o.debug) o.debug.push({ lidS, thr }); } } catch (e) {} }
   if (o.dropEdge) { // a photo cut from a sheet around one card: slivers of the neighbouring cards touch its edge; they aren't this card
     const st0 = []; for (let x = 0; x < W; x++) st0.push(x, (H - 1) * W + x); for (let y = 0; y < H; y++) st0.push(y * W, y * W + W - 1);
     while (st0.length) { const i = st0.pop(); if (!fg[i]) continue; fg[i] = 0; const x = i % W; if (x > 0) st0.push(i - 1); if (x < W - 1) st0.push(i + 1); if (i >= W) st0.push(i - W); if (i < W * (H - 1)) st0.push(i + W); } }
@@ -3846,6 +3851,8 @@ function plainCards(bmp, o = {}) {
     const out = new Uint8Array(W * H); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const a = Math.max(0, x - r), b = Math.max(0, y - r), c = Math.min(W, x + r + 1), e = Math.min(H, y + r + 1); const n = I[e * (W + 1) + c] - I[b * (W + 1) + c] - I[e * (W + 1) + a] + I[b * (W + 1) + a]; out[y * W + x] = keep(n, (c - a) * (e - b)) ? 1 : 0; } return out; };
   const r = Math.max(1, Math.round(Math.min(W, H) * 0.003));
   fg = box(fg, r, n => n > 0); fg = box(fg, r * 2, (n, a) => n === a); fg = box(fg, r, n => n > 0); // close small gaps, then open (2r erode, r dilate: the edge comes back r short, fixed below)
+  if (o.maskOut) { const c2 = document.createElement('canvas'); c2.width = W; c2.height = H; const g2 = c2.getContext('2d'); const id = g2.createImageData(W, H); for (let i = 0; i < W * H; i++) { const v = fg[i] ? 255 : 0; id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 255; } g2.putImageData(id, 0, 0); o.maskOut.push(c2.toDataURL()); }
+  if (o.single && o.cardW) return singleRect(fg, W, H, k, o); // one card of known size in a photo cut from a sheet: find where it sits
   // background reachable from the outside; anything else that isn't background is a hole inside a card
   const out = new Uint8Array(W * H); const st = []; for (let x = 0; x < W; x++) st.push(x, (H - 1) * W + x); for (let y = 0; y < H; y++) st.push(y * W, y * W + W - 1);
   while (st.length) { const i = st.pop(); if (out[i] || fg[i]) continue; out[i] = 1; const x = i % W; if (x > 0) st.push(i - 1); if (x < W - 1) st.push(i + 1); if (i >= W) st.push(i - W); if (i < W * (H - 1)) st.push(i + W); }
@@ -3855,21 +3862,63 @@ function plainCards(bmp, o = {}) {
     while (s2.length) { const i = s2.pop(); const x = i % W, y = (i / W) | 0; pts.push(i); for (const j of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, i - W, i + W]) { if (j < 0 || j >= W * H || out[j] || lab[j]) continue; lab[j] = n; s2.push(j); } }
     comps.push({ n, pts }); }
   const minA = (Math.min(W, H) * 0.15) ** 2 * 1.4 * 0.5;
-  const cards = []; let bad = 0;
+  const cards = []; let bad = 0; const later = [];
+  // one card's outline from its pixels (u, v in the blob's own frame): each side from the middle stretch, as a median, so nicks and bumps don't move it
+  const fitSides = (UV, u0, u1, v0, v1) => {
+    const side = (along, mn, mx, bins) => { const lo = new Float32Array(bins).fill(Infinity), hi = new Float32Array(bins).fill(-Infinity); const a0 = mn + (mx - mn) * 0.1, a1 = mx - (mx - mn) * 0.1;
+      for (const p of UV) { const t = p[along], q = p[1 - along]; if (t < a0 || t > a1) continue; const bi = Math.min(bins - 1, ((t - a0) / (a1 - a0) * bins) | 0); if (q < lo[bi]) lo[bi] = q; if (q > hi[bi]) hi[bi] = q; }
+      const m = arr => { const v = [...arr].filter(Number.isFinite).sort((x, y) => x - y); return v[v.length >> 1]; }; return [m(lo) - 0.5, m(hi) + 0.5]; };
+    const [L0, L1] = side(1, v0, v1, 40), [T0, T1] = side(0, u0, u1, 30); return { L0, L1, T0, T1 }; };
+  const take = (UV, ux, uy, cx0, cy0, S) => { const { L0, L1, T0, T1 } = S; const w = L1 - L0, h = T1 - T0; if (!(w > 0 && h > 0)) return { why: 'empty' }; const ratio = Math.max(w, h) / Math.min(w, h);
+    let inn = 0; for (const [u, v] of UV) if (u >= L0 && u <= L1 && v >= T0 && v <= T1) inn++; const fill = inn / (w * h);
+    if (ratio < 1.3 || ratio > 1.5 || fill < 0.88) return { why: 'shape', ratio, fill, w, h };
+    const back = (u, v) => [cx0 + u * ux - v * uy, cy0 + u * uy + v * ux]; const g = o.grow != null ? o.grow : 0;
+    const quad = [back(L0 - g, T0 - g), back(L1 + g, T0 - g), back(L1 + g, T1 + g), back(L0 - g, T1 + g)].map(([x, y]) => [x / k, y / k]);
+    const c0 = back((L0 + L1) / 2, (T0 + T1) / 2); return { card: { quad: orderQuad(quad), c: [c0[0] / k, c0[1] / k], hgt: Math.max(w, h) / k, area: w * h, short: Math.min(w, h) } }; };
   for (const c of comps) { if (c.pts.length < minA) continue;
-    // outline points (pixels with a background neighbour), then the smallest rectangle around them
     const edge = []; for (const i of c.pts) { const x = i % W, y = (i / W) | 0; if (x === 0 || y === 0 || x === W - 1 || y === H - 1 || out[i - 1] || out[i + 1] || out[i - W] || out[i + W]) edge.push([x + 0.5, y + 0.5]); }
-    const R = minRect(hull(edge)); if (!R) continue;
-    const [w, h] = R.size, ratio = Math.max(w, h) / Math.min(w, h), fill = c.pts.length / (w * h);
-    if (ratio < 1.3 || ratio > 1.5 || fill < 0.9) { bad++; if (o.debug) o.debug.push({ ratio, fill, w, h }); continue; } // touching cards, or not a card: let the other finders have it
-    const grow = r * 0.5; const cx = R.c[0], cy = R.c[1]; // the opening shaved about r/2 off each side
-    const quad = R.pts.map(([x, y]) => { const dx = x - cx, dy = y - cy, L = Math.hypot(dx, dy); return [(x + dx / L * grow * 1.41) / k, (y + dy / L * grow * 1.41) / k]; });
-    cards.push({ quad: orderQuad(quad), c: [cx / k, cy / k], hgt: Math.max(w, h) / k, area: w * h }); }
+    const R0 = minRect(hull(edge)); if (!R0) continue; const dl = Math.hypot(R0.pts[1][0] - R0.pts[0][0], R0.pts[1][1] - R0.pts[0][1]) || 1;
+    const ux = (R0.pts[1][0] - R0.pts[0][0]) / dl, uy = (R0.pts[1][1] - R0.pts[0][1]) / dl; const [cx0, cy0] = R0.c;
+    const UV = c.pts.map(i => { const x = i % W + 0.5 - cx0, y = ((i / W) | 0) + 0.5 - cy0; return [x * ux + y * uy, -x * uy + y * ux]; });
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity; for (const [u, v] of UV) { if (u < u0) u0 = u; if (u > u1) u1 = u; if (v < v0) v0 = v; if (v > v1) v1 = v; }
+    const r1 = take(UV, ux, uy, cx0, cy0, fitSides(UV, u0, u1, v0, v1));
+    if (r1.card) { r1.card.B = { UV, ux, uy, cx0, cy0, u0, u1, v0, v1 }; cards.push(r1.card); continue; }
+    later.push({ UV, ux, uy, cx0, cy0, u0, u1, v0, v1 }); if (o.debug) o.debug.push(r1); }
+  // two cards touching side by side make a 5 x 3.5 in patch, also roughly card-shaped: anything about twice the usual size goes to the splitter
+  { const ar = cards.map(c => c.area).sort((a, b) => a - b); const mA = o.cardW ? (o.cardW * k) ** 2 * 1.4 : ar[ar.length >> 1];
+    for (let i = cards.length - 1; i >= 0; i--) if (cards[i].area > mA * 1.6) { later.push(cards[i].B); cards.splice(i, 1); } }
+  cards.forEach(c => { delete c.B; });
+  // cards whose sleeves touch come out as one patch: cut it where the gaps are, using the size of the cards found on their own (or the scan's dpi)
+  const shorts = cards.map(c => c.short).sort((a, b) => a - b); const cw = shorts.length ? shorts[shorts.length >> 1] : o.cardW ? o.cardW * k : 0;
+  for (const B of later) { if (!cw) { bad++; continue; } const { UV, ux, uy, cx0, cy0, u0, u1, v0, v1 } = B; const ch = cw * 1.4;
+    let best = null; for (const [aw, ah] of [[cw, ch], [ch, cw]]) { const nx = Math.round((u1 - u0) / (aw * 1.03)), ny = Math.round((v1 - v0) / (ah * 1.03)); if (nx < 1 || ny < 1 || nx * ny < 2 || nx * ny > 12) continue;
+      const err = Math.abs((u1 - u0) - nx * aw) / aw + Math.abs((v1 - v0) - ny * ah) / ah; if (!best || err < best.err) best = { nx, ny, err, aw, ah }; }
+    if (o.debug) o.debug.push({ grid: best, w: u1 - u0, h: v1 - v0, cw });
+    if (!best || best.err > nxErr(best)) { bad++; continue; }
+    const cuts = (axis, n, lo, hi, size) => { const bins = Math.ceil(hi - lo) + 1; const prof = new Float32Array(bins); for (const p of UV) prof[Math.min(bins - 1, Math.max(0, Math.floor(p[axis] - lo)))]++; const out2 = [lo];
+      for (let j = 1; j < n; j++) { const e = lo + (hi - lo) * j / n; let bi = -1, bv = Infinity; for (let t = Math.floor(e - lo - size * 0.15); t <= Math.ceil(e - lo + size * 0.15); t++) { if (t < 0 || t >= bins) continue; if (prof[t] < bv) { bv = prof[t]; bi = t; } } out2.push(lo + bi + 0.5); }
+      out2.push(hi); return out2; };
+    // where the cards touch there is often no gap to cut at (sleeves overlap): place each card by its known size from the patch's outer edges
+    const slots = (n, lo, hi, size) => Array.from({ length: n }, (_, j) => { const a = n === 1 ? lo : lo + j * ((hi - lo) - size) / (n - 1); return [a, a + size]; });
+    const su = slots(best.nx, u0, u1, best.aw), sv = slots(best.ny, v0, v1, best.ah); let okAll = true; const got = [];
+    for (const [a0, a1] of su) for (const [b0, b1] of sv) { const sub = UV.filter(([u, v]) => u > a0 + best.aw * 0.1 && u < a1 - best.aw * 0.1 && v > b0 - 2 && v < b1 + 2);
+      if (sub.length < minA * 0.3) { okAll = false; continue; }
+      let s0 = Infinity, s1 = -Infinity, t0 = Infinity, t1 = -Infinity; for (const [u, v] of sub) { if (v < t0) t0 = v; if (v > t1) t1 = v; }
+      const S2 = fitSides(UV.filter(([u, v]) => u > a0 - 2 && u < a1 + 2 && v > b0 + best.ah * 0.1 && v < b1 - best.ah * 0.1), a0, a1, b0, b1); const S3 = fitSides(sub, a0, a1, t0, t1);
+      const S = { L0: Math.abs(S2.L0 - a0) < best.aw * 0.03 ? S2.L0 : a0, L1: Math.abs(S2.L1 - a1) < best.aw * 0.03 ? S2.L1 : a1, T0: Math.abs(S3.T0 - b0) < best.ah * 0.03 ? S3.T0 : b0, T1: Math.abs(S3.T1 - b1) < best.ah * 0.03 ? S3.T1 : b1 }; // L = along u, T = along v
+      const r = take(UV.filter(([u, v]) => u >= S.L0 && u <= S.L1 && v >= S.T0 && v <= S.T1), ux, uy, cx0, cy0, S); if (r.card) got.push(r.card); else { okAll = false; if (o.debug) o.debug.push({ slot: r }); } }
+    if (got.length) { cards.push(...got); if (!okAll) bad++; continue; }
+    const cu = cuts(0, best.nx, u0, u1, best.aw), cv2 = cuts(1, best.ny, v0, v1, best.ah);
+    for (let a = 0; a < best.nx; a++) for (let b2 = 0; b2 < best.ny; b2++) { const sub = UV.filter(([u, v]) => u > cu[a] + 0.5 && u < cu[a + 1] - 0.5 && v > cv2[b2] + 0.5 && v < cv2[b2 + 1] - 0.5); if (sub.length < minA * 0.5) { okAll = false; continue; }
+      let s0 = Infinity, s1 = -Infinity, t0 = Infinity, t1 = -Infinity; for (const [u, v] of sub) { if (u < s0) s0 = u; if (u > s1) s1 = u; if (v < t0) t0 = v; if (v > t1) t1 = v; }
+      const r = take(sub, ux, uy, cx0, cy0, fitSides(sub, s0, s1, t0, t1)); if (r.card) got.push(r.card); else { okAll = false; if (o.debug) o.debug.push({ split: r }); } }
+    cards.push(...got); if (!okAll) bad++; }
   if (!cards.length) return { cards: [], bad, ok: false };
   const areas = cards.map(c => c.area).sort((a, b) => a - b), mid = areas[areas.length >> 1];
   const odd = cards.filter(c => Math.abs(c.area / mid - 1) > 0.12).length; // every card on a sheet is the same size
   return { cards: gridOrder(cards.map(c => ({ quad: portraitQuad(c.quad), c: c.c, hgt: c.hgt }))), bad, odd, ok: !bad && !odd, by: 'plain' };
 }
+const nxErr = b => 0.35 * (b.nx + b.ny); // how far a patch may be from a whole number of cards before it's not a clean grid
 function hull(P) { // monotone chain
   P = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (P.length < 3) return P; const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
   const lo = [], up = []; for (const p of P) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
@@ -3884,6 +3933,42 @@ function minRect(Hh) { // rotating calipers: the smallest-area rectangle holding
   const { ux, uy, mn1, mx1, mn2, mx2 } = best; const P = (s, t) => [s * ux - t * uy, s * uy + t * ux];
   const pts = [P(mn1, mn2), P(mx1, mn2), P(mx1, mx2), P(mn1, mx2)];
   return { pts, size: [mx1 - mn1, mx2 - mn2], c: P((mn1 + mx1) / 2, (mn2 + mx2) / 2) };
+}
+
+/* row-to-row streak strength per cell of a W x H grid over the photo, measured at the photo's own resolution (shrinking would blur the streaks away) */
+function streakGrid(bmp, W, H) {
+  const BW = bmp.width, BH = bmp.height; const out = new Float32Array(W * H), n = new Float32Array(W * H); const sx = W / BW, sy = H / BH;
+  const strip = 256; const cv = document.createElement('canvas'); cv.width = BW; cv.height = strip + 2; const g = cv.getContext('2d', { willReadFrequently: true });
+  for (let y0 = 0; y0 < BH; y0 += strip) { const hh = Math.min(strip + 2, BH - y0 + (y0 ? 1 : 0)); const top = y0 ? y0 - 1 : 0; g.clearRect(0, 0, BW, strip + 2); g.drawImage(bmp, 0, top, BW, hh, 0, 0, BW, hh); const d = g.getImageData(0, 0, BW, hh).data;
+    const Lp = (x, y) => { const i = (y * BW + x) * 4; return d[i] + d[i + 1] + d[i + 2]; };
+    for (let yy = 1; yy < hh - 1; yy++) { const y = top + yy; const gy = Math.min(H - 1, (y * sy) | 0);
+      for (let x = 1; x < BW - 1; x += 2) { const c = Lp(x, yy); const v = Math.abs(c - (Lp(x, yy - 1) + Lp(x, yy + 1)) / 2), h = Math.abs(c - (Lp(x - 1, yy) + Lp(x + 1, yy)) / 2); const j = gy * W + Math.min(W - 1, (x * sx) | 0); out[j] += (v - h) / 3; n[j]++; } } }
+  for (let i = 0; i < W * H; i++) out[i] = n[i] ? out[i] / n[i] : 0;
+  const sm = new Float32Array(W * H); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let a = 0, c = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= W || Y >= H) continue; a += out[Y * W + X]; c++; } sm[y * W + x] = a / c; }
+  return sm;
+}
+
+/* the one card in a photo cut from a sheet, when its size is known: slide a card-sized box over the card mask and keep the spot
+   that is all card inside with the least card just outside (neighbouring cards only touch it at the edges), at a few small turns */
+function singleRect(fg, W, H, k, o) {
+  const cw = o.cardW * k, chh = cw * 1.4; let best = null;
+  const portrait = !(o.landscape);
+  for (const ang of [0, -0.6, 0.6, -1.2, 1.2, -2, 2]) { const a = ang * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+    // rotate the mask into a frame where the card is axis-aligned (nearest neighbour), then use an integral image
+    const R = new Uint8Array(W * H); const cx = W / 2, cy = H / 2;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const dx = x - cx, dy = y - cy; const X = Math.round(cx + dx * ca - dy * sa), Y = Math.round(cy + dx * sa + dy * ca); R[y * W + x] = X >= 0 && Y >= 0 && X < W && Y < H ? fg[Y * W + X] : 0; }
+    const I = new Int32Array((W + 1) * (H + 1)); for (let y = 0; y < H; y++) { let row = 0; for (let x = 0; x < W; x++) { row += R[y * W + x]; I[(y + 1) * (W + 1) + x + 1] = I[y * (W + 1) + x + 1] + row; } }
+    const sum = (x0, y0, x1, y1) => { x0 = Math.max(0, Math.min(W, Math.round(x0))); x1 = Math.max(0, Math.min(W, Math.round(x1))); y0 = Math.max(0, Math.min(H, Math.round(y0))); y1 = Math.max(0, Math.min(H, Math.round(y1))); if (x1 <= x0 || y1 <= y0) return [0, 0]; return [I[y1 * (W + 1) + x1] - I[y0 * (W + 1) + x1] - I[y1 * (W + 1) + x0] + I[y0 * (W + 1) + x0], (x1 - x0) * (y1 - y0)]; };
+    for (const sc of [0.985, 1, 1.015]) { const w = (portrait ? cw : chh) * sc, h = (portrait ? chh : cw) * sc, b = Math.max(2, w * 0.025);
+      for (let y0 = -h * 0.05; y0 + h <= H + h * 0.05; y0 += 1) for (let x0 = -w * 0.05; x0 + w <= W + w * 0.05; x0 += 1) {
+        const [ii, ia] = sum(x0, y0, x0 + w, y0 + h); if (ia < w * h * 0.85 || ii < ia * 0.9) continue;
+        const ring = [sum(x0 - b, y0 + h * 0.1, x0, y0 + h * 0.9), sum(x0 + w, y0 + h * 0.1, x0 + w + b, y0 + h * 0.9), sum(x0 + w * 0.1, y0 - b, x0 + w * 0.9, y0), sum(x0 + w * 0.1, y0 + h, x0 + w * 0.9, y0 + h + b)];
+        const out = ring.reduce((t, [n2, a2]) => t + (a2 ? n2 / a2 : 0.5), 0) / 4; const edgeIn = [sum(x0, y0 + h * 0.1, x0 + b, y0 + h * 0.9), sum(x0 + w - b, y0 + h * 0.1, x0 + w, y0 + h * 0.9), sum(x0 + w * 0.1, y0, x0 + w * 0.9, y0 + b), sum(x0 + w * 0.1, y0 + h - b, x0 + w * 0.9, y0 + h)].reduce((t, [n2, a2]) => t + (a2 ? n2 / a2 : 0), 0) / 4;
+        const score = ii / ia + edgeIn - out * 1.5; if (!best || score > best.score) best = { score, x0, y0, w, h, ca, sa, cx, cy, out, edgeIn }; } } }
+  if (!best) return { cards: [], bad: 1, ok: false };
+  const { x0, y0, w, h, ca, sa, cx, cy } = best; const back = (x, y) => { const dx = x - cx, dy = y - cy; return [(cx + dx * ca - dy * sa) / k, (cy + dx * sa + dy * ca) / k]; };
+  const quad = [back(x0, y0), back(x0 + w, y0), back(x0 + w, y0 + h), back(x0, y0 + h)];
+  return { cards: [{ quad: orderQuad(quad), c: back(x0 + w / 2, y0 + h / 2), hgt: h / k }], bad: 0, odd: 0, ok: best.out < 0.25 && best.edgeIn > 0.85, by: 'single', fit: best };
 }
 
 /* Recent sales (comps): record what a card has actually sold for on the market, then show the average of the
@@ -4040,7 +4125,7 @@ async function sheetsFromFiles(files) {
         await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
         out.push({ bmp: await createImageBitmap(cv), name: `${f.name} p${p}`, dpi: 72, scale: vp.scale }); // a PDF page is 72 points to the inch
       }
-    } else out.push(await loadPhoto(f));
+    } else out.push(await loadPhoto(f, 3600)); /* a 300 dpi letter scan at full size: shrinking it blurs away the fine detail used to tell card from lid */
   }
   return out;
 }
@@ -4486,8 +4571,9 @@ FORMS.batchGo = async f => {
       const fs = mode === 'photos' ? await loadPhoto(fronts[s]) : fS[s];
       const bs = mode === 'photos' ? (backs[s] ? await loadPhoto(backs[s]) : null) : bS[s];
       const find = mode === 'photos' ? detectCardQuads : findCards; // scanner sheets: also try straight edges (cards touching, dark lids)
-      const F2 = find(fs.bmp, { toploader: BS.opts.toploader }); BS.merged += F2.merged;
-      const B2 = bs ? find(bs.bmp, { toploader: BS.opts.toploader }) : { cards: [], merged: 0 }; BS.merged += B2.merged;
+      const cwOf = sh => sh && sh.dpi ? 2.5 * sh.dpi * (sh.scale || 1) : 0; // a card is 2.5 in wide: in pixels at the scan's resolution
+      const F2 = find(fs.bmp, { toploader: BS.opts.toploader, cardW: cwOf(fs) }); BS.merged += F2.merged;
+      const B2 = bs ? find(bs.bmp, { toploader: BS.opts.toploader, cardW: cwOf(bs) }) : { cards: [], merged: 0 }; BS.merged += B2.merged;
       const whole = sh => ({ quad: [[0, 0], [sh.bmp.width, 0], [sh.bmp.width, sh.bmp.height], [0, sh.bmp.height]], c: [sh.bmp.width / 2, sh.bmp.height / 2], row: 0, col: 0, whole: true });
       if (mode === 'photos') { if (!F2.cards.length) F2.cards.push(whole(fs)); if (bs && !B2.cards.length) B2.cards.push(whole(bs)); } // never drop a photo
       // one card per photo: pair directly; several: pair by position
@@ -7734,35 +7820,83 @@ A.massStraighten = () => {
     <p class="muted" style="margin:0">Finds the corners on the front and back of every card you picked and shows you the result first. Nothing changes until you save, and your original photos are always kept, so you can redo any card.</p>
     ${field('These cards are', `<select name="loader"><option value="0"${S.settings.toploader ? '' : ' selected'}>Raw (no top loader)</option><option value="1"${S.settings.toploader ? ' selected' : ''}>In top loaders</option></select>`)}
     <div class="row"><label class="chk"><input type="checkbox" name="front" checked> Fronts</label><label class="chk"><input type="checkbox" name="back" checked> Backs</label></div>
+    <details style="margin-top:6px"><summary><b>Best:</b> use the original scan sheets</summary>
+      <p class="muted" style="margin:6px 0">Pick the full scanner sheets these cards came from. Dugout finds every card on them with the same exact finder as Bulk add and matches each one to your saved card by its picture. This gives the cleanest crops, especially on a dark lid.</p>
+      <div class="fgrid">${field('Front sheets', '<input type="file" name="sf" accept="image/*,application/pdf" multiple>')}${field('Back sheets', '<input type="file" name="sb" accept="image/*,application/pdf" multiple>')}</div>
+      <small class="muted">For backs, add the front sheets too (same order): each back is then paired with its front exactly, like Bulk add.</small></details>
     ${mfoot('Find corners')}</form>`, { narrow: true });
 };
 FORMS.massGo = async f => {
   const fd = new FormData(f); const loader = fd.get('loader') === '1'; const sides = ['front', 'back'].filter(s => fd.get(s) === 'on'); if (!sides.length) return toast('Pick fronts, backs or both');
   const cards = [...SELM.ids].map(cardById).filter(c => c && !c.purged); const sheet = $('#modal-root .sheet'); MS.items = [];
+  const sheetFiles = { front: fd.getAll('sf').filter(x => x && x.size), back: fd.getAll('sb').filter(x => x && x.size) };
+  if (sheetFiles.front.length || sheetFiles.back.length) return massFromSheets(cards, sides, loader, sheetFiles, sheet);
   let done = 0; const total = cards.length * sides.length;
   for (const c of cards) for (const side of sides) {
     done++; if (sheet) sheet.innerHTML = `${mhead('Straightening')}<p class="muted">Finding corners: ${done} of ${total}…</p>`; await new Promise(r => setTimeout(r, 10));
     const id = c[side + 'Orig'] || c[side]; if (!id) continue; const rec = await fileGet(id); if (!rec) continue;
     try { const bmp = await bitmapOf(rec.blob); const r = autoCorners(bmp, loader, c[side + 'CardW'], c[side + 'Orig'] && c[side + 'Quad']); if (!r) { MS.items.push({ c, side, fail: true }); continue; }
       const src = bitmapPixels(bmp, 2400); const blob = await canvasBlob(warpCard(src, r.quad)); bmp.close && bmp.close();
-      MS.items.push({ c, side, blob, quad: r.quad, sure: r.sure, url: URL.createObjectURL(blob) }); } catch (e) { MS.items.push({ c, side, fail: true }); } }
+      MS.items.push({ c, side, blob, quad: r.quad, sure: r.sure, url: URL.createObjectURL(blob), how: r.how }); } catch (e) { MS.items.push({ c, side, fail: true }); } }
+  // second pass for the ones that weren't clean: every card from the same sheets is the same size, so look for a box of exactly that size
+  if (!loader) { const qs = MS.items.filter(x => !x.fail && x.sure && x.how === 'outline').map(x => { const q = x.quad; return Math.min(Math.hypot(q[1][0] - q[0][0], q[1][1] - q[0][1]), Math.hypot(q[3][0] - q[0][0], q[3][1] - q[0][1])); }).sort((a, b) => a - b);
+    const cw = qs.length >= 2 ? qs[qs.length >> 1] : 0;
+    if (cw) for (const x of MS.items) { if (!x.fail && x.sure) continue; if (sheet) sheet.innerHTML = `${mhead('Straightening')}<p class="muted">Taking a closer look at the hard ones…</p>`; await new Promise(r => setTimeout(r, 10));
+      try { const id = x.c[x.side + 'Orig'] || x.c[x.side]; const rec = await fileGet(id); const bmp = await bitmapOf(rec.blob); const P = plainCards(bmp, { res: 700, single: true, cardW: cw });
+        if (P.cards.length) { const q = P.cards[0].quad; const src = bitmapPixels(bmp, 2400); const blob = await canvasBlob(warpCard(src, q)); if (x.url) URL.revokeObjectURL(x.url); Object.assign(x, { fail: false, blob, quad: q, sure: P.ok, url: URL.createObjectURL(blob), how: 'sized' }); }
+        bmp.close && bmp.close(); } catch (e) {} } }
+  massReview();
+};
+function massReview() {
   const n = MS.items.filter(x => !x.fail).length, unsure = MS.items.filter(x => !x.fail && !x.sure).length;
   openModal(`<form data-form="massSave">${mhead(`Check ${n} photo${n === 1 ? '' : 's'}`)}
-    <p class="muted" style="margin:0">Untick any that look wrong; those keep their current photo.${unsure ? ` <b>${unsure}</b> marked "check" were harder to find.` : ''}</p>
-    <div class="ms-grid">${MS.items.map((x, i) => x.fail ? `<div class="ms-item"><div class="ms-fail">Couldn't find the corners</div><small>${esc(x.c.code)} · ${x.side}</small></div>`
-      : `<label class="ms-item${x.sure ? '' : ' ms-check'}"><img src="${x.url}" alt="${esc(cardName(x.c))} ${x.side}"><span><input type="checkbox" name="i${i}" checked> ${esc(x.c.code)} · ${x.side}${x.sure ? '' : ' · check'}</span></label>`).join('')}</div>
+    <p class="muted" style="margin:0">Ticked ones get the new crop; unticked keep their current photo.${unsure ? ` <b>${unsure}</b> marked "check" start unticked: tick them if they look right.` : ''}</p>
+    <div class="ms-grid">${MS.items.map((x, i) => x.fail ? `<div class="ms-item"><div class="ms-fail">${esc(x.why || "Couldn't find the corners")}</div><small>${esc(x.c.code)} · ${x.side}</small></div>`
+      : `<label class="ms-item${x.sure ? '' : ' ms-check'}"><img src="${x.url}" alt="${esc(cardName(x.c))} ${x.side}"><span><input type="checkbox" name="i${i}"${x.sure ? ' checked' : ''}> ${esc(x.c.code)} · ${x.side}${x.sure ? '' : ' · check'}</span></label>`).join('')}</div>
     ${mfoot(`Save`)}</form>`);
 };
+
 FORMS.massSave = async f => {
   const fd = new FormData(f); const btn = f.querySelector('[type=submit]'); btn.disabled = true; btn.textContent = 'Saving…'; const touched = new Set(); let n = 0;
   for (const [i, x] of MS.items.entries()) { if (x.fail || fd.get('i' + i) !== 'on') continue; const c = cardById(x.c.id); const side = x.side;
-    if (!c[side + 'Orig']) c[side + 'Orig'] = c[side]; // keep the untouched photo so it can be redone
+    if (x.orig) c[side + 'Orig'] = await fileSave(x.orig, side + '-scan.jpg'); // a fresh piece of the original sheet to straighten from later
+    else if (!c[side + 'Orig']) c[side + 'Orig'] = c[side]; // keep the untouched photo so it can be redone
     if (c[side] && c[side] !== c[side + 'Orig']) await fileDel(c[side]);
     c[side] = await fileSave(x.blob, side + '.jpg'); c[side + 'Quad'] = x.quad.map(p => [Math.round(p[0]), Math.round(p[1])]); touched.add(c); n++; }
   for (const c of touched) await save('cards', c, { quiet: true });
   MS.items.forEach(x => x.url && URL.revokeObjectURL(x.url)); MS.items = [];
   closeModal(); SELM.on = false; SELM.ids.clear(); onChange('cards'); toast(`Straightened ${n} photo${n === 1 ? '' : 's'} on ${touched.size} card${touched.size === 1 ? '' : 's'}`);
 };
+
+/* redo saved cards from the original scanner sheets: find every card on the sheets, then match each saved card to its twin by picture */
+async function thumbVec(blob, back) { const bmp = await bitmapOf(blob); const W2 = back ? 40 : 12, H2 = back ? 12 : 17; const cv = document.createElement('canvas'); cv.width = W2; cv.height = H2; const g = cv.getContext('2d', { willReadFrequently: true });
+  g.imageSmoothingQuality = 'high'; if (back) g.drawImage(bmp, bmp.width * 0.12, bmp.height * 0.2, bmp.width * 0.76, bmp.height * 0.15, 0, 0, W2, H2); /* a back: the name and team lines */ else g.drawImage(bmp, bmp.width * 0.2, bmp.height * 0.2, bmp.width * 0.6, bmp.height * 0.6, 0, 0, W2, H2); /* the middle of the card: the same whatever the old crop edges were */ bmp.close && bmp.close(); const d = g.getImageData(0, 0, W2, H2).data; const v = [];
+  for (let i = 0; i < d.length; i += 4) v.push(d[i], d[i + 1], d[i + 2]); const m = v.reduce((a, b) => a + b, 0) / v.length; const sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length) || 1; return v.map(x => (x - m) / sd); }
+const vdist = (a, b) => { let t = 0; for (let i = 0; i < a.length; i++) t += (a[i] - b[i]) ** 2; return Math.sqrt(t / a.length); };
+async function massFromSheets(cards, sides, loader, files, sheetEl) {
+  MS.items = []; const sheetsBy = {}; const frontOf = new Map(); const say = t => { if (sheetEl) sheetEl.innerHTML = `${mhead('Straightening')}<p class="muted">${esc(t)}</p>`; };
+  for (const side of sides) { const fl = files[side]; if (!fl.length) continue;
+    const found = []; const sheets = await sheetsFromFiles(fl);
+    for (let si = 0; si < sheets.length; si++) { const sh = sheets[si]; say(`Finding cards on ${side} sheet ${si + 1} of ${sheets.length}…`); await new Promise(r => setTimeout(r, 10));
+      const cw = sh.dpi ? 2.5 * sh.dpi * (sh.scale || 1) : 0; const F = findCards(sh.bmp, { toploader: loader, cardW: cw });
+      for (const c of F.cards) { let q = c.quad; if (loader) { const r = cardInBox(sh.bmp, q, cw ? { width: cw, grow: 0.22 } : { grow: 0.22 }); if (r && r.score >= 0.6) q = r.quad; }
+        const im = await cardImages(sh, q); found.push({ im, vec: await thumbVec(im.warped, side === 'back'), by: F.by, si, c }); } sheetsBy[side] = sheetsBy[side] || []; sheetsBy[side][si] = { sh, cards: F.cards, found: found.filter(x => x.si === si) }; }
+    say(`Matching ${side}s to your cards…`);
+    const want = []; for (const c of cards) { const id = c[side]; if (!id) continue; const rec = await fileGet(id); if (!rec) continue; want.push({ c, vec: await thumbVec(rec.blob, side === 'back') }); }
+    const usedW = new Set(), usedF = new Set(); const put = (i, j, dd, sure) => { usedW.add(i); usedF.add(j); const f = found[j]; if (side === 'front') frontOf.set(want[i].c.id, f);
+      MS.items.push({ c: want[i].c, side, blob: f.im.warped, orig: f.im.orig, quad: f.im.quad, sure, url: URL.createObjectURL(f.im.warped), how: 'sheet', dd, fj: j }); };
+    // backs: when the front sheets came too, a back sits in the same spot as its front (flipped card by card), so pair them like Bulk add does
+    if (side === 'back' && sheetsBy.front) for (let si = 0; si < (sheetsBy.back || []).length; si++) { const Fs = sheetsBy.front[si], Bs = sheetsBy.back[si]; if (!Fs || !Bs) continue;
+      const pb = pairBacks(Fs.cards, Bs.cards, Fs.sh, Bs.sh, false);
+      Fs.cards.forEach((fc, k2) => { const bc = pb[k2]; if (!bc) return; const ff = Fs.found.find(x => x.c === fc), bf = Bs.found.find(x => x.c === bc); if (!ff || !bf) return;
+        const i = want.findIndex((w, wi) => !usedW.has(wi) && frontOf.get(w.c.id) === ff); const j = found.indexOf(bf); if (i >= 0 && j >= 0 && !usedF.has(j)) put(i, j, 0, true); }); }
+    const pairs = []; want.forEach((w, i) => { if (!usedW.has(i)) found.forEach((f, j) => { if (!usedF.has(j)) pairs.push([vdist(w.vec, f.vec), i, j]); }); }); pairs.sort((a, b) => a[0] - b[0]);
+    for (const [dd, i, j] of pairs) { if (usedW.has(i) || usedF.has(j) || dd > 1.15) continue; put(i, j, dd, dd < 0.8 && side === 'front'); } // backs all look alike by picture: matched without their fronts, they're always marked to check
+    // whatever is left on both sides: a looser match, always marked to check
+    for (const [dd, i, j] of pairs) { if (usedW.has(i) || usedF.has(j) || dd > 1.6) continue; put(i, j, dd, false); }
+    want.forEach((w, i) => { if (!usedW.has(i)) MS.items.push({ c: w.c, side, fail: true, why: 'not on these sheets' }); }); }
+  massReview();
+}
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
 async function loadDemo() {
