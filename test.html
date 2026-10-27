@@ -4525,6 +4525,10 @@ function openBatch(mode) {
     <li>Raw cards with white borders: cover them with <b>black paper</b> before closing the lid.</li>
     <li>Scan at <b>300 dpi, color, JPG</b>. Then flip each card over <b>in its own spot</b> and scan again for the backs.</li>
   </ol>
+  <fieldset class="bs-all"><legend>All your scans at once</legend>
+    ${field('Scan files (pick as many as you like)', '<input type="file" name="allscans" accept="image/*,application/pdf" multiple>')}
+    ${field('They are', `<select name="allorder">${opts([['auto', 'Mixed: Dugout tells fronts from backs (reads them)'], ['alt', 'Front, back, front, back… (in name order)'], ['split', 'All fronts, then all backs (in name order)'], ['fronts', 'Fronts only']], S.settings.sheetOrder || 'auto')}</select>`)}
+    <small class="muted">Files are put in name order (scan1, scan2, … scan10). Or use the rows below to pair each sheet by hand.</small></fieldset>
   <div id="bs-sheets">${bsSheetRow(1)}</div>
   <div class="row"><button class="btn" type="button" data-act="bsAddSheet">+ Add another sheet</button><small class="muted">Each sheet: its front scan and its back scan. A PDF with several pages counts as several sheets.</small></div>
   <label class="chk"><input type="checkbox" name="mirrored"> I flipped the whole sheet instead of each card (backs are mirrored)</label>`}
@@ -4534,7 +4538,7 @@ function openBatch(mode) {
   ${mfoot('Find cards')}</form>`);
 }
 // one scanner sheet: its front scan and its back scan side by side, so they can't get out of order
-const bsSheetRow = n => `<div class="fgrid bs-sheet" data-n="${n}">${field(`Sheet ${n} front`, `<input type="file" name="front_${n}" accept="image/*,application/pdf" multiple${n === 1 ? ' required' : ''}>`)}${field(`Sheet ${n} back`, `<input type="file" name="back_${n}" accept="image/*,application/pdf" multiple>`)}</div>`;
+const bsSheetRow = n => `<div class="fgrid bs-sheet" data-n="${n}">${field(`Sheet ${n} front`, `<input type="file" name="front_${n}" accept="image/*,application/pdf" multiple>`)}${field(`Sheet ${n} back`, `<input type="file" name="back_${n}" accept="image/*,application/pdf" multiple>`)}</div>`;
 A.bsAddSheet = () => { const box = $('#bs-sheets'); if (!box) return; const n = box.querySelectorAll('.bs-sheet').length + 1; box.insertAdjacentHTML('beforeend', bsSheetRow(n)); const inp = box.querySelector(`[name=front_${n}]`); if (inp) inp.click(); };
 FORMS.batchGo = async f => {
   const fd = new FormData(f); const mode = fd.get('mode') || 'scanner';
@@ -4552,6 +4556,19 @@ FORMS.batchGo = async f => {
     else fronts = photos;
     if (order !== 'fronts' && order !== 'auto' && photos.length % 2) toast('Odd number of photos: the last card has no back photo');
   } else {
+    const all = fd.getAll('allscans').filter(x => x && x.size);
+    if (all.length) { const order = fd.get('allorder') || 'auto'; if (S.settings.sheetOrder !== order) { S.settings.sheetOrder = order; saveSettings(); }
+      const files = [...all].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })); let F = [], B = [];
+      if (order === 'alt') files.forEach((x, i) => (i % 2 ? B : F).push(x));
+      else if (order === 'split') { const h = Math.ceil(files.length / 2); F = files.slice(0, h); B = files.slice(h); }
+      else if (order === 'fronts') F = files;
+      else { const sheet0 = $('#modal-root .sheet'); // backs are full of small print, fronts are mostly pictures: read a quick, small copy of each
+        for (let i = 0; i < files.length; i++) { if (sheet0) sheet0.innerHTML = `${mhead('Sorting scans')}<p class="muted">Looking at scan ${i + 1} of ${files.length} to tell fronts from backs…</p>`;
+          let words = 0; try { const sh = (await sheetsFromFiles([files[i]]))[0]; const cv = document.createElement('canvas'); const k = 1400 / Math.max(sh.bmp.width, sh.bmp.height); cv.width = Math.round(sh.bmp.width * k); cv.height = Math.round(sh.bmp.height * k); cv.getContext('2d').drawImage(sh.bmp, 0, 0, cv.width, cv.height); sh.bmp.close && sh.bmp.close();
+            words = realWords((await readImageText(await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.9)), null, '11')).text); } catch (e) {}
+          (words >= 25 ? B : F).push(files[i]); } }
+      if (B.length && B.length !== F.length) toast(`${F.length} front scan${F.length === 1 ? '' : 's'} and ${B.length} back scan${B.length === 1 ? '' : 's'}: paired in order`);
+      F.forEach((x, i) => fronts.push({ f: [x], b: B[i] ? [B[i]] : [] })); }
     for (const row of f.querySelectorAll('.bs-sheet')) { const n = row.dataset.n; const ff = fd.getAll('front_' + n).filter(x => x && x.size), bb = fd.getAll('back_' + n).filter(x => x && x.size); if (ff.length) fronts.push({ f: ff, b: bb }); else if (bb.length) return toast(`Sheet ${n} has a back scan but no front scan`); }
     if (!fronts.length) return toast('Choose at least one front scan');
   }
