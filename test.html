@@ -7728,7 +7728,7 @@ function selPaint() {
   let bar = $('#sel-bar'); if (!SELM.on) { if (bar) bar.remove(); return; }
   if (!bar) { bar = document.createElement('div'); bar.id = 'sel-bar'; document.body.appendChild(bar); }
   const n = SELM.ids.size;
-  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massStraighten">Straighten</button>' : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
+  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massStraighten">Straighten</button>' : ''}${n ? `<button class="btn sm" type="button" data-act="massTrash">Delete ${n}</button>` : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
 }
 // while selecting, a tap picks the card instead of opening it
 document.addEventListener('click', e => {
@@ -7897,6 +7897,16 @@ async function massFromSheets(cards, sides, loader, files, sheetEl) {
     want.forEach((w, i) => { if (!usedW.has(i)) MS.items.push({ c: w.c, side, fail: true, why: 'not on these sheets' }); }); }
   massReview();
 }
+
+// move the picked cards to the trash (same as Delete on one card): tap twice, and Undo brings them all back
+A.massTrash = async el => {
+  const cards = [...SELM.ids].map(cardById).filter(c => c && !c.purged && !c.deletedAt); if (!cards.length) return;
+  const listed = cards.filter(c => c.ebay && ['active', 'lot'].includes(c.ebay.status)).length;
+  if (el.dataset.sure !== '1') { el.dataset.sure = '1'; el.textContent = `Tap again: delete ${cards.length}${listed ? ` (${listed} listed on eBay)` : ''}`; return; }
+  const at = nowISO(); for (const c of cards) { c.deletedAt = at; await save('cards', c, { quiet: true }); }
+  SELM.on = false; SELM.ids.clear(); onChange('cards');
+  toast(`${cards.length} card${cards.length === 1 ? '' : 's'} moved to trash`, { label: 'Undo', run: async () => { for (const c of cards) { delete c.deletedAt; await save('cards', c, { quiet: true }); } onChange('cards'); } });
+};
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
 async function loadDemo() {
