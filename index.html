@@ -1230,6 +1230,7 @@ V.inv = () => {
     <button class="btn" data-act="batch" type="button">Bulk add</button>
     <button class="btn pri" data-act="addCard" type="button">+ Add card</button>${addMenuBtn()}</div></div>
   <div class="chiprow" role="group" aria-label="Quick filters">${chip('', 'All')}${chip('graded', 'Graded')}${chip('rookie', 'Rookies')}${chip('auto', 'Autos')}${chip('listed', 'Listed')}${chip('needprice', 'Needs price')}${F.quick && !['graded', 'rookie', 'auto', 'listed', 'needprice'].includes(F.quick) ? chip(F.quick, { listedlong: 'Listed 3+ weeks', grading: 'At grading', nophoto: 'No photo' }[F.quick]) : ''}
+    <button type="button" data-act="invSide" aria-pressed="${S.settings.invSide === 'back'}">${S.settings.invSide === 'back' ? '↺ Showing backs' : '↻ Show backs'}</button>
     <button type="button" class="only-phone" data-act="moreFilters" aria-expanded="${INVUI.more}">⚙ More filters${more ? ' •' : ''}</button></div>
   <section class="panel inv-filters${INVUI.more ? ' open' : ''}">
     <div class="toolbar">
@@ -1272,7 +1273,7 @@ function updateInv() {
 function cardTile(c) {
   const v = num(c.value), uc = unitCost(c), p = v - uc; const h = (c.priceHistory || []).map(x => num(x.value));
   const slab = c.graded && c.slabLabel ? `<div class="tl-slab"><img data-file="${esc(c.slabLabel)}" alt="${esc(gradeText(c))} label"></div>` : '';
-  return `<a class="ctile${slab ? ' slabbed' : ''}" href="#/card/${c.id}"><div class="tl-photo">${slab}${art(c)}</div><div class="ct-body">
+  return `<a class="ctile${slab ? ' slabbed' : ''}" href="#/card/${c.id}"><div class="tl-photo">${slab}${art(c, S.settings.invSide === 'back' && c.back ? 'back' : 'front')}</div><div class="ct-body">
     <b>${esc(cardName(c))}</b><small>${esc(cardSet(c))}${c.parallel && c.parallel !== 'Base' ? ' · ' + esc(c.parallel) : ''}</small>
     <div class="ct-money"><span class="num ct-val">${money(v)}${c.qty > 1 ? ` <small class="muted">×${c.qty}</small>` : ''}</span>${miniSpark(h, 64, 22, p >= 0 ? 'var(--pos)' : 'var(--neg)')}<span class="roi ${cls(p)}">${uc && v ? (p >= 0 ? '+' : '') + Math.round(p / uc * 100) + '%' : '—'}</span></div>
     <div class="ct-top"><span class="code">${esc(c.code)}</span>${statusPill(c)}</div></div></a>`;
@@ -1306,7 +1307,7 @@ V.card = id => {
     <div class="ch-view">
       <div class="c3d" data-card3d="${c.id}"><div class="c3d-stage">${art(c, 'front')}</div>
         <div class="row c3d-ctl"><button class="btn sm" data-act="c3dFlip" type="button">Flip</button><button class="btn sm" data-act="c3dReset" type="button">Reset</button><button class="btn sm" data-act="c3dFull" data-id="${c.id}" type="button">Full screen</button>
-        ${c.front || c.back ? `<button class="btn sm" data-act="straighten" data-id="${c.id}" data-side="${c.front ? 'front' : 'back'}" type="button">Straighten</button>` : ''}${c.front && (c.graded || c.slabLabel) ? `<button class="btn sm" data-act="slabRead" data-id="${c.id}" type="button">${c.slabLabel ? 'Re-read slab label' : 'Use slab label'}</button>` : ''}
+        ${c.front || c.back ? `<button class="btn sm" data-act="straighten" data-id="${c.id}" data-side="${c.front ? 'front' : 'back'}" type="button">Straighten</button>` : ''}${c.front || c.back ? `<button class="btn sm" data-act="rerdChoose" data-id="${c.id}" type="button">Reread</button>` : ''}${c.front && (c.graded || c.slabLabel) ? `<button class="btn sm" data-act="slabRead" data-id="${c.id}" type="button">${c.slabLabel ? 'Re-read slab label' : 'Use slab label'}</button>` : ''}
         ${c.front ? `<button class="btn sm ghost" data-act="viewPhoto" data-id="${c.id}" data-side="front" type="button">Front photo</button>` : ''}${c.back ? `<button class="btn sm ghost" data-act="viewPhoto" data-id="${c.id}" data-side="back" type="button">Back photo</button>` : ''}</div>
         <small class="muted c3d-hint">Drag or swipe to turn it · double-tap to flip${c.front ? '' : ' · add photos to see the real card'}</small></div>
     </div>
@@ -4773,7 +4774,7 @@ async function readOne(it, pr, o) {
   else if (it.fields.college && o.read && it.fields.player) { const v = await collegeNameCheck(it.fields); if (v) { it.fields.player = v.full; it.fields.matched = true; conf = v.conf; } } // not in the pro lists yet: the printed name, checked against eBay
   else if (it.fields.player && it.fields.player.split(' ').some(w => w.replace(/[^A-Za-z]/g, '').length < 3)) it.fields.player = ''; // a scrap like "Lu Mz" is worse than a blank
   it.fields.conf = o.read ? conf : '';
-  if (o.read) {
+  if (o.read && !o.namesOnly) {
     const side = it.b ? (it.b.read || it.b.warped) : it.f.warped; const rn = await readCardNumber(side, pr).catch(() => null);
     if (rn && (rn.sure || !it.fields.number)) { it.fields.number = rn.num; it.fields.numberFrom = rn.sure ? '' : 'corner'; }
     if (it.fields.number === '0') it.fields.number = '';
@@ -7850,7 +7851,7 @@ function selPaint() {
   let bar = $('#sel-bar'); if (!SELM.on) { if (bar) bar.remove(); return; }
   if (!bar) { bar = document.createElement('div'); bar.id = 'sel-bar'; document.body.appendChild(bar); }
   const n = SELM.ids.size;
-  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massStraighten">Straighten</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massReread">Reread</button>' : ''}${n ? `<button class="btn sm" type="button" data-act="massTrash">Delete ${n}</button>` : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
+  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massStraighten">Straighten</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="rerdChoose">Reread</button>' : ''}${n ? `<button class="btn sm" type="button" data-act="massTrash">Delete ${n}</button>` : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
 }
 /* swipe to select: while selecting, drag sideways from a card and keep going across and down; every card from the first to the one under
    your finger is set the same way (ticked, or unticked if the first one was ticked), like Photos. Up/down without the sideways start still scrolls.
@@ -8083,10 +8084,17 @@ A.massTrash = async el => {
 /* Reread: read the selected cards' saved photos again (player, team, year, set, number…) and show what changed before saving */
 const RR = { stop: false, items: [] };
 const RR_FIELDS = [['player', 'Player'], ['team', 'Team'], ['sport', 'Sport'], ['year', 'Year'], ['brand', 'Brand'], ['set', 'Set'], ['number', 'Card #'], ['serial', 'Serial'], ['rookie', 'Rookie'], ['auto', 'Auto']];
-A.massReread = async () => {
-  const cards = [...SELM.ids].map(cardById).filter(c => c && !c.purged && (c.front || c.back)); if (!cards.length) return toast('Pick some cards with photos');
+/* Reread asks first: everything, or just the player names (quicker, and you can type over any that are still wrong) */
+A.rerdChoose = el => { const one = el && el.dataset.id; const n = one ? 1 : SELM.ids.size; if (!n) return toast('Pick some cards first');
+  openModal(`<div>${mhead(n === 1 ? 'Reread this card' : `Reread ${n} cards`)}<p class="muted">Dugout reads the saved photos again and shows you what changed. Nothing is saved until you check it.</p>
+    <div style="display:flex;flex-direction:column;gap:8px"><button class="btn pri" type="button" data-act="massReread" data-mode="names"${one ? ` data-id="${esc(one)}"` : ''}>Player names only</button><small class="muted">Quicker. Every card is listed with a name box, so you can also type over any name that's still wrong.</small>
+    <button class="btn" type="button" data-act="massReread" data-mode="all"${one ? ` data-id="${esc(one)}"` : ''}>Everything</button><small class="muted">Player, team, sport, year, brand, set, card #, serial, rookie and auto.</small></div>
+    <div class="sheet-foot"><button class="btn" data-act="close" type="button">Cancel</button></div></div>`); };
+A.massReread = async el => {
+  const one = el && el.dataset.id; RR.names = !!(el && el.dataset.mode === 'names'); RR.one = !!one;
+  const cards = (one ? [one] : [...SELM.ids]).map(cardById).filter(c => c && !c.purged && (c.front || c.back)); if (!cards.length) return toast('Pick some cards with photos');
   RR.stop = false; RR.items = [];
-  openModal(`<div>${mhead('Rereading cards')}<div id="rr-prog"></div><div class="sheet-foot"><button class="btn" type="button" data-act="rrStop">Stop and review</button></div></div>`);
+  openModal(`<div>${mhead(RR.names ? 'Rereading player names' : 'Rereading cards')}<div id="rr-prog"></div><div class="sheet-foot"><button class="btn" type="button" data-act="rrStop">Stop and review</button></div></div>`);
   const show = (i, p) => { const el = $('#rr-prog'); if (!el) return; const f = (i + Math.min(1, p || 0)) / cards.length;
     el.innerHTML = `<div class="calc"><div><span>Reading card ${i + 1} of ${cards.length}</span><b>${Math.round(f * 100)}%</b></div></div><div style="height:8px;background:var(--line);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(2, f * 100)}%;background:var(--acc)"></div></div><small class="muted">Keep this screen open. Each card takes a few seconds. Nothing is saved until you review the changes.</small>`; };
   show(0, 0); await loadPlayerNames();
@@ -8094,8 +8102,9 @@ A.massReread = async () => {
     if (!$('#rr-prog')) { RR.stop = true; break; } // the sheet was closed
     try { const fr = c.front ? await fileGet(c.front) : null, bk = c.back ? await fileGet(c.back) : null; const fb = fr && fr.blob, bb = bk && bk.blob; if (!fb && !bb) continue;
       const it = { f: { warped: fb || bb }, b: fb && bb ? { warped: bb } : null };
-      await readOne(it, p => show(i, p), { read: true, serial: true });
+      await readOne(it, p => show(i, p), { read: true, serial: !RR.names, namesOnly: RR.names });
       const f = it.fields || {}; const diffs = [];
+      if (RR.names) { RR.items.push({ c, read: String(f.player || '').trim(), conf: f.conf, diffs: [] }); continue; }
       for (const [k, label] of RR_FIELDS) { let nv = f[k], ov = c[k];
         if (k === 'rookie' || k === 'auto') { if (nv && !ov) diffs.push({ k, label, ov: 'No', nv: 'Yes', val: true, on: true }); continue; }
         nv = String(nv || '').trim(); ov = String(ov || '').trim(); if (!nv || nv === ov) continue;
@@ -8107,7 +8116,7 @@ A.massReread = async () => {
 };
 A.rrStop = el => { RR.stop = true; el.disabled = true; el.textContent = 'Stopping after this card…'; };
 async function rrReview(total) {
-  const sheet = $('#modal-root .sheet'); if (!sheet) return; const ch = RR.items.filter(x => x.diffs.length);
+  const sheet = $('#modal-root .sheet'); if (!sheet) return; if (RR.names) return rrNames(sheet, total); const ch = RR.items.filter(x => x.diffs.length);
   const rows = await Promise.all(ch.map(async ({ c, diffs }) => { const u = c.front ? await fileURL(c.front) : c.back ? await fileURL(c.back) : '';
     return `<fieldset class="bs-item"><legend>${esc(c.code || '')} ${esc(c.player || 'No name')}</legend><div style="display:flex;gap:10px;align-items:flex-start">${u ? `<img src="${u}" alt="" style="width:64px;border-radius:4px;flex:none">` : ''}<div style="display:flex;flex-direction:column;gap:4px;min-width:0">
       ${diffs.map((d, j) => `<label class="chk" style="align-items:flex-start"><input type="checkbox" name="rr_${esc(c.id)}_${j}" ${d.on ? 'checked' : ''}> <span><b>${esc(d.label)}</b>: ${d.ov ? `<s class="muted">${esc(d.ov)}</s> → ` : ''}${esc(d.nv)}${d.note ? ` <small class="muted">(${esc(d.note)})</small>` : ''}</span></label>`).join('')}</div></div></fieldset>`; }));
@@ -8124,8 +8133,37 @@ FORMS.rrSave = async f => {
   for (const { c, diffs } of RR.items) { const changes = [];
     diffs.forEach((d, j) => { if (!fd.get(`rr_${c.id}_${j}`)) return; changes.push({ f: d.k, from: d.ov, to: String(d.nv) }); c[d.k] = d.val; });
     if (!changes.length) continue; await save('cards', c, { quiet: true }); await logTxn({ cardId: c.id, type: 'edit', date: today(), changes, note: 'Reread from photos' }); n++; }
-  RR.items = []; closeModal(); SELM.on = false; SELM.ids.clear(); onChange('cards'); toast(n ? `Updated ${n} card${n === 1 ? '' : 's'}` : 'Nothing saved');
+  rrDone(n);
 };
+function rrDone(n) { RR.items = []; closeModal(); if (!RR.one) { SELM.on = false; SELM.ids.clear(); } onChange('cards'); toast(n ? `Updated ${n} card${n === 1 ? '' : 's'}` : 'Nothing saved'); }
+/* names only: every card gets a name box. A sure read (or a blank name) is filled in for you; otherwise your name stays and the read is one tap away */
+const knownName = n => { const m = n && matchPlayer([n], ''); return !!(m && m.exact && nkey(m.full) === nkey(n)); };
+async function rrNames(sheet, total) {
+  const names = uniq([...S.cards.filter(live).map(c => c.player), ...RR.items.map(x => x.read)].filter(Boolean)).sort();
+  const lab = { high: 'Confirmed', medium: 'Check', low: 'Not sure' };
+  const rows = await Promise.all(RR.items.map(async ({ c, read, conf }, j) => { const u = c.front ? await fileURL(c.front) : c.back ? await fileURL(c.back) : '';
+    const differs = read && read !== (c.player || ''); const pre = differs && (conf === 'high' || !c.player || (!knownName(c.player) && (conf === 'medium' || knownName(read)))) ? read : (c.player || ''); /* a saved name that isn't a real player gives way to a decent read */
+    return `<fieldset class="bs-item"><legend>${esc(c.code || '')}</legend><div style="display:flex;gap:10px;align-items:flex-start">${u ? `<img src="${u}" alt="" style="width:64px;border-radius:4px;flex:none">` : ''}<div style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:0">
+      <input name="rn_${j}" value="${esc(pre)}" list="dl-rrn" aria-label="Player for ${esc(c.code || '')}" class="${pre !== (c.player || '') ? 'bs-mid' : ''}">
+      <small class="muted">Saved: ${esc(c.player || '(blank)')}${read ? ` · Read: <b>${esc(read)}</b> (${lab[conf] || 'Not sure'})` : ' · Couldn\'t read a name'}</small>
+      ${differs ? `<div class="row" style="gap:6px"><button class="btn sm" type="button" data-act="rrUse" data-j="${j}" data-v="${esc(read)}">Use ${esc(read)}</button><button class="btn sm ghost" type="button" data-act="rrUse" data-j="${j}" data-v="${esc(c.player || '')}">Keep saved</button></div>` : ''}</div></div></fieldset>`; }));
+  const ch = RR.items.filter(x => x.read && x.read !== (x.c.player || '')).length;
+  sheet.innerHTML = `<form data-form="rrNamesSave">${mhead('Player names')}
+    <p class="muted">Read ${RR.items.length} of ${total} card${total === 1 ? '' : 's'}. ${ch ? `${ch} read differently from what's saved; the highlighted boxes will change.` : 'Every read matched what\'s saved.'} Type over any name that's wrong, then save.</p>
+    <datalist id="dl-rrn">${names.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+    <div style="display:flex;flex-direction:column;gap:8px">${rows.join('')}</div>${mfoot('Save names')}</form>`;
+}
+A.rrUse = el => { const i = el.closest('form').querySelector(`[name="rn_${el.dataset.j}"]`); if (i) { i.value = el.dataset.v; i.classList.toggle('bs-mid', el.dataset.v !== (RR.items[+el.dataset.j].c.player || '')); } };
+FORMS.rrNamesSave = async f => {
+  const fd = new FormData(f); let n = 0;
+  for (const [j, { c }] of RR.items.entries()) { const v = String(fd.get('rn_' + j) || '').replace(/\s+/g, ' ').trim(); const old = c.player || '';
+    if (v === old) continue; c.player = v; await save('cards', c, { quiet: true }); await logTxn({ cardId: c.id, type: 'edit', date: today(), changes: [{ f: 'player', from: old, to: v }], note: 'Reread names' }); n++; }
+  rrDone(n);
+};
+/* Fronts / backs in the card grid, switched in place so the list doesn't jump */
+A.invSide = async el => { S.settings.invSide = S.settings.invSide === 'back' ? 'front' : 'back'; S.settings.updatedAt = nowISO(); try { await idb.put('meta', S.settings); } catch (e) {}
+  const b = S.settings.invSide === 'back'; el.setAttribute('aria-pressed', b); el.textContent = b ? '↺ Showing backs' : '↻ Show backs'; const y = scrollY; updateInv(); scrollTo(0, y);
+  if (b && !S.cards.some(c => live(c) && c.back)) toast('None of these cards have a back photo yet'); };
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
 async function loadDemo() {
