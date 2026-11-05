@@ -557,12 +557,23 @@ function idbOpen() {
       const d = r.result;
       STORES.forEach(s => { if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' }); });
     };
-    r.onsuccess = () => { DB.db = r.result; res(); };
+    r.onsuccess = () => { const d = r.result; DB.db = d; DB.everOpened = true;
+      d.onclose = () => { if (DB.db === d) DB.db = null; }; // iOS closes it after the app sits in the background: open a new one on next use
+      d.onversionchange = () => { try { d.close(); } catch (e) {} if (DB.db === d) DB.db = null; };
+      res(); };
     r.onerror = () => res();
   });
 }
-function idbReq(store, mode, fn) {
-  if (!DB.db) return Promise.resolve(null);
+/* "The database connection is closing" (iOS, after the app was in the background): reopen once and try again */
+let idbReopen = null;
+const idbClosed = e => e && (e.name === 'InvalidStateError' || /connection is clos|database.*clos/i.test(e.message || ''));
+async function idbReq(store, mode, fn, retry = true) {
+  if (!DB.db && DB.everOpened) { idbReopen = idbReopen || idbOpen().finally(() => { idbReopen = null; }); await idbReopen; }
+  if (!DB.db) return null;
+  try { return await idbReq1(store, mode, fn); }
+  catch (e) { if (!retry || !idbClosed(e)) throw e; DB.db = null; idbReopen = idbReopen || idbOpen().finally(() => { idbReopen = null; }); await idbReopen; return idbReq(store, mode, fn, false); }
+}
+function idbReq1(store, mode, fn) {
   return new Promise((res, rej) => {
     let t;
     try { t = DB.db.transaction(store, mode); } catch (e) { return rej(e); }
@@ -4297,7 +4308,11 @@ async function zoomPart(blob, x0, y0, x1, y1, rot = 0, W = 1800, light = false) 
   const bmp = await createImageBitmap(blob); const sx = bmp.width * x0, sy = bmp.height * y0, sw = bmp.width * (x1 - x0), sh = bmp.height * (y1 - y0);
   const side = rot % 180 !== 0; const k = W / (side ? sh : sw); const cv = document.createElement('canvas'); cv.width = Math.round((side ? sh : sw) * k); cv.height = Math.round((side ? sw : sh) * k);
   const g = cv.getContext('2d'); g.imageSmoothingQuality = 'high'; g.translate(cv.width / 2, cv.height / 2); g.rotate(rot * Math.PI / 180); g.drawImage(bmp, sx, sy, sw, sh, -sw * k / 2, -sh * k / 2, sw * k, sh * k);
-  if (light) { const d = g.getImageData(0, 0, cv.width, cv.height); const a = d.data; for (let i = 0; i < a.length; i += 4) { const v = 255 - Math.min(a[i], a[i + 1], a[i + 2]); a[i] = a[i + 1] = a[i + 2] = v; } g.putImageData(d, 0, 0); } /* white letters on a coloured bar (yellow, red, blue) turn dark on light */
+  if (light === 'stretch') { /* pale letters on a pale bar (white names with a grey outline): darkest channel, then stretch the contrast */
+    const d = g.getImageData(0, 0, cv.width, cv.height); const a = d.data; const h = new Uint32Array(256); for (let i = 0; i < a.length; i += 4) h[Math.min(a[i], a[i + 1], a[i + 2])]++;
+    const n = a.length / 4; let lo = 0, hi = 255, acc = 0; for (let v = 0; v < 256; v++) { acc += h[v]; if (acc >= n * 0.02) { lo = v; break; } } acc = 0; for (let v = 255; v >= 0; v--) { acc += h[v]; if (acc >= n * 0.02) { hi = v; break; } }
+    const k2 = 255 / Math.max(1, hi - lo); for (let i = 0; i < a.length; i += 4) { const v = Math.max(0, Math.min(255, (Math.min(a[i], a[i + 1], a[i + 2]) - lo) * k2)); a[i] = a[i + 1] = a[i + 2] = v; } g.putImageData(d, 0, 0); }
+  else if (light) { const d = g.getImageData(0, 0, cv.width, cv.height); const a = d.data; for (let i = 0; i < a.length; i += 4) { const v = 255 - Math.min(a[i], a[i + 1], a[i + 2]); a[i] = a[i + 1] = a[i + 2] = v; } g.putImageData(d, 0, 0); } /* white letters on a coloured bar (yellow, red, blue) turn dark on light */
   if (bmp.close) bmp.close(); return new Promise(r => cv.toBlob(r, 'image/png'));
 }
 /* a stylized first name often misreads ("SCOVITE BARNES"); the last name in plain type rarely does. When the last name matches
@@ -4763,6 +4778,8 @@ async function readOne(it, pr, o) {
       ft = (await readImageText(it.f.warped, pr, '11')).text;
       try { ft += '\n' + (await readImageText(await nameplateStrip(it.f.warped), pr, '11')).text; } catch (e) {} // the nameplate, enlarged
       if (!it.b) { try { ft += '\n' + (await readImageText(await zoomPart(it.f.warped, 0, 0.82, 1, 1), pr, '6')).text; } catch (e) {} } /* the nameplate alone, enlarged */
+      /* nameplates a plain read misses: pale outlined letters on a silver bar (Bowman), and the position/team line in white on colour above it */
+      for (const [y0, y1, mode] of [[0.85, 0.95, 'stretch'], [0.80, 0.90, 'stretch'], [0.81, 0.875, true]]) { try { ft += '\n' + (await readImageText(await zoomPart(it.f.warped, 0.05, y0, 0.95, y1, 0, 2000, mode), pr, '7', { raw: true })).text; } catch (e) {} }
       const cf = parseCardBack('', ft); cf.cands = [...cf.cands, ...wordPairs(ft)];
 
       const sp = parseCardBack(bt).sport || cf.sport || usualSport(); // nothing says which sport: the one most of your cards are
