@@ -525,6 +525,10 @@ svg[data-scrub] { touch-action: pan-y; cursor: crosshair; -webkit-user-select: n
 .ms-item img { width: 100%; aspect-ratio: 5 / 7; object-fit: cover; border-radius: 6px; border: 2px solid var(--line); }
 .ms-item.ms-check img { border-color: var(--acc); }
 .ms-fail { aspect-ratio: 5 / 7; display: grid; place-items: center; text-align: center; border: 2px dashed var(--line); border-radius: 6px; padding: 8px; color: var(--muted, #888); }
+#sel-fab { position: fixed; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); z-index: 39; border: 1px solid var(--acc); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 10px 16px; font: 600 .95rem system-ui, sans-serif; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+@media (min-width: 900px) { #sel-fab { bottom: 24px; } }
+#inv-results.selecting [data-sel-id] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#inv-results [data-sel-id] { -webkit-touch-callout: none; }
 </style>
 <div id="app"></div>
 <div id="modal-root"></div>
@@ -7735,11 +7739,13 @@ document.addEventListener('pointerout', e => { if (SCRUB.down || !SCRUB.svg || e
 /* v1.16.12: pick several cards in Inventory and change the same fields on all of them at once.
    Boxes left empty keep each card's own value; every change is logged on each card like a normal edit. */
 const SELM = { on: false, ids: new Set() };
-const BE_FIELDS = [['player', 'Player'], ['year', 'Year'], ['brand', 'Brand'], ['set', 'Set'], ['parallel', 'Parallel'], ['number', 'Card #'], ['team', 'Team'], ['sport', 'Sport'], ['value', 'Value ($ each)']];
 { const vi = V.inv; V.inv = (...a) => Promise.resolve(vi(...a)).then(h => h.replace('<button type="button" class="only-phone" data-act="moreFilters"', () => `<button type="button" data-act="selMode" aria-pressed="${SELM.on}">${SELM.on ? '✓ Selecting' : '☐ Select'}</button><button type="button" class="only-phone" data-act="moreFilters"`)); V.inv.after = vi.after; }
 { const ui = updateInv; updateInv = (...a) => { const r = ui(...a); selPaint(); return r; }; }
 function selPaint() {
-  const box = $('#inv-results'); if (!box) return;
+  const box = $('#inv-results');
+  // a floating Select button that stays on screen wherever you've scrolled to
+  let fab = $('#sel-fab'); if (!box || SELM.on) { if (fab) fab.remove(); } else if (!fab) { fab = document.createElement('button'); fab.id = 'sel-fab'; fab.type = 'button'; fab.dataset.act = 'selMode'; fab.textContent = '☐ Select'; document.body.appendChild(fab); }
+  if (!box) return;
   box.classList.toggle('selecting', SELM.on);
   $$('a.ctile[href^="#/card/"], tr[data-to^="#/card/"]', box).forEach(el => { const id = (el.getAttribute('href') || el.dataset.to).replace('#/card/', ''); el.classList.toggle('is-sel', SELM.on && SELM.ids.has(id)); el.dataset.selId = id; });
   let bar = $('#sel-bar'); if (!SELM.on) { if (bar) bar.remove(); return; }
@@ -7747,49 +7753,99 @@ function selPaint() {
   const n = SELM.ids.size;
   bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massStraighten">Straighten</button>' : ''}${n ? `<button class="btn sm" type="button" data-act="massTrash">Delete ${n}</button>` : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
 }
+/* swipe to select: while selecting, drag sideways from a card and keep going across and down; every card from the first to the one under
+   your finger is set the same way (ticked, or unticked if the first one was ticked), like Photos. Up/down without the sideways start still scrolls.
+   Outside select mode, press and hold a card to start selecting with it. */
+const SW = { on: false, startIdx: -1, target: true, snap: null, x0: 0, y0: 0, timer: 0, held: false, raf: 0, py: 0 };
+const selTiles = () => $$('#inv-results [data-sel-id]');
+function swApply(idx) { const tiles = selTiles(); const a = Math.min(SW.startIdx, idx), b = Math.max(SW.startIdx, idx);
+  SELM.ids = new Set(SW.snap); for (let i = a; i <= b; i++) { const id = tiles[i] && tiles[i].dataset.selId; if (!id) continue; SW.target ? SELM.ids.add(id) : SELM.ids.delete(id); } selPaint(); }
+function swAt(x, y) { const el = document.elementFromPoint(x, y); const t = el && el.closest('#inv-results [data-sel-id]'); return t ? selTiles().indexOf(t) : -1; }
+function swScroll() { if (!SW.on) return; const h = innerHeight, edge = 70; const v = SW.py < edge ? -(edge - SW.py) / 3 : SW.py > h - edge - 80 ? (SW.py - (h - edge - 80)) / 3 : 0; if (v) { scrollBy(0, v); const i = swAt(SW.px, SW.py); if (i >= 0) swApply(i); } SW.raf = requestAnimationFrame(swScroll); }
+document.addEventListener('touchstart', e => { const t = e.target.closest && e.target.closest('#inv-results [data-sel-id]'); if (!t || e.touches.length > 1) return; const p = e.touches[0]; SW.x0 = p.clientX; SW.y0 = p.clientY; SW.held = false; SW.start = t;
+  clearTimeout(SW.timer); if (!SELM.on) SW.timer = setTimeout(() => { SW.held = true; SELM.on = true; SELM.ids = new Set([t.dataset.selId]); if (navigator.vibrate) navigator.vibrate(15); route(); }, 550); }, { passive: true });
+document.addEventListener('touchmove', e => { const p = e.touches[0]; if (!p) return; const dx = p.clientX - SW.x0, dy = p.clientY - SW.y0;
+  if (Math.hypot(dx, dy) > 8) clearTimeout(SW.timer);
+  if (!SW.on && SELM.on && SW.start && document.contains(SW.start) && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2) { SW.on = true; SW.startIdx = selTiles().indexOf(SW.start); SW.snap = new Set(SELM.ids); SW.target = !SELM.ids.has(SW.start.dataset.selId); SW.raf = requestAnimationFrame(swScroll); }
+  if (SW.on) { e.preventDefault(); SW.px = p.clientX; SW.py = p.clientY; const i = swAt(p.clientX, p.clientY); if (i >= 0) swApply(i); } }, { passive: false });
+const swEnd = () => { clearTimeout(SW.timer); if (SW.on) { SW.on = false; cancelAnimationFrame(SW.raf); SW.justSwiped = Date.now(); } SW.start = null; };
+document.addEventListener('touchend', swEnd); document.addEventListener('touchcancel', swEnd);
+// mouse: drag across cards the same way on a computer
+document.addEventListener('mousedown', e => { if (!SELM.on || e.button) return; const t = e.target.closest('#inv-results [data-sel-id]'); if (!t) return; SW.x0 = e.clientX; SW.y0 = e.clientY; SW.start = t; SW.mouse = true; });
+document.addEventListener('mousemove', e => { if (!SW.mouse || !SW.start) return; if (!SW.on && Math.hypot(e.clientX - SW.x0, e.clientY - SW.y0) > 8) { SW.on = true; SW.startIdx = selTiles().indexOf(SW.start); SW.snap = new Set(SELM.ids); SW.target = !SELM.ids.has(SW.start.dataset.selId); SW.raf = requestAnimationFrame(swScroll); }
+  if (SW.on) { e.preventDefault(); SW.px = e.clientX; SW.py = e.clientY; const i = swAt(e.clientX, e.clientY); if (i >= 0) swApply(i); } });
+document.addEventListener('mouseup', () => { SW.mouse = false; swEnd(); });
+document.addEventListener('contextmenu', e => { if (e.target.closest && e.target.closest('#inv-results [data-sel-id]') && (SW.held || SELM.on)) e.preventDefault(); });
 // while selecting, a tap picks the card instead of opening it
 document.addEventListener('click', e => {
-  if (!SELM.on) return; const el = e.target.closest('#inv-results [data-sel-id]'); if (!el) return;
+  const el0 = e.target.closest && e.target.closest('#inv-results [data-sel-id]'); if (el0 && (SW.held || (SW.justSwiped && Date.now() - SW.justSwiped < 400))) { e.preventDefault(); e.stopPropagation(); SW.held = false; return; } // the hold or swipe already did it
+  if (!SELM.on) return; const el = el0; if (!el) return;
   e.preventDefault(); e.stopPropagation(); const id = el.dataset.selId; SELM.ids.has(id) ? SELM.ids.delete(id) : SELM.ids.add(id); selPaint();
 }, true);
-window.addEventListener('hashchange', () => { if (!location.hash.startsWith('#/inv') && SELM.on) { SELM.on = false; SELM.ids.clear(); const b = $('#sel-bar'); if (b) b.remove(); } });
+window.addEventListener('hashchange', () => { if (!location.hash.startsWith('#/inv')) { const fb = $('#sel-fab'); if (fb) fb.remove(); } if (!location.hash.startsWith('#/inv') && SELM.on) { SELM.on = false; SELM.ids.clear(); const b = $('#sel-bar'); if (b) b.remove(); } });
 Object.assign(A, {
   selMode: () => { SELM.on = !SELM.on; if (!SELM.on) SELM.ids.clear(); route(); },
   selAll: () => { filterCards().forEach(c => SELM.ids.add(c.id)); selPaint(); },
   selNone: () => { SELM.ids.clear(); selPaint(); },
   bulkEdit: () => {
     const cards = [...SELM.ids].map(cardById).filter(c => c && !c.purged); if (!cards.length) return toast('Pick some cards first');
-    const vals = k => [...new Set(cards.map(c => String(c[k] == null ? '' : c[k])))]; // blanks count as a value too
-    const same = k => { const v = vals(k); return v.length === 1 ? v[0] : ''; };
-    const ph = k => vals(k).length > 1 ? 'Mixed (kept)' : '';
+    const all = S.cards.filter(live); const get = (c, k) => k.startsWith('b_') ? (c.buy || {})[k.slice(2)] : c[k];
+    const vals = k => [...new Set(cards.map(c => { const v = get(c, k); return String(v == null ? '' : v); }))];
+    const ph = k => { const v = vals(k); return v.length > 1 ? 'Mixed: leave empty to keep' : v[0] ? 'Now: ' + v[0] : ''; };
+    const box = (k, label, extra = '') => field(label, `<input name="${k}" placeholder="${esc(ph(k))}" autocomplete="off" ${extra}>`);
+    const keepSel = (k, label, list) => field(label, `<select name="${k}">${opts(list, '', 'Keep as is')}</select>`);
     const tri = (k, label) => field(label, `<select name="${k}"><option value="">Keep as is</option><option value="1">Yes on all</option><option value="0">No on all</option></select>`);
     openModal(`<form data-form="bulkEdit">${mhead(`Edit ${cards.length} card${cards.length === 1 ? '' : 's'}`)}
-      <p class="muted" style="margin:0">What you type replaces that field on every selected card. Leave a box empty to keep each card's own value.</p>
-      <div class="fgrid">${BE_FIELDS.map(([k, label]) => k === 'sport' ? field(label, `<select name="sport">${opts(SPORTS, '', 'Keep as is')}</select>`) : field(label, `<input name="${k}" value="${esc(k === 'value' ? '' : same(k))}" placeholder="${esc(ph(k))}"${k === 'value' || k === 'year' ? ' inputmode="decimal"' : ''}>`)).join('')}
-      ${field('Status', `<select name="status">${opts([['in_stock', 'In stock'], ['listed', 'Listed'], ['grading', 'At grading']], '', 'Keep as is')}</select>`)}
-      ${field('Storage box', `<select name="locationId">${opts([['__none', 'No box'], ...S.locations.filter(l => !l.purged).map(l => [l.id, l.code + ' · ' + l.name])], '', 'Keep as is')}</select>`)}
-      ${tri('rookie', 'Rookie')}${tri('auto', 'Autograph')}</div>
-      ${field('Add to notes', '<input name="note" placeholder="Added to the end of each card\'s notes">')}
-      <div class="list" style="max-height:160px;overflow:auto">${cards.map(c => `<div class="li"><span class="code">${esc(c.code)}</span><span class="grow">${esc(cardName(c))}</span></div>`).join('')}</div>
+      <p class="muted" style="margin:0">Same boxes as editing one card. What you fill in goes on every selected card; empty boxes keep each card's own value. Type <b>-</b> in a box to clear that field on all of them.</p>
+      <fieldset><legend>Card</legend><div class="fgrid">
+        ${box('player', 'Player name', 'list="dl-pl"')}${box('number', 'Card number')}${box('brand', 'Brand', 'list="dl-br"')}${box('set', 'Set / series', 'list="dl-set"')}
+        ${box('year', 'Year', 'inputmode="numeric"')}${keepSel('sport', 'Sport', SPORTS)}${box('team', 'Team', 'list="dl-team"')}${box('parallel', 'Parallel / variant', 'list="dl-par"')}${box('serial', 'Serial number')}
+        ${tri('rookie', 'Rookie card')}${tri('auto', 'Autograph')}${tri('patch', 'Patch / memorabilia')}</div></fieldset>
+      <fieldset><legend>Grading</legend><div class="fgrid">
+        ${field('Raw or graded', `<select name="graded"><option value="">Keep as is</option><option value="raw">Raw</option><option value="graded">Graded</option></select>`)}
+        ${keepSel('condition', 'Raw condition', CONDITIONS)}${keepSel('gradeCo', 'Grading company', GRADERS)}${box('grade', 'Grade', 'inputmode="decimal"')}</div></fieldset>
+      <fieldset><legend>Purchase</legend><div class="fgrid">
+        ${field('Date purchased', '<input type="date" name="b_date">')}${box('b_platform', 'Platform purchased', 'list="dl-platforms"')}
+        ${box('each_price', 'Purchase price (each card)', 'inputmode="decimal"')}${box('each_ship', 'Shipping paid (each)', 'inputmode="decimal"')}${box('each_tax', 'Tax paid (each)', 'inputmode="decimal"')}${box('each_fees', 'Fees paid (each)', 'inputmode="decimal"')}
+        ${box('b_order', 'Order number')}${field('From a pickup', `<select name="b_pickupId">${opts([['__none', 'None'], ...S.pickups.filter(p => !p.purged).sort((x, y) => y.date.localeCompare(x.date)).map(p => [p.id, `${fmtDate(p.date)} · ${p.location || p.seller || 'Pickup'}`])], '', 'Keep as is')}</select>`)}</div></fieldset>
+      <fieldset><legend>Value, listing and storage</legend><div class="fgrid">
+        ${box('value', 'Current value (per card)', 'inputmode="decimal"')}${box('qty', 'Quantity in hand', 'inputmode="numeric"')}
+        ${keepSel('status', 'Status', [['in_stock', 'In stock'], ['listed', 'Listed for sale'], ['grading', 'At grading']])}
+        ${field('Storage box', `<select name="locationId">${opts([['__none', 'No box'], ...S.locations.filter(l => !l.purged).map(l => [l.id, l.code + ' · ' + l.name])], '', 'Keep as is')}</select>`)}
+        ${field('Slot in the box (counts up: A1, A2…)', '<input name="slot0" placeholder="A1 or Row B 12" autocomplete="off">')}
+        ${box('listingUrl', 'Listing link', 'type="text"')}
+        ${field('Notes', `<select name="noteMode"><option value="add">Add to the end of each card's notes</option><option value="replace">Replace each card's notes</option></select>`)}
+        ${field('Note text', '<textarea name="note"></textarea>', 'wide')}</div></fieldset>
+      <div class="list" style="max-height:140px;overflow:auto">${cards.map(c => `<div class="li"><span class="code">${esc(c.code)}</span><span class="grow">${esc(cardName(c))}</span></div>`).join('')}</div>
+      ${platformList()}${dl('dl-pl', all.map(x => x.player))}${dl('dl-br', ['Panini', 'Topps', 'Upper Deck', 'Bowman', 'Leaf', 'Donruss', ...all.map(x => x.brand)])}${dl('dl-set', all.map(x => x.set))}${dl('dl-team', all.map(x => x.team))}${dl('dl-par', ['Base', 'Silver', 'Holo', 'Refractor', 'Gold', ...all.map(x => x.parallel)])}
       ${mfoot(`Save ${cards.length} card${cards.length === 1 ? '' : 's'}`)}</form>`);
   },
 });
 FORMS.bulkEdit = async f => {
-  const fd = new FormData(f); const cards = [...SELM.ids].map(cardById).filter(c => c && !c.purged); const set = {};
-  for (const [k] of BE_FIELDS) { const v = String(fd.get(k) || '').trim(); if (v) set[k] = k === 'value' ? r2(num(v)) : v; }
+  const fd = new FormData(f); const cards = [...SELM.ids].map(cardById).filter(c => c && !c.purged);
+  const T = k => String(fd.get(k) || '').trim(); const CLEAR = '-'; const set = {}, buy = {}, each = {};
+  for (const k of ['player', 'number', 'brand', 'set', 'year', 'team', 'parallel', 'serial', 'grade', 'listingUrl']) { const v = T(k); if (v) set[k] = v === CLEAR ? '' : v; }
+  for (const k of ['sport', 'status', 'condition', 'gradeCo']) { const v = T(k); if (v) set[k] = v; }
   if (set.team && !set.team.includes(' ')) set.team = fullTeam(set.team, set.sport || '') || set.team; // "Mavericks" -> "Dallas Mavericks"
-  const st = fd.get('status'); if (st) set.status = st;
+  { const v = T('value'); if (v) set.value = v === CLEAR ? 0 : r2(num(v)); } { const v = T('qty'); if (v && v !== CLEAR) set.qty = Math.max(0, Math.round(num(v))); }
+  for (const k of ['rookie', 'auto', 'patch']) { const v = fd.get(k); if (v) set[k] = v === '1'; }
+  { const g = fd.get('graded'); if (g) set.graded = g === 'graded'; }
   const loc = fd.get('locationId'); if (loc) set.locationId = loc === '__none' ? '' : loc;
-  for (const k of ['rookie', 'auto']) { const v = fd.get(k); if (v) set[k] = v === '1'; }
-  const note = String(fd.get('note') || '').trim();
-  if (!Object.keys(set).length && !note) return toast('Type at least one change');
+  for (const k of ['date', 'platform', 'order']) { const v = T('b_' + k); if (v) buy[k] = v === CLEAR ? '' : v; }
+  { const v = fd.get('b_pickupId'); if (v) buy.pickupId = v === '__none' ? '' : v; }
+  for (const k of ['price', 'ship', 'tax', 'fees']) { const v = T('each_' + k); if (v) each[k] = v === CLEAR ? 0 : r2(num(v)); }
+  const slot0 = T('slot0'), note = T('note'), noteMode = fd.get('noteMode');
+  if (!Object.keys(set).length && !Object.keys(buy).length && !Object.keys(each).length && !slot0 && !note) return toast('Fill in at least one box');
   let n = 0;
-  for (const c of cards) {
-    const changes = [];
-    for (const [k, v] of Object.entries(set)) { const old = c[k]; if (String(old == null ? '' : old) === String(v)) continue; changes.push({ f: k, from: String(old == null ? '' : old), to: String(v) }); c[k] = v;
+  for (const [i, c] of cards.entries()) {
+    const changes = []; const ch = (fld, from, to) => { if (String(from == null ? '' : from) !== String(to == null ? '' : to)) { changes.push({ f: fld, from: String(from == null ? '' : from), to: String(to == null ? '' : to) }); return true; } return false; };
+    for (const [k, v] of Object.entries(set)) { if (!ch(k, c[k], v)) continue; c[k] = v;
       if (k === 'value') { c.priceUpdated = today(); (c.priceHistory = c.priceHistory || []).push({ date: today(), value: v }); }
       if (k === 'status' && v === 'listed' && !c.listedAt) c.listedAt = today(); }
-    if (note) { const old = c.notes || ''; c.notes = old ? old + '\n' + note : note; changes.push({ f: 'notes', from: '', to: note }); }
+    c.buy = c.buy || {}; for (const [k, v] of Object.entries(buy)) if (ch('buy ' + k, c.buy[k], v)) c.buy[k] = v;
+    const q = Math.max(1, +c.buy.qty || 1); for (const [k, v] of Object.entries(each)) { const tot = r2(v * q); if (ch('buy ' + k, c.buy[k], tot)) c.buy[k] = tot; } // "each" × how many were bought on that card
+    if (slot0) { const sl = nextSlot(slot0, i); if (ch('slot', c.slot, sl)) c.slot = sl; }
+    if (note) { const old = c.notes || ''; const nv = noteMode === 'replace' ? (note === CLEAR ? '' : note) : (old ? old + '\n' + note : note); if (ch('notes', old, nv)) c.notes = nv; }
     if (!changes.length) continue;
     await save('cards', c, { quiet: true }); await logTxn({ cardId: c.id, type: 'edit', date: today(), changes, note: 'Bulk edit' }); n++;
   }
