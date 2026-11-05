@@ -4705,61 +4705,66 @@ FORMS.batchGo = async f => {
     if (!BS.items.length) { sheet.innerHTML = `${mhead('No cards found')}<p>Dugout couldn't find card edges. Put black paper over white-bordered cards, leave a gap between cards, and try again.</p><div class="sheet-foot"><button class="btn pri" type="button" data-act="batch">Try again</button></div>`; return; }
     await loadPlayerNames();
     for (let i = 0; i < BS.items.length; i++) {
-      const it = BS.items[i]; let bt = '', ft = '';
+      const it = BS.items[i];
       const pr = (p, label) => prog(`${label === 'Reading text' ? 'Reading' : label} card ${i + 1} of ${BS.items.length}`, 0.4 + (i + (p || 0)) / BS.items.length * 0.6);
-      let m = null, conf = 'low';
-      if (BS.opts.read) {
-        // pass 1: back, sparse text
-        if (it.b) bt = (await readImageText(it.b.warped, pr, '11')).text;
-        else { const t0 = (await readImageText(it.f.warped, pr, '11')).text; if (realWords(t0) >= 8) { it.backOnly = true; bt = t0; } } // only backs were scanned: read them as backs
-        // a back printed sideways or upside down (landscape inserts, relic cards): turn it until the words read
-        if (it.b && (wordCount(bt) < 14 || realWords(bt) < 4)) { for (const deg of [90, 270, 180]) { try { const rb = await rotateBlob(it.b.warped, deg); const t2 = (await readImageText(rb, pr, '11')).text; if (realWords(t2) > Math.max(realWords(bt) * 1.5, 3) || (realWords(t2) >= realWords(bt) && wordCount(t2) > Math.max(wordCount(bt) * 1.5, 10))) { bt = t2; it.b.read = rb; } } catch (e) {} if (realWords(bt) >= 8) break; } }
-        // the header and the copyright line again, enlarged: name, team, stat seasons, "TOPPS CHROME", the © year
-        if (it.b || it.backOnly) { const src = it.b ? it.b.read || it.b.warped : it.f.warped; // small, tight crops read best: a tall crop mixing logos and tables throws the reader off
-          for (const [x0, y0, x1, y1, raw] of [[0, 0.13, 1, 0.37, false], [0, 0.13, 1, 0.37, true], [0, 0.02, 0.5, 0.14, true], [0, 0.87, 1, 1, true]]) {
-            try { bt += '\n' + (await readImageText(await zoomPart(src, x0, y0, x1, y1), pr, '6', { raw })).text; } catch (e) {} } }
-        let c = parseCardBack(bt); m = matchPlayer(c.cands, c.sport); conf = nameConfidence(m, false);
-        // pass 2: back again as one block of text; two reads naming the same player confirms it
-        if (conf !== 'high' && it.b) {
-          const bt2 = (await readImageText(it.b.read || it.b.warped, pr, '6')).text; const c2 = parseCardBack(bt2); const m2 = matchPlayer(c2.cands, c.sport || c2.sport);
-          const agree = m && m2 && m.full === m2.full;
-          if (agree) { conf = nameConfidence(m, true); } else if (m2 && (!m || m2.score < m.score)) { m = m2; conf = nameConfidence(m2, false); bt = bt + '\n' + bt2; }
-        }
-        // pass 3: the front (nameplate)
-        if (conf !== 'high') {
-          ft = (await readImageText(it.f.warped, pr, '11')).text;
-          try { ft += '\n' + (await readImageText(await nameplateStrip(it.f.warped), pr, '11')).text; } catch (e) {} // the nameplate, enlarged
-          if (!it.b) { try { ft += '\n' + (await readImageText(await zoomPart(it.f.warped, 0, 0.82, 1, 1), pr, '6')).text; } catch (e) {} } /* the nameplate alone, enlarged */
-          const cf = parseCardBack('', ft); cf.cands = [...cf.cands, ...wordPairs(ft)];
-
-          const sp = parseCardBack(bt).sport || cf.sport || usualSport(); // nothing says which sport: the one most of your cards are
-          let mf = matchPlayer(cf.cands, sp); const shaky = !m || conf === 'low';
-          if (!mf && shaky) mf = looseName(ft, sp);
-          const coll = parseCardBack(bt, ft).college; // a college player may share a surname with a pro (BOOZER): no surname-only guesses
-          if (!mf && shaky && !coll) mf = lastNameOnly(ft, sp) || await lastNameLookup(ft, sp, cf); // the big surname on the front reads well; the small first name rarely does
-          if (m && mf && m.full === mf.full) conf = nameConfidence(m, true);
-          else if (mf && (!m || mf.score < m.score)) { m = mf; conf = nameConfidence(mf, false); }
-        }
-      }
-      if (BS.opts.serial && !ft) ft = (await readImageText(it.f.warped, pr, '11')).text;
-      it.text = bt; it.ftext = ft; it.fields = parseCardBack(bt, ft); it.fields.serial = serialFrom(ft) || serialFrom(bt) || '';
-      if (!m && BS.opts.read && bt) { const mb = nameFromBio(bt, it.fields.sport); if (mb) { m = mb; conf = 'medium'; } } // header misread: find the name in the write-up
-      if ((!m || conf === 'low') && BS.opts.read && bt) { const ml = looseName(bt, it.fields.sport); if (ml && (!m || ml.full !== m.full)) { m = ml; conf = 'medium'; } } // first name misread, last name exact: beats a shaky guess
-      if (m) { it.fields.player = m.full; it.fields.matched = true; }
-      else if (it.fields.college && BS.opts.read && it.fields.player) { const v = await collegeNameCheck(it.fields); if (v) { it.fields.player = v.full; it.fields.matched = true; conf = v.conf; } } // not in the pro lists yet: the printed name, checked against eBay
-      else if (it.fields.player && it.fields.player.split(' ').some(w => w.replace(/[^A-Za-z]/g, '').length < 3)) it.fields.player = ''; // a scrap like "Lu Mz" is worse than a blank
-      it.fields.conf = BS.opts.read ? conf : '';
-      if (BS.opts.read) {
-        const side = it.b ? (it.b.read || it.b.warped) : it.f.warped; const rn = await readCardNumber(side, pr).catch(() => null);
-        if (rn && (rn.sure || !it.fields.number)) { it.fields.number = rn.num; it.fields.numberFrom = rn.sure ? '' : 'corner'; }
-        if (it.fields.number === '0') it.fields.number = '';
-        if (!it.fields.number) { const ln = await numberFromListings(it.fields); if (ln) { it.fields.number = ln; it.fields.numberFrom = 'ebay'; } }
-      }
+      await readOne(it, pr, BS.opts);
     }
     sheetConsensus(BS.items);
     renderBatchReview();
   } catch (e) { console.error(e); sheet.innerHTML = `${mhead('Stopped')}<p>${esc(e.message)}</p><div class="sheet-foot"><button class="btn" data-act="close" type="button">Close</button><button class="btn pri" type="button" data-act="batch">Try again</button></div>`; }
 };
+/* read one card's front and back: player, team, year, set, number. it = { f: { warped }, b: { warped } | null }; fills it.fields, it.text, it.ftext */
+async function readOne(it, pr, o) {
+  let bt = '', ft = '';
+  let m = null, conf = 'low';
+  if (o.read) {
+    // pass 1: back, sparse text
+    if (it.b) bt = (await readImageText(it.b.warped, pr, '11')).text;
+    else { const t0 = (await readImageText(it.f.warped, pr, '11')).text; if (realWords(t0) >= 8) { it.backOnly = true; bt = t0; } } // only backs were scanned: read them as backs
+    // a back printed sideways or upside down (landscape inserts, relic cards): turn it until the words read
+    if (it.b && (wordCount(bt) < 14 || realWords(bt) < 4)) { for (const deg of [90, 270, 180]) { try { const rb = await rotateBlob(it.b.warped, deg); const t2 = (await readImageText(rb, pr, '11')).text; if (realWords(t2) > Math.max(realWords(bt) * 1.5, 3) || (realWords(t2) >= realWords(bt) && wordCount(t2) > Math.max(wordCount(bt) * 1.5, 10))) { bt = t2; it.b.read = rb; } } catch (e) {} if (realWords(bt) >= 8) break; } }
+    // the header and the copyright line again, enlarged: name, team, stat seasons, "TOPPS CHROME", the © year
+    if (it.b || it.backOnly) { const src = it.b ? it.b.read || it.b.warped : it.f.warped; // small, tight crops read best: a tall crop mixing logos and tables throws the reader off
+      for (const [x0, y0, x1, y1, raw] of [[0, 0.13, 1, 0.37, false], [0, 0.13, 1, 0.37, true], [0, 0.02, 0.5, 0.14, true], [0, 0.87, 1, 1, true]]) {
+        try { bt += '\n' + (await readImageText(await zoomPart(src, x0, y0, x1, y1), pr, '6', { raw })).text; } catch (e) {} } }
+    let c = parseCardBack(bt); m = matchPlayer(c.cands, c.sport); conf = nameConfidence(m, false);
+    // pass 2: back again as one block of text; two reads naming the same player confirms it
+    if (conf !== 'high' && it.b) {
+      const bt2 = (await readImageText(it.b.read || it.b.warped, pr, '6')).text; const c2 = parseCardBack(bt2); const m2 = matchPlayer(c2.cands, c.sport || c2.sport);
+      const agree = m && m2 && m.full === m2.full;
+      if (agree) { conf = nameConfidence(m, true); } else if (m2 && (!m || m2.score < m.score)) { m = m2; conf = nameConfidence(m2, false); bt = bt + '\n' + bt2; }
+    }
+    // pass 3: the front (nameplate)
+    if (conf !== 'high') {
+      ft = (await readImageText(it.f.warped, pr, '11')).text;
+      try { ft += '\n' + (await readImageText(await nameplateStrip(it.f.warped), pr, '11')).text; } catch (e) {} // the nameplate, enlarged
+      if (!it.b) { try { ft += '\n' + (await readImageText(await zoomPart(it.f.warped, 0, 0.82, 1, 1), pr, '6')).text; } catch (e) {} } /* the nameplate alone, enlarged */
+      const cf = parseCardBack('', ft); cf.cands = [...cf.cands, ...wordPairs(ft)];
+
+      const sp = parseCardBack(bt).sport || cf.sport || usualSport(); // nothing says which sport: the one most of your cards are
+      let mf = matchPlayer(cf.cands, sp); const shaky = !m || conf === 'low';
+      if (!mf && shaky) mf = looseName(ft, sp);
+      const coll = parseCardBack(bt, ft).college; // a college player may share a surname with a pro (BOOZER): no surname-only guesses
+      if (!mf && shaky && !coll) mf = lastNameOnly(ft, sp) || await lastNameLookup(ft, sp, cf); // the big surname on the front reads well; the small first name rarely does
+      if (m && mf && m.full === mf.full) conf = nameConfidence(m, true);
+      else if (mf && (!m || mf.score < m.score)) { m = mf; conf = nameConfidence(mf, false); }
+    }
+  }
+  if (o.serial && !ft) ft = (await readImageText(it.f.warped, pr, '11')).text;
+  it.text = bt; it.ftext = ft; it.fields = parseCardBack(bt, ft); it.fields.serial = serialFrom(ft) || serialFrom(bt) || '';
+  if (!m && o.read && bt) { const mb = nameFromBio(bt, it.fields.sport); if (mb) { m = mb; conf = 'medium'; } } // header misread: find the name in the write-up
+  if ((!m || conf === 'low') && o.read && bt) { const ml = looseName(bt, it.fields.sport); if (ml && (!m || ml.full !== m.full)) { m = ml; conf = 'medium'; } } // first name misread, last name exact: beats a shaky guess
+  if (m) { it.fields.player = m.full; it.fields.matched = true; }
+  else if (it.fields.college && o.read && it.fields.player) { const v = await collegeNameCheck(it.fields); if (v) { it.fields.player = v.full; it.fields.matched = true; conf = v.conf; } } // not in the pro lists yet: the printed name, checked against eBay
+  else if (it.fields.player && it.fields.player.split(' ').some(w => w.replace(/[^A-Za-z]/g, '').length < 3)) it.fields.player = ''; // a scrap like "Lu Mz" is worse than a blank
+  it.fields.conf = o.read ? conf : '';
+  if (o.read) {
+    const side = it.b ? (it.b.read || it.b.warped) : it.f.warped; const rn = await readCardNumber(side, pr).catch(() => null);
+    if (rn && (rn.sure || !it.fields.number)) { it.fields.number = rn.num; it.fields.numberFrom = rn.sure ? '' : 'corner'; }
+    if (it.fields.number === '0') it.fields.number = '';
+    if (!it.fields.number) { const ln = await numberFromListings(it.fields); if (ln) { it.fields.number = ln; it.fields.numberFrom = 'ebay'; } }
+  }
+}
 const bsURL = new Map();
 const blobURL = b => { if (!bsURL.has(b)) bsURL.set(b, URL.createObjectURL(b)); return bsURL.get(b); };
 function renderBatchReview() {
@@ -7830,7 +7835,7 @@ function selPaint() {
   let bar = $('#sel-bar'); if (!SELM.on) { if (bar) bar.remove(); return; }
   if (!bar) { bar = document.createElement('div'); bar.id = 'sel-bar'; document.body.appendChild(bar); }
   const n = SELM.ids.size;
-  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massStraighten">Straighten</button>' : ''}${n ? `<button class="btn sm" type="button" data-act="massTrash">Delete ${n}</button>` : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
+  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massStraighten">Straighten</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massReread">Reread</button>' : ''}${n ? `<button class="btn sm" type="button" data-act="massTrash">Delete ${n}</button>` : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
 }
 /* swipe to select: while selecting, drag sideways from a card and keep going across and down; every card from the first to the one under
    your finger is set the same way (ticked, or unticked if the first one was ticked), like Photos. Up/down without the sideways start still scrolls.
@@ -8058,6 +8063,53 @@ A.massTrash = async el => {
   const at = nowISO(); for (const c of cards) { c.deletedAt = at; await save('cards', c, { quiet: true }); }
   SELM.on = false; SELM.ids.clear(); onChange('cards');
   toast(`${cards.length} card${cards.length === 1 ? '' : 's'} moved to trash`, { label: 'Undo', run: async () => { for (const c of cards) { delete c.deletedAt; await save('cards', c, { quiet: true }); } onChange('cards'); } });
+};
+
+/* Reread: read the selected cards' saved photos again (player, team, year, set, number…) and show what changed before saving */
+const RR = { stop: false, items: [] };
+const RR_FIELDS = [['player', 'Player'], ['team', 'Team'], ['sport', 'Sport'], ['year', 'Year'], ['brand', 'Brand'], ['set', 'Set'], ['number', 'Card #'], ['serial', 'Serial'], ['rookie', 'Rookie'], ['auto', 'Auto']];
+A.massReread = async () => {
+  const cards = [...SELM.ids].map(cardById).filter(c => c && !c.purged && (c.front || c.back)); if (!cards.length) return toast('Pick some cards with photos');
+  RR.stop = false; RR.items = [];
+  openModal(`<div>${mhead('Rereading cards')}<div id="rr-prog"></div><div class="sheet-foot"><button class="btn" type="button" data-act="rrStop">Stop and review</button></div></div>`);
+  const show = (i, p) => { const el = $('#rr-prog'); if (!el) return; const f = (i + Math.min(1, p || 0)) / cards.length;
+    el.innerHTML = `<div class="calc"><div><span>Reading card ${i + 1} of ${cards.length}</span><b>${Math.round(f * 100)}%</b></div></div><div style="height:8px;background:var(--line);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(2, f * 100)}%;background:var(--acc)"></div></div><small class="muted">Keep this screen open. Each card takes a few seconds. Nothing is saved until you review the changes.</small>`; };
+  show(0, 0); await loadPlayerNames();
+  for (let i = 0; i < cards.length && !RR.stop; i++) { const c = cards[i];
+    if (!$('#rr-prog')) { RR.stop = true; break; } // the sheet was closed
+    try { const fr = c.front ? await fileGet(c.front) : null, bk = c.back ? await fileGet(c.back) : null; const fb = fr && fr.blob, bb = bk && bk.blob; if (!fb && !bb) continue;
+      const it = { f: { warped: fb || bb }, b: fb && bb ? { warped: bb } : null };
+      await readOne(it, p => show(i, p), { read: true, serial: true });
+      const f = it.fields || {}; const diffs = [];
+      for (const [k, label] of RR_FIELDS) { let nv = f[k], ov = c[k];
+        if (k === 'rookie' || k === 'auto') { if (nv && !ov) diffs.push({ k, label, ov: 'No', nv: 'Yes', val: true, on: true }); continue; }
+        nv = String(nv || '').trim(); ov = String(ov || '').trim(); if (!nv || nv === ov) continue;
+        const sure = k === 'player' ? f.conf === 'high' : k === 'number' ? !f.numberFrom : !(f.guess || {})[k];
+        diffs.push({ k, label, ov, nv, val: nv, on: !ov || sure, note: k === 'player' ? (f.conf === 'high' ? 'Confirmed' : f.conf === 'medium' ? 'Check' : 'Not sure') : k === 'number' && f.numberFrom ? (f.numberFrom === 'ebay' ? 'From eBay listings' : 'Not sure') : '' }); }
+      RR.items.push({ c, diffs });
+    } catch (e) { console.error(e); } }
+  rrReview(cards.length);
+};
+A.rrStop = el => { RR.stop = true; el.disabled = true; el.textContent = 'Stopping after this card…'; };
+async function rrReview(total) {
+  const sheet = $('#modal-root .sheet'); if (!sheet) return; const ch = RR.items.filter(x => x.diffs.length);
+  const rows = await Promise.all(ch.map(async ({ c, diffs }) => { const u = c.front ? await fileURL(c.front) : c.back ? await fileURL(c.back) : '';
+    return `<fieldset class="bs-item"><legend>${esc(c.code || '')} ${esc(c.player || 'No name')}</legend><div style="display:flex;gap:10px;align-items:flex-start">${u ? `<img src="${u}" alt="" style="width:64px;border-radius:4px;flex:none">` : ''}<div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+      ${diffs.map((d, j) => `<label class="chk" style="align-items:flex-start"><input type="checkbox" name="rr_${esc(c.id)}_${j}" ${d.on ? 'checked' : ''}> <span><b>${esc(d.label)}</b>: ${d.ov ? `<s class="muted">${esc(d.ov)}</s> → ` : ''}${esc(d.nv)}${d.note ? ` <small class="muted">(${esc(d.note)})</small>` : ''}</span></label>`).join('')}</div></div></fieldset>`; }));
+  const read = RR.items.length;
+  sheet.innerHTML = `<form data-form="rrSave">${mhead('Reread results')}
+    <p class="muted">Read ${read} of ${total} card${total === 1 ? '' : 's'}. ${ch.length ? `${ch.length} card${ch.length === 1 ? '' : 's'} have changes. Blank fields and sure reads are ticked; changes to something you already filled in are left unticked unless the read is sure.` : 'Everything already matches what was read.'}</p>
+    ${ch.length ? `<div class="row"><button class="btn sm" type="button" data-act="rrTick" data-v="1">Tick all</button><button class="btn sm" type="button" data-act="rrTick" data-v="0">Untick all</button></div>` : ''}
+    <div style="display:flex;flex-direction:column;gap:8px">${rows.join('')}</div>
+    ${ch.length ? mfoot('Save ticked changes') : '<div class="sheet-foot"><button class="btn pri" data-act="close" type="button">Done</button></div>'}</form>`;
+}
+A.rrTick = el => { for (const b of el.closest('form').querySelectorAll('input[type=checkbox]')) b.checked = el.dataset.v === '1'; };
+FORMS.rrSave = async f => {
+  const fd = new FormData(f); let n = 0;
+  for (const { c, diffs } of RR.items) { const changes = [];
+    diffs.forEach((d, j) => { if (!fd.get(`rr_${c.id}_${j}`)) return; changes.push({ f: d.k, from: d.ov, to: String(d.nv) }); c[d.k] = d.val; });
+    if (!changes.length) continue; await save('cards', c, { quiet: true }); await logTxn({ cardId: c.id, type: 'edit', date: today(), changes, note: 'Reread from photos' }); n++; }
+  RR.items = []; closeModal(); SELM.on = false; SELM.ids.clear(); onChange('cards'); toast(n ? `Updated ${n} card${n === 1 ? '' : 's'}` : 'Nothing saved');
 };
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
