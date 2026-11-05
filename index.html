@@ -4197,8 +4197,11 @@ const BACK_STOP = new Set(('guard forward center quarterback pitcher outfield ou
   'kicker punter tackle height weight born college drafted draft acquired career totals season stats statistics team league major minor home bats throws hometown position pos year games avg ' +
   'points rebounds assists steals blocks yards touchdowns rookie card cards official officially licensed product printed made china usa inc llc all rights reserved trademark trademarks property ' +
   'players association nba nfl mlb nhl wnba mls national basketball football baseball hockey soccer league the and of for in with').split(' '));
-function nameFromLine(l) {
+function nameFromLine(l, inner) {
   const w = l.replace(/[^A-Za-z.'\- ]/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (!inner && (w.length < 2 || w.length > 4 || !w.every(x => /^[A-Z][A-Z.'\-]*$/.test(x)) && !w.every(x => /^[A-Z][a-z]/.test(x)))) { /* "& ETHAN HAMPTON ac -64 |": the run of capitals inside the clutter */
+    const runs = l.match(/(?:^|[^A-Za-z])((?:[A-Z][A-Z'.\-]{1,}\s+){1,2}[A-Z][A-Z'.\-]{2,})(?![A-Za-z])/g) || [];
+    for (const r of runs) { const nm = nameFromLine(r.replace(/^[^A-Z]+/, ''), true); if (nm) return nm; } }
   if (w.length < 2 || w.length > 4) return null;
   const caps = w.every(x => /^[A-Z][A-Z.'\-]*$/.test(x)), tc = w.every(x => /^(?:[A-Z][a-z.'\-]+|[A-Z]\.(?:[A-Z]\.)?|De|La|Le|Van|Von|Mc[A-Z][a-z]+|Jr\.?|II|III)$/.test(x));
   if (!caps && !tc) return null;
@@ -4290,10 +4293,11 @@ function parseCardBack(backText, frontText = '') {
 /* fronts: names sit in stylised nameplates, so try every pair of neighbouring words, and the bottom of the card enlarged */
 /* a part of the card, enlarged to ~1800 px wide (and turned if asked): small print reads far better big.
    Card backs: the header (name, team, bio line, stat table) and the copyright line. Fronts: the nameplate and the team name down the side. */
-async function zoomPart(blob, x0, y0, x1, y1, rot = 0, W = 1800) {
+async function zoomPart(blob, x0, y0, x1, y1, rot = 0, W = 1800, light = false) {
   const bmp = await createImageBitmap(blob); const sx = bmp.width * x0, sy = bmp.height * y0, sw = bmp.width * (x1 - x0), sh = bmp.height * (y1 - y0);
   const side = rot % 180 !== 0; const k = W / (side ? sh : sw); const cv = document.createElement('canvas'); cv.width = Math.round((side ? sh : sw) * k); cv.height = Math.round((side ? sw : sh) * k);
   const g = cv.getContext('2d'); g.imageSmoothingQuality = 'high'; g.translate(cv.width / 2, cv.height / 2); g.rotate(rot * Math.PI / 180); g.drawImage(bmp, sx, sy, sw, sh, -sw * k / 2, -sh * k / 2, sw * k, sh * k);
+  if (light) { const d = g.getImageData(0, 0, cv.width, cv.height); const a = d.data; for (let i = 0; i < a.length; i += 4) { const v = 255 - Math.min(a[i], a[i + 1], a[i + 2]); a[i] = a[i + 1] = a[i + 2] = v; } g.putImageData(d, 0, 0); } /* white letters on a coloured bar (yellow, red, blue) turn dark on light */
   if (bmp.close) bmp.close(); return new Promise(r => cv.toBlob(r, 'image/png'));
 }
 /* a stylized first name often misreads ("SCOVITE BARNES"); the last name in plain type rarely does. When the last name matches
@@ -4491,6 +4495,8 @@ const PRO_LICENSE = /NBA\s*PROPERTIES|NATIONAL BASKETBALL|\bNFLPA\b|NFL\s*PLAYER
 function isCollegeCard(text, set) {
   const T = String(text || ''); if (/University|Draft Picks/i.test(set || '')) return true; if (PRO_LICENSE.test(T)) return false;
   if (/COLLEGIATE|BOWMAN\s*(?:U\b|UNIVERSITY)|CHROME\s+U(?:NIVERSITY)?\b|DRAFT\s+PICKS|\bCLC\b/i.test(T)) return true;
+  if (/\bCLASS\s*[:;.]?.{0,22}MA[IJ1]OR\b/i.test(T) || /COLLEGE\s+TOTALS/i.test(T) && !PRO_LICENSE.test(T)) return true; // OCR'd as "CLASS: SI Chior MAIOR"
+  if (/\bCLASS\s*[:;.]\s*(?:R-?S\.?\s*|REDSHIRT\s+)?(?:FRESHMAN|SOPHOMORE|JUNIOR|SENIOR|GRAD|FR\b|SO\b|JR\b|SR\b)|\bMAJOR\s*[:;]/i.test(T)) return true; // "CLASS: SENIOR  MAJOR: MANAGEMENT": only a college card says that
   return /\bNCAA\b/.test(T) && !/\b(?:NBA|NFL|MLB|NHL)\b/.test(T); // a pro card's bio can say "led the NCAA": then it needs no league word anywhere
 }
 const POS_WORDS = /\b(?:POINT|SHOOTING|SMALL|POWER|GUARD|FORWARD|CENTER|QUARTERBACK|RUNNING|WIDE|RECEIVER|TIGHT|END|BACK|LINEBACKER|CORNERBACK|SAFETY|DEFENSIVE|OFFENSIVE|LINEMAN|TACKLE|EDGE|KICKER|PUNTER|ATHLETE|PITCHER|CATCHER|INFIELDER|INFIELD|OUTFIELDER|OUTFIELD|SHORTSTOP|FIRST|SECOND|THIRD|BASE|BASEMAN|FRESHMAN|SOPHOMORE|JUNIOR|SENIOR|REDSHIRT|GRADUATE|GRAD|G|F|C|PG|SG|SF|PF|QB|RB|WR|TE|LB|DB|CB|S|DE|DT|DL|OL|OT|OG|ATH|K|P|SP|RP|OF|SS|IF|1B|2B|3B|LHP|RHP|FR|SO|JR|SR|RS)\b/g;
@@ -4742,7 +4748,9 @@ async function readOne(it, pr, o) {
     // the header and the copyright line again, enlarged: name, team, stat seasons, "TOPPS CHROME", the © year
     if (it.b || it.backOnly) { const src = it.b ? it.b.read || it.b.warped : it.f.warped; // small, tight crops read best: a tall crop mixing logos and tables throws the reader off
       for (const [x0, y0, x1, y1, raw] of [[0, 0.13, 1, 0.37, false], [0, 0.13, 1, 0.37, true], [0, 0.02, 0.5, 0.14, true], [0, 0.87, 1, 1, true]]) {
-        try { bt += '\n' + (await readImageText(await zoomPart(src, x0, y0, x1, y1), pr, '6', { raw })).text; } catch (e) {} } }
+        try { bt += '\n' + (await readImageText(await zoomPart(src, x0, y0, x1, y1), pr, '6', { raw })).text; } catch (e) {} }
+      /* the name in white on a coloured bar along the top (Bowman University, landscape backs): no reader sees white on yellow, so flip it to dark on light */
+      try { const t = (await readImageText(await zoomPart(src, 0, 0, 1, 0.24, 0, 1800, true), pr, '6', { raw: true })).text; bt = t + '\n' + bt; } catch (e) {} }
     let c = parseCardBack(bt); m = matchPlayer(c.cands, c.sport); conf = nameConfidence(m, false);
     // pass 2: back again as one block of text; two reads naming the same player confirms it
     if (conf !== 'high' && it.b) {
@@ -4759,8 +4767,8 @@ async function readOne(it, pr, o) {
 
       const sp = parseCardBack(bt).sport || cf.sport || usualSport(); // nothing says which sport: the one most of your cards are
       let mf = matchPlayer(cf.cands, sp); const shaky = !m || conf === 'low';
-      if (!mf && shaky) mf = looseName(ft, sp);
-      const coll = parseCardBack(bt, ft).college; // a college player may share a surname with a pro (BOOZER): no surname-only guesses
+      const coll = parseCardBack(bt, ft).college; // a college player may share a surname with a pro (BOOZER, HAMPTON): no surname-only guesses
+      if (!mf && shaky && !coll) mf = looseName(ft, sp);
       if (!mf && shaky && !coll) mf = lastNameOnly(ft, sp) || await lastNameLookup(ft, sp, cf); // the big surname on the front reads well; the small first name rarely does
       if (m && mf && m.full === mf.full) conf = nameConfidence(m, true);
       else if (mf && (!m || mf.score < m.score)) { m = mf; conf = nameConfidence(mf, false); }
@@ -4769,7 +4777,7 @@ async function readOne(it, pr, o) {
   if (o.serial && !ft) ft = (await readImageText(it.f.warped, pr, '11')).text;
   it.text = bt; it.ftext = ft; it.fields = parseCardBack(bt, ft); it.fields.serial = serialFrom(ft) || serialFrom(bt) || '';
   if (!m && o.read && bt) { const mb = nameFromBio(bt, it.fields.sport); if (mb) { m = mb; conf = 'medium'; } } // header misread: find the name in the write-up
-  if ((!m || conf === 'low') && o.read && bt) { const ml = looseName(bt, it.fields.sport); if (ml && (!m || ml.full !== m.full)) { m = ml; conf = 'medium'; } } // first name misread, last name exact: beats a shaky guess
+  if ((!m || conf === 'low') && o.read && bt && !it.fields.college) { const ml = looseName(bt, it.fields.sport); if (ml && (!m || ml.full !== m.full)) { m = ml; conf = 'medium'; } } // first name misread, last name exact: beats a shaky guess
   if (m) { it.fields.player = m.full; it.fields.matched = true; }
   else if (it.fields.college && o.read && it.fields.player) { const v = await collegeNameCheck(it.fields); if (v) { it.fields.player = v.full; it.fields.matched = true; conf = v.conf; } } // not in the pro lists yet: the printed name, checked against eBay
   else if (it.fields.player && it.fields.player.split(' ').some(w => w.replace(/[^A-Za-z]/g, '').length < 3)) it.fields.player = ''; // a scrap like "Lu Mz" is worse than a blank
@@ -8093,25 +8101,26 @@ A.rerdChoose = el => { const one = el && el.dataset.id; const n = one ? 1 : SELM
 A.massReread = async el => {
   const one = el && el.dataset.id; RR.names = !!(el && el.dataset.mode === 'names'); RR.one = !!one;
   const cards = (one ? [one] : [...SELM.ids]).map(cardById).filter(c => c && !c.purged && (c.front || c.back)); if (!cards.length) return toast('Pick some cards with photos');
-  RR.stop = false; RR.items = [];
+  RR.stop = false; RR.items = []; RR.fail = [];
   openModal(`<div>${mhead(RR.names ? 'Rereading player names' : 'Rereading cards')}<div id="rr-prog"></div><div class="sheet-foot"><button class="btn" type="button" data-act="rrStop">Stop and review</button></div></div>`);
   const show = (i, p) => { const el = $('#rr-prog'); if (!el) return; const f = (i + Math.min(1, p || 0)) / cards.length;
     el.innerHTML = `<div class="calc"><div><span>Reading card ${i + 1} of ${cards.length}</span><b>${Math.round(f * 100)}%</b></div></div><div style="height:8px;background:var(--line);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(2, f * 100)}%;background:var(--acc)"></div></div><small class="muted">Keep this screen open. Each card takes a few seconds. Nothing is saved until you review the changes.</small>`; };
   show(0, 0); await loadPlayerNames();
   for (let i = 0; i < cards.length && !RR.stop; i++) { const c = cards[i];
-    if (!$('#rr-prog')) { RR.stop = true; break; } // the sheet was closed
-    try { const fr = c.front ? await fileGet(c.front) : null, bk = c.back ? await fileGet(c.back) : null; const fb = fr && fr.blob, bb = bk && bk.blob; if (!fb && !bb) continue;
+    try { const fr = c.front ? await fileGet(c.front) : null, bk = c.back ? await fileGet(c.back) : null; const fb = fr && fr.blob, bb = bk && bk.blob; if (!fb && !bb) { RR.fail.push({ c, msg: 'its photos aren\'t on this device' }); continue; }
       const it = { f: { warped: fb || bb }, b: fb && bb ? { warped: bb } : null };
       await readOne(it, p => show(i, p), { read: true, serial: !RR.names, namesOnly: RR.names });
       const f = it.fields || {}; const diffs = [];
-      if (RR.names) { RR.items.push({ c, read: String(f.player || '').trim(), conf: f.conf, diffs: [] }); continue; }
+      if (RR.names) { RR.items.push({ c, read: String(f.player || '').trim(), conf: f.conf, college: !!f.college, diffs: [] }); continue; }
       for (const [k, label] of RR_FIELDS) { let nv = f[k], ov = c[k];
         if (k === 'rookie' || k === 'auto') { if (nv && !ov) diffs.push({ k, label, ov: 'No', nv: 'Yes', val: true, on: true }); continue; }
         nv = String(nv || '').trim(); ov = String(ov || '').trim(); if (!nv || nv === ov) continue;
-        const sure = k === 'player' ? f.conf === 'high' : k === 'number' ? !f.numberFrom : !(f.guess || {})[k];
+        if (ov && ['set', 'team'].includes(k) && nv.toLowerCase().split(/\s+/).every(w => ov.toLowerCase().includes(w))) continue; // "Bowman University" is no better than the saved "Bowman Chrome University"
+        const sure = k === 'player' ? f.conf === 'high' || surnameGuess(ov, nv, f.college) : k === 'number' ? !f.numberFrom : !(f.guess || {})[k];
         diffs.push({ k, label, ov, nv, val: nv, on: !ov || sure, note: k === 'player' ? (f.conf === 'high' ? 'Confirmed' : f.conf === 'medium' ? 'Check' : 'Not sure') : k === 'number' && f.numberFrom ? (f.numberFrom === 'ebay' ? 'From eBay listings' : 'Not sure') : '' }); }
       RR.items.push({ c, diffs });
-    } catch (e) { console.error(e); } }
+    } catch (e) { console.error(e); RR.fail.push({ c, msg: (e && e.message) || String(e) }); } }
+  if (!$('#modal-root .sheet')) openModal('<div></div>'); // the progress sheet went away: bring the results back anyway
   rrReview(cards.length);
 };
 A.rrStop = el => { RR.stop = true; el.disabled = true; el.textContent = 'Stopping after this card…'; };
@@ -8122,7 +8131,7 @@ async function rrReview(total) {
       ${diffs.map((d, j) => `<label class="chk" style="align-items:flex-start"><input type="checkbox" name="rr_${esc(c.id)}_${j}" ${d.on ? 'checked' : ''}> <span><b>${esc(d.label)}</b>: ${d.ov ? `<s class="muted">${esc(d.ov)}</s> → ` : ''}${esc(d.nv)}${d.note ? ` <small class="muted">(${esc(d.note)})</small>` : ''}</span></label>`).join('')}</div></div></fieldset>`; }));
   const read = RR.items.length;
   sheet.innerHTML = `<form data-form="rrSave">${mhead('Reread results')}
-    <p class="muted">Read ${read} of ${total} card${total === 1 ? '' : 's'}. ${ch.length ? `${ch.length} card${ch.length === 1 ? '' : 's'} have changes. Blank fields and sure reads are ticked; changes to something you already filled in are left unticked unless the read is sure.` : 'Everything already matches what was read.'}</p>
+    ${rrFailNote()}<p class="muted">Read ${read} of ${total} card${total === 1 ? '' : 's'}. ${ch.length ? `${ch.length} card${ch.length === 1 ? '' : 's'} have changes. Blank fields and sure reads are ticked; changes to something you already filled in are left unticked unless the read is sure.` : 'Everything already matches what was read.'}</p>
     ${ch.length ? `<div class="row"><button class="btn sm" type="button" data-act="rrTick" data-v="1">Tick all</button><button class="btn sm" type="button" data-act="rrTick" data-v="0">Untick all</button></div>` : ''}
     <div style="display:flex;flex-direction:column;gap:8px">${rows.join('')}</div>
     ${ch.length ? mfoot('Save ticked changes') : '<div class="sheet-foot"><button class="btn pri" data-act="close" type="button">Done</button></div>'}</form>`;
@@ -8137,19 +8146,22 @@ FORMS.rrSave = async f => {
 };
 function rrDone(n) { RR.items = []; closeModal(); if (!RR.one) { SELM.on = false; SELM.ids.clear(); } onChange('cards'); toast(n ? `Updated ${n} card${n === 1 ? '' : 's'}` : 'Nothing saved'); }
 /* names only: every card gets a name box. A sure read (or a blank name) is filled in for you; otherwise your name stays and the read is one tap away */
+const rrFailNote = () => (RR.fail || []).length ? `<div class="warn" style="margin-bottom:8px">Couldn't read ${RR.fail.length} card${RR.fail.length === 1 ? '' : 's'}: ${RR.fail.slice(0, 5).map(x => `${esc(x.c.code || '')} (${esc(x.msg)})`).join(', ')}.</div>` : '';
+/* on a college card, a saved pro name that only shares the printed surname (R.J. Hampton for ETHAN HAMPTON) was a surname guess */
+const surnameGuess = (saved, read, college) => { if (!college || !saved || !read) return false; const a = splitName(saved), b = splitName(read); return a.last === b.last && b.first.length >= 3 && a.first !== b.first; };
 const knownName = n => { const m = n && matchPlayer([n], ''); return !!(m && m.exact && nkey(m.full) === nkey(n)); };
 async function rrNames(sheet, total) {
   const names = uniq([...S.cards.filter(live).map(c => c.player), ...RR.items.map(x => x.read)].filter(Boolean)).sort();
   const lab = { high: 'Confirmed', medium: 'Check', low: 'Not sure' };
-  const rows = await Promise.all(RR.items.map(async ({ c, read, conf }, j) => { const u = c.front ? await fileURL(c.front) : c.back ? await fileURL(c.back) : '';
-    const differs = read && read !== (c.player || ''); const pre = differs && (conf === 'high' || !c.player || (!knownName(c.player) && (conf === 'medium' || knownName(read)))) ? read : (c.player || ''); /* a saved name that isn't a real player gives way to a decent read */
+  const rows = await Promise.all(RR.items.map(async ({ c, read, conf, college }, j) => { const u = c.front ? await fileURL(c.front) : c.back ? await fileURL(c.back) : '';
+    const differs = read && read !== (c.player || ''); const pre = differs && (conf === 'high' || !c.player || (!knownName(c.player) && (conf === 'medium' || knownName(read))) || surnameGuess(c.player, read, college)) ? read : (c.player || ''); /* a saved name that isn't a real player gives way to a decent read */
     return `<fieldset class="bs-item"><legend>${esc(c.code || '')}</legend><div style="display:flex;gap:10px;align-items:flex-start">${u ? `<img src="${u}" alt="" style="width:64px;border-radius:4px;flex:none">` : ''}<div style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:0">
       <input name="rn_${j}" value="${esc(pre)}" list="dl-rrn" aria-label="Player for ${esc(c.code || '')}" class="${pre !== (c.player || '') ? 'bs-mid' : ''}">
       <small class="muted">Saved: ${esc(c.player || '(blank)')}${read ? ` · Read: <b>${esc(read)}</b> (${lab[conf] || 'Not sure'})` : ' · Couldn\'t read a name'}</small>
       ${differs ? `<div class="row" style="gap:6px"><button class="btn sm" type="button" data-act="rrUse" data-j="${j}" data-v="${esc(read)}">Use ${esc(read)}</button><button class="btn sm ghost" type="button" data-act="rrUse" data-j="${j}" data-v="${esc(c.player || '')}">Keep saved</button></div>` : ''}</div></div></fieldset>`; }));
   const ch = RR.items.filter(x => x.read && x.read !== (x.c.player || '')).length;
   sheet.innerHTML = `<form data-form="rrNamesSave">${mhead('Player names')}
-    <p class="muted">Read ${RR.items.length} of ${total} card${total === 1 ? '' : 's'}. ${ch ? `${ch} read differently from what's saved; the highlighted boxes will change.` : 'Every read matched what\'s saved.'} Type over any name that's wrong, then save.</p>
+    ${rrFailNote()}<p class="muted">Read ${RR.items.length} of ${total} card${total === 1 ? '' : 's'}. ${ch ? `${ch} read differently from what's saved; the highlighted boxes will change.` : 'Every read matched what\'s saved.'} Type over any name that's wrong, then save.</p>
     <datalist id="dl-rrn">${names.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
     <div style="display:flex;flex-direction:column;gap:8px">${rows.join('')}</div>${mfoot('Save names')}</form>`;
 }
