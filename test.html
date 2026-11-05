@@ -2405,7 +2405,7 @@ const PLATFORM_RES = [[/e\s?bay/i, 'eBay'], [/whatnot/i, 'Whatnot'], [/facebook|
 
 /* brand + set vocabulary (longest phrases first) */
 const SETS = [
-  ['bowman chrome', 'Bowman', 'Bowman Chrome'], ['bowman draft', 'Bowman', 'Bowman Draft'], ['bowman u', 'Bowman', 'Bowman U'], ['topps chrome', 'Topps', 'Chrome'], ['cosmic chrome', 'Topps', 'Cosmic Chrome'],
+  ['bowman chrome', 'Bowman', 'Bowman Chrome'], ['bowman draft', 'Bowman', 'Bowman Draft'], ['bowman university chrome', 'Bowman', 'Bowman University Chrome'], ['bowman chrome university', 'Bowman', 'Bowman University Chrome'], ['bowman u chrome', 'Bowman', 'Bowman University Chrome'], ['bowman chrome u', 'Bowman', 'Bowman University Chrome'], ['bowman university best', 'Bowman', 'Bowman University Best'], ['bowman\'s best university', 'Bowman', 'Bowman University Best'], ['bowmans best university', 'Bowman', 'Bowman University Best'], ['bowman u best', 'Bowman', 'Bowman University Best'], ['bowman university', 'Bowman', 'Bowman University'], ['bowman u', 'Bowman', 'Bowman University'], ['prizm draft picks', 'Panini', 'Prizm Draft Picks'], ['contenders draft picks', 'Panini', 'Contenders Draft Picks'], ['select draft picks', 'Panini', 'Select Draft Picks'], ['topps chrome', 'Topps', 'Chrome'], ['cosmic chrome', 'Topps', 'Cosmic Chrome'],
   ['stadium club', 'Topps', 'Stadium Club'], ['allen & ginter', 'Topps', 'Allen & Ginter'], ['allen and ginter', 'Topps', 'Allen & Ginter'], ['gypsy queen', 'Topps', 'Gypsy Queen'], ['topps now', 'Topps', 'Topps Now'],
   ['heritage', 'Topps', 'Heritage'], ['finest', 'Topps', 'Finest'], ['sapphire', 'Topps', 'Chrome Sapphire'], ['series 1', 'Topps', 'Series 1'], ['series 2', 'Topps', 'Series 2'], ['update series', 'Topps', 'Update'], ['update', 'Topps', 'Update'],
   ['donruss optic', 'Panini', 'Donruss Optic'], ['optic', 'Panini', 'Donruss Optic'], ['national treasures', 'Panini', 'National Treasures'], ['crown royale', 'Panini', 'Crown Royale'], ['court kings', 'Panini', 'Court Kings'],
@@ -2448,6 +2448,37 @@ const TEAM_CITY = (() => {
   add('Hockey', 'Ducks=Anaheim Ducks;Bruins=Boston Bruins;Sabres=Buffalo Sabres;Flames=Calgary Flames;Hurricanes=Carolina Hurricanes;Blackhawks=Chicago Blackhawks;Avalanche=Colorado Avalanche;Blue Jackets=Columbus Blue Jackets;Stars=Dallas Stars;Red Wings=Detroit Red Wings;Oilers=Edmonton Oilers;Panthers=Florida Panthers;Kings=Los Angeles Kings;Wild=Minnesota Wild;Canadiens=Montreal Canadiens;Predators=Nashville Predators;Devils=New Jersey Devils;Islanders=New York Islanders;Rangers=New York Rangers;Senators=Ottawa Senators;Flyers=Philadelphia Flyers;Penguins=Pittsburgh Penguins;Sharks=San Jose Sharks;Kraken=Seattle Kraken;Blues=St. Louis Blues;Lightning=Tampa Bay Lightning;Maple Leafs=Toronto Maple Leafs;Canucks=Vancouver Canucks;Golden Knights=Vegas Golden Knights;Capitals=Washington Capitals;Jets=Winnipeg Jets;Utah Hockey Club=Utah Hockey Club;Mammoth=Utah Mammoth;Nordiques=Quebec Nordiques;Whalers=Hartford Whalers;Thrashers=Atlanta Thrashers;Coyotes=Arizona Coyotes');
   return t;
 })();
+/* college teams (Bowman University, Prizm Draft Picks): school=nickname. Keys are the school as printed, plus common short forms */
+const COLLEGES = (() => {
+  const list = 'Boston College=Eagles;California=Golden Bears;Clemson=Tigers;Duke=Blue Devils;Florida State=Seminoles;Georgia Tech=Yellow Jackets;Louisville=Cardinals;Miami=Hurricanes;NC State=Wolfpack;North Carolina=Tar Heels;Notre Dame=Fighting Irish;Pittsburgh=Panthers;SMU=Mustangs;Stanford=Cardinal;Syracuse=Orange;Virginia=Cavaliers;Virginia Tech=Hokies;Wake Forest=Demon Deacons;' +
+    'Illinois=Fighting Illini;Indiana=Hoosiers;Iowa=Hawkeyes;Maryland=Terrapins;Michigan=Wolverines;Michigan State=Spartans;Minnesota=Golden Gophers;Nebraska=Cornhuskers;Northwestern=Wildcats;Ohio State=Buckeyes;Oregon=Ducks;Penn State=Nittany Lions;Purdue=Boilermakers;Rutgers=Scarlet Knights;UCLA=Bruins;USC=Trojans;Washington=Huskies;Wisconsin=Badgers;' +
+    'Arizona=Wildcats;Arizona State=Sun Devils;Baylor=Bears;BYU=Cougars;UCF=Knights;Cincinnati=Bearcats;Colorado=Buffaloes;Houston=Cougars;Iowa State=Cyclones;Kansas=Jayhawks;Kansas State=Wildcats;Oklahoma State=Cowboys;TCU=Horned Frogs;Texas Tech=Red Raiders;Utah=Utes;West Virginia=Mountaineers;' +
+    'Alabama=Crimson Tide;Arkansas=Razorbacks;Auburn=Tigers;Florida=Gators;Georgia=Bulldogs;Kentucky=Wildcats;LSU=Tigers;Ole Miss=Rebels;Mississippi State=Bulldogs;Missouri=Tigers;Oklahoma=Sooners;South Carolina=Gamecocks;Tennessee=Volunteers;Texas=Longhorns;Texas A&M=Aggies;Vanderbilt=Commodores;' +
+    'UConn=Huskies;Villanova=Wildcats;Creighton=Bluejays;Marquette=Golden Eagles;St. John\'s=Red Storm;Xavier=Musketeers;Providence=Friars;Seton Hall=Pirates;Butler=Bulldogs;Georgetown=Hoyas;DePaul=Blue Demons;' +
+    'Gonzaga=Bulldogs;Memphis=Tigers;San Diego State=Aztecs;Saint Mary\'s=Gaels;Dayton=Flyers;Boise State=Broncos;Oregon State=Beavers;Washington State=Cougars;Tulane=Green Wave;Liberty=Flames;Florida Atlantic=Owls;VCU=Rams;Wichita State=Shockers;UNLV=Rebels;Fresno State=Bulldogs;Nevada=Wolf Pack;New Mexico=Lobos;Utah State=Aggies;Colorado State=Rams;Air Force=Falcons;Army=Black Knights;Navy=Midshipmen;Appalachian State=Mountaineers;Coastal Carolina=Chanticleers;James Madison=Dukes;Louisiana Tech=Bulldogs;Toledo=Rockets;Western Kentucky=Hilltoppers;Jackson State=Tigers;Texas State=Bobcats;North Texas=Mean Green;UTSA=Roadrunners;South Florida=Bulls;Temple=Owls;East Carolina=Pirates;Tulsa=Golden Hurricane;Rice=Owls;Charlotte=49ers;UAB=Blazers;Florida International=Panthers;Marshall=Thundering Herd;Ohio=Bobcats;Miami (OH)=RedHawks;Kent State=Golden Flashes;Northern Illinois=Huskies;Western Michigan=Broncos;Central Michigan=Chippewas;Eastern Michigan=Eagles;Ball State=Cardinals;Bowling Green=Falcons;Buffalo=Bulls;Akron=Zips;' +
+    'Saint Louis=Billikens;Richmond=Spiders;Davidson=Wildcats;Belmont=Bruins;Drake=Bulldogs;Bradley=Braves;Loyola Chicago=Ramblers;Murray State=Racers;Oral Roberts=Golden Eagles;Grand Canyon=Antelopes;Santa Clara=Broncos;San Francisco=Dons;Long Beach State=Beach;Hawaii=Rainbow Warriors;Princeton=Tigers;Yale=Bulldogs;Harvard=Crimson;Cornell=Big Red;Vermont=Catamounts;Stephen F. Austin=Lumberjacks;Southern Miss=Golden Eagles;Louisiana=Ragin\' Cajuns;UL Monroe=Warhawks;Troy=Trojans;Georgia Southern=Eagles;Georgia State=Panthers;Old Dominion=Monarchs;Arkansas State=Red Wolves;South Alabama=Jaguars;Middle Tennessee=Blue Raiders;New Mexico State=Aggies;UTEP=Miners;Sam Houston=Bearkats;Kennesaw State=Owls;Delaware=Blue Hens;Montana=Grizzlies;Montana State=Bobcats;North Dakota State=Bison;South Dakota State=Jackrabbits;Southern=Jaguars;Grambling State=Tigers;Alabama State=Hornets;Florida A&M=Rattlers;Howard=Bison;Norfolk State=Spartans;Tennessee State=Tigers;Prairie View A&M=Panthers;Texas Southern=Tigers;Wofford=Terriers;Furman=Paladins;Chattanooga=Mocs;Samford=Bulldogs;Mercer=Bears;ETSU=Buccaneers;Elon=Phoenix;Hofstra=Pride;Northeastern=Huskies;Drexel=Dragons;Towson=Tigers;Iona=Gaels;Fairfield=Stags;Siena=Saints;Rhode Island=Rams;UMass=Minutemen;George Mason=Patriots;George Washington=Revolutionaries;Fordham=Rams;Duquesne=Dukes;La Salle=Explorers;Saint Joseph\'s=Hawks;St. Bonaventure=Bonnies;Pepperdine=Waves;Loyola Marymount=Lions;San Diego=Toreros;Portland=Pilots;Pacific=Tigers;Cal State Fullerton=Titans;UC Irvine=Anteaters;UC Santa Barbara=Gauchos;UC Davis=Aggies;UC San Diego=Tritons;Missouri State=Bears;Indiana State=Sycamores;Illinois State=Redbirds;Northern Iowa=Panthers;Southern Illinois=Salukis;Valparaiso=Beacons;Evansville=Purple Aces;Wright State=Raiders;Oakland=Golden Grizzlies;Detroit Mercy=Titans;Milwaukee=Panthers;Green Bay=Phoenix;Cleveland State=Vikings;Youngstown State=Penguins;Robert Morris=Colonials;Purdue Fort Wayne=Mastodons;IUPUI=Jaguars;Wyoming=Cowboys;San Jose State=Spartans;Idaho=Vandals;Idaho State=Bengals;Weber State=Wildcats;Eastern Washington=Eagles;Northern Arizona=Lumberjacks;Southern Utah=Thunderbirds;Utah Tech=Trailblazers;Utah Valley=Wolverines;Seattle U=Redhawks;Abilene Christian=Wildcats;Tarleton State=Texans;UT Arlington=Mavericks;Texas A&M-Corpus Christi=Islanders;McNeese=Cowboys;Nicholls=Colonels;Northwestern State=Demons;Lamar=Cardinals;Houston Christian=Huskies;Incarnate Word=Cardinals;Central Arkansas=Bears;Little Rock=Trojans;Lipscomb=Bisons;Jacksonville=Dolphins;North Florida=Ospreys;Florida Gulf Coast=Eagles;Stetson=Hatters;Bellarmine=Knights;Queens=Royals;Austin Peay=Governors;Eastern Kentucky=Colonels;Morehead State=Eagles;Southeast Missouri State=Redhawks;UT Martin=Skyhawks;Tennessee Tech=Golden Eagles;Western Illinois=Leathernecks;Lindenwood=Lions;SIU Edwardsville=Cougars;Little Rock Trojans=Trojans;Charleston=Cougars;UNC Wilmington=Seahawks;UNC Greensboro=Spartans;UNC Asheville=Bulldogs;Campbell=Fighting Camels;High Point=Panthers;Winthrop=Eagles;Radford=Highlanders;Longwood=Lancers;Gardner-Webb=Runnin\' Bulldogs;Presbyterian=Blue Hose;Charleston Southern=Buccaneers;South Carolina State=Bulldogs;North Carolina A&T=Aggies;North Carolina Central=Eagles;Morgan State=Bears;Coppin State=Eagles;Delaware State=Hornets;Hampton=Pirates;Bethune-Cookman=Wildcats;Alcorn State=Braves;Mississippi Valley State=Delta Devils;Alabama A&M=Bulldogs;Arkansas-Pine Bluff=Golden Lions;Kansas City=Roadrunners;Denver=Pioneers;Omaha=Mavericks;North Dakota=Fighting Hawks;South Dakota=Coyotes;St. Thomas=Tommies;Air Force Academy=Falcons;Boston University=Terriers;Holy Cross=Crusaders;Lehigh=Mountain Hawks;Lafayette=Leopards;Bucknell=Bison;Colgate=Raiders;American=Eagles;Navy Midshipmen=Midshipmen;Brown=Bears;Columbia=Lions;Dartmouth=Big Green;Penn=Quakers;Sacramento State=Hornets;Cal Poly=Mustangs;Cal State Northridge=Matadors;Cal State Bakersfield=Roadrunners;UC Riverside=Highlanders;Hawai\'i=Rainbow Warriors';
+  const t = {}; for (const x of list.split(';')) { const [school, nick] = x.split('='); if (!school || !nick) continue; t[school.trim()] = school.trim() + ' ' + nick.trim(); }
+  delete t['Little Rock Trojans']; delete t['Navy Midshipmen']; delete t['Air Force Academy']; t['Hawai\'i'] = t.Hawaii;
+  return t;
+})();
+/* other ways a school is printed */
+const COLLEGE_ALIAS = { 'UNC': 'North Carolina', 'NORTH CAROLINA STATE': 'NC State', 'N.C. STATE': 'NC State', 'NORTH CAROLINA ST.': 'NC State', 'CONNECTICUT': 'UConn', 'MISSISSIPPI': 'Ole Miss', 'SOUTHERN CALIFORNIA': 'USC', 'SOUTHERN CAL': 'USC',
+  'LOUISIANA STATE': 'LSU', 'BRIGHAM YOUNG': 'BYU', 'TEXAS CHRISTIAN': 'TCU', 'CENTRAL FLORIDA': 'UCF', 'SOUTHERN METHODIST': 'SMU', 'PITT': 'Pittsburgh', 'MIAMI (FL)': 'Miami', 'MIAMI FL': 'Miami', 'MIAMI (FLA.)': 'Miami', 'CAL': 'California', 'TEXAS A & M': 'Texas A&M',
+  'VIRGINIA COMMONWEALTH': 'VCU', 'NEVADA-LAS VEGAS': 'UNLV', 'ST JOHN\'S': 'St. John\'s', 'ST. JOHNS': 'St. John\'s', 'SAINT JOHN\'S': 'St. John\'s', 'ST. MARY\'S': 'Saint Mary\'s', 'SAINT MARYS': 'Saint Mary\'s', 'UMASS AMHERST': 'UMass', 'MASSACHUSETTS': 'UMass',
+  'COLLEGE OF CHARLESTON': 'Charleston', 'EAST TENNESSEE STATE': 'ETSU', 'TEXAS-SAN ANTONIO': 'UTSA', 'ALABAMA-BIRMINGHAM': 'UAB', 'TEXAS-EL PASO': 'UTEP', 'FIU': 'Florida International', 'FAU': 'Florida Atlantic', 'USF': 'South Florida', 'SDSU': 'San Diego State', 'MIZZOU': 'Missouri', 'BAMA': 'Alabama' };
+/* "Duke", "DUKE", "Duke Blue Devils", "UNIVERSITY OF KENTUCKY" -> the full name; null when it isn't a school we know */
+function collegeTeam(name) {
+  let n = String(name || '').replace(/[®™*]/g, '').replace(/\s+/g, ' ').trim(); if (!n) return null; let U = n.toUpperCase().replace(/^(?:THE\s+)?UNIVERSITY\s+OF\s+/, '').replace(/\s+UNIVERSITY$/, '').replace(/\bST\.?$/, 'STATE').trim();
+  if (COLLEGE_ALIAS[U]) U = COLLEGE_ALIAS[U].toUpperCase();
+  for (const [school, full] of Object.entries(COLLEGES)) if (school.toUpperCase() === U || full.toUpperCase() === U) return full;
+  return null;
+}
+/* college names longest first, so MICHIGAN STATE wins over MICHIGAN; nicknames only when one school uses them and no pro team does */
+const COLLEGE_KEYS = (() => { const k = []; for (const [school, full] of Object.entries(COLLEGES)) { k.push([school, full]); k.push([full, full]); } for (const [a, s] of Object.entries(COLLEGE_ALIAS)) if (a.length >= 4 || /^[A-Z]{3,4}$/.test(a)) k.push([a, COLLEGES[s]]);
+  const nick = {}; for (const full of Object.values(COLLEGES)) { const school = Object.keys(COLLEGES).find(s => COLLEGES[s] === full); const nk = full.slice(school.length + 1); nick[nk] = nick[nk] ? null : full; }
+  for (const [nk, full] of Object.entries(nick)) if (full && TEAMS[nk] === undefined && nk.length >= 5 && !/^(Orange|Cardinal|Crimson|Pride|Beach|Phoenix|Saints|Pilots|Waves|Dons|Big Red|Big Green|Royals|Bulls|Bears|Rams|Owls|Eagles|Lions)$/.test(nk)) k.push([nk, full]);
+  return k.filter(([a, b]) => a && b).sort((a, b) => b[0].length - a[0].length); })();
+const isCollegeTeam = team => !!team && Object.values(COLLEGES).includes(team);
 // "Mavericks" -> "Dallas Mavericks"; an already-full name or one we can't place stays as it is
 function fullTeam(team, sport) {
   const n = String(team || '').trim(); if (!n) return n;
@@ -4194,6 +4225,9 @@ function parseCardBack(backText, frontText = '') {
   const pf = productFacts(lines.join('\n'), fl.join('\n')); if (pf.brand) c.brand = pf.brand; if (pf.set) c.set = pf.set; if (pf.year) c.year = pf.year; c.yearFrom = pf.yearFrom || '';
   // sport from the league licensing line, then from the team name
   c.sport = /\bWNBA\b|\bNBA\b|national basketball/i.test(both) ? 'Basketball' : /\bNFL(?:PA)?\b|national football league/i.test(both) ? 'Football' : /\bMLB(?:PA)?\b|major league baseball/i.test(both) ? 'Baseball' : /\bNHL(?:PA)?\b|national hockey league/i.test(both) ? 'Hockey' : /\bMLS\b|\bFIFA\b|premier league|\bUEFA\b/i.test(both) ? 'Soccer' : '';
+  c.college = isCollegeCard(both, c.set); if (/^Bowman\b/.test(c.set || '')) c.brand = 'Bowman'; if (c.college && c.brand === 'Bowman' && (!c.set || /^(Bowman )?Chrome$/.test(c.set) || c.set === 'Bowman')) c.set = /CHROME/i.test(both) ? 'Bowman University Chrome' : 'Bowman University';
+  if (!c.sport) c.sport = sportFromStats(both); // college backs carry no league line: the stat table and position say it
+  if (c.college) c.team = collegeFrom([...lines.slice(0, 24), ...fl]); else { // pro team names on a college card are just words (Tigers, Cardinals)
   for (const l of [...lines.slice(0, 20), ...fl]) { const tm = teamFromPosLine(l); if (tm) { c.team = tm; break; } } // "G • TRAIL BLAZERS"
   if (!c.team) for (const n of TEAM_NAMES) { // capitalized only, so "the heat of the moment" doesn't count as the Miami Heat
     const e = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -4204,6 +4238,7 @@ function parseCardBack(backText, frontText = '') {
   if (c.team) { const sp = c.sport || TEAMS[c.team]; const cands = Object.entries(TEAM_CITY).filter(([s2]) => !sp || s2 === sp).map(([, m]) => m[c.team]).filter(Boolean);
     const printed = cands.find(f => new RegExp(f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*'), 'i').test(both)); c.team = printed || (cands.length === 1 ? cands[0] : fullTeam(c.team, sp));
     if (!c.sport) for (const [s2, m] of Object.entries(TEAM_CITY)) if (Object.values(m).includes(c.team) && Object.entries(TEAM_CITY).filter(([, m2]) => Object.values(m2).includes(c.team)).length === 1) c.sport = s2; }
+  }
   // card number: "CARD 4 OF 21", "No. 136", "#136", or a lone number/code in the top or bottom lines
   let num = all.match(/\bCARD\s*#?\s*([A-Z]{0,4}-?\d{1,4})\b/i) || all.match(/(?:^|\s)(?:No\.?|#)\s?([A-Z]{0,4}-?\d{1,4}[A-Z]?)\b/i);
   const fixCode = l => l.replace(/^([A-Z]{1,5}-?)?([0-9lI|O]{1,4})$/, (m, a, b) => (a || '') + b.replace(/[lI|]/g, '1').replace(/O/g, '0')); // OCR reads 1 as l, 0 as O
@@ -4225,9 +4260,10 @@ function parseCardBack(backText, frontText = '') {
   };
   scan(lines.slice(0, 18), 0); scan(fl.slice(0, 14), 100);
   // a name is usually followed by the position/team line
-  const near = i => [1, 2, 3].some(d => { const l = i < 100 ? lines[Math.floor(i) + d] : fl[Math.floor(i) - 100 + d]; return l && (POS_LINE.test(l) || (c.team && l.toUpperCase().includes(c.team.toUpperCase()))); });
+  const near = i => [1, 2, 3].some(d => { const l = i < 100 ? lines[Math.floor(i) + d] : fl[Math.floor(i) - 100 + d]; return l && (POS_LINE.test(l) || (c.team && l.toUpperCase().includes(c.team.toUpperCase())) || (c.college && c.team && collegeFrom([l]) === c.team)); });
   cands.forEach(o => { o.score = (near(o.i) ? -50 : 0) + o.i; });
   cands.sort((a, b) => a.score - b.score);
+  if (c.college) for (let j = cands.length - 1; j >= 0; j--) if (collegeTeam(cands[j].name) || COLLEGE_KEYS.some(([k]) => k.toLowerCase() === cands[j].name.toLowerCase())) cands.splice(j, 1); // "Ohio State" is the school, not the player
   c.cands = cands.map(o => o.name);
   c.player = cands.length ? cands[0].name : (guessPlayer(lines.slice(0, 6).join(' ')) || '');
   const k = knownPlayer(c.player); if (k) { c.player = k; const kc = S.cards.find(x => live(x) && x.player === k); if (kc) { c.sport = c.sport || kc.sport || ''; c.team = c.team || kc.team || ''; } }
@@ -4424,15 +4460,53 @@ function productFacts(back, front = '') {
   if (!out.set && /^\s*CHROME\b/m.test(U) && /TOPPS/.test(U)) Object.assign(out, { brand: 'Topps', set: 'Chrome' });
   if (!out.set && !/BOWMAN/.test(U) && /^\s*CHROME\.?\s*$/m.test(String(front).toUpperCase())) Object.assign(out, { brand: 'Topps', set: 'Chrome' }); // the Topps Chrome logo on a front (the small "topps" above it rarely reads) // the "CHROME  @TOPPS" header on Topps Chrome backs
   if (!out.year) { const s = U.match(/\b(\d\d)\s*-\s*(\d\d)\s+(?:NBA|NHL|NCAA)\b/); if (s && (+s[1] + 1) % 100 === +s[2]) { out.year = String((+s[1] >= 40 ? 1900 : 2000) + +s[1]); out.yearFrom = 'season'; } }
-  const sport = /\bNBA\b|\bWNBA\b|BASKETBALL/.test(U) ? 'Basketball' : /\bNHL\b|HOCKEY/.test(U) ? 'Hockey' : /\bNFL\b|FOOTBALL/.test(U) ? 'Football' : /\bMLB\b|BASEBALL/.test(U) ? 'Baseball' : '';
+  const sport = /\bNBA\b|\bWNBA\b|BASKETBALL/.test(U) ? 'Basketball' : /\bNHL\b|HOCKEY/.test(U) ? 'Hockey' : /\bNFL\b|FOOTBALL/.test(U) ? 'Football' : /\bMLB\b|BASEBALL/.test(U) ? 'Baseball' : '' || sportFromStats(U); const coll = isCollegeCard(U, out.set);
   if (!out.year) { // the latest season in the stat table; the card comes out the season after
     let best = -1; for (const s of U.matchAll(/(?:^|\s)(\d\d)\s*-\s*(\d\d)\s+(?:[A-Z]{2,4}\b|CAREER)/gm)) if ((+s[1] + 1) % 100 === +s[2]) best = Math.max(best, +s[1]);
-    if (best >= 0 && (sport === 'Basketball' || sport === 'Hockey')) { out.year = String((best >= 40 ? 1900 : 2000) + best + 1); out.yearFrom = 'stats'; }
+    if (best >= 0 && !coll && (sport === 'Basketball' || sport === 'Hockey')) /* college sets come out mid-season, so the stat rows don't date them */ { out.year = String((best >= 40 ? 1900 : 2000) + best + 1); out.yearFrom = 'stats'; }
   }
   if (!out.year) { const cy = U.match(/(?:©|\(C\)|COPYRIGHT)\s*©?\s*((?:19|20)\d\d)/); if (cy) { out.year = String(+cy[1] - (sport === 'Basketball' || sport === 'Hockey' ? 1 : 0)); out.yearFrom = 'copyright'; } }
   if (!out.brand) { const b = U.match(/(?:©|\(C\))\s*\d{4}\s+(?:THE\s+)?(TOPPS|PANINI|UPPER DECK|LEAF)/); if (b) out.brand = titleCase(b[1]); }
   if (!out.brand && /@\s*T[O0]PPS\b|T[O0]PPS\s*\.\s*C[O0]M|C[O0]DE\s*#?\s*CMP\d/.test(U)) out.brand = 'Topps'; // the @topps handle, topps.com, or Topps' CODE#CMP product code
   return out;
+}
+/* --- college cards (Bowman University, Prizm Draft Picks) --- */
+const PRO_LICENSE = /NBA\s*PROPERTIES|NATIONAL BASKETBALL|\bNFLPA\b|NFL\s*PLAYERS|NATIONAL FOOTBALL LEAGUE|\bMLBPA\b|MAJOR LEAGUE BASEBALL|\bNHLPA\b|NATIONAL HOCKEY LEAGUE|\bWNBA\b/i;
+function isCollegeCard(text, set) {
+  const T = String(text || ''); if (/University|Draft Picks/i.test(set || '')) return true; if (PRO_LICENSE.test(T)) return false;
+  if (/COLLEGIATE|BOWMAN\s*(?:U\b|UNIVERSITY)|CHROME\s+U(?:NIVERSITY)?\b|DRAFT\s+PICKS|\bCLC\b/i.test(T)) return true;
+  return /\bNCAA\b/.test(T) && !/\b(?:NBA|NFL|MLB|NHL)\b/.test(T); // a pro card's bio can say "led the NCAA": then it needs no league word anywhere
+}
+const POS_WORDS = /\b(?:POINT|SHOOTING|SMALL|POWER|GUARD|FORWARD|CENTER|QUARTERBACK|RUNNING|WIDE|RECEIVER|TIGHT|END|BACK|LINEBACKER|CORNERBACK|SAFETY|DEFENSIVE|OFFENSIVE|LINEMAN|TACKLE|EDGE|KICKER|PUNTER|ATHLETE|PITCHER|CATCHER|INFIELDER|INFIELD|OUTFIELDER|OUTFIELD|SHORTSTOP|FIRST|SECOND|THIRD|BASE|BASEMAN|FRESHMAN|SOPHOMORE|JUNIOR|SENIOR|REDSHIRT|GRADUATE|GRAD|G|F|C|PG|SG|SF|PF|QB|RB|WR|TE|LB|DB|CB|S|DE|DT|DL|OL|OT|OG|ATH|K|P|SP|RP|OF|SS|IF|1B|2B|3B|LHP|RHP|FR|SO|JR|SR|RS)\b/g;
+/* the school: a full name (DUKE BLUE DEVILS), a two-word school (MICHIGAN STATE) or an abbreviation (UCLA) anywhere on a line;
+   a one-word school (DUKE) only when it's all that's left of the line after the position ("FORWARD • DUKE"), so "Jalen Brown" isn't Brown University */
+function collegeFrom(pool) {
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const l0 of pool) { const L = String(l0).replace(/[®™©*]/g, ' ').replace(/\s+/g, ' ').trim(); if (!L) continue; const U = L.toUpperCase();
+    for (const [k, full] of COLLEGE_KEYS) { const abbr = /^[A-Z&.]{3,5}$/.test(k); if (!abbr && !/\s/.test(k)) continue; if (k === 'CAL') continue;
+      if (new RegExp(`(?:^|[^A-Za-z])${esc(abbr ? k : k.toUpperCase())}(?![A-Za-z])`).test(abbr ? L : U)) return full; }
+    const rest = U.replace(/^(?:THE\s+)?UNIVERSITY\s+OF\s+/, '').replace(POS_WORDS, ' ').replace(/[^A-Z&.' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (rest) { const t = collegeTeam(rest); if (t) return t; } }
+  return '';
+}
+/* which sport, from the stat table and position words (PPG REB AST / YDS TD / AVG HR RBI) */
+function sportFromStats(text) {
+  const U = ' ' + String(text || '').toUpperCase() + ' '; const n = re => (U.match(re) || []).length;
+  const sc = { Basketball: n(/\b(?:PPG|RPG|APG|SPG|BPG|REB|AST|BLK|STL|FG%|FT%|3P%|3PT%?|FGM|FTA|GUARD|FORWARD|BASKETBALL)\b/g),
+    Football: n(/\b(?:YDS|TDS?|COMP|RUSH|REC|SACKS?|TACKLES|TKL|YPC|QBR|QUARTERBACK|RECEIVER|LINEBACKER|CORNERBACK|RUNNING BACK|FOOTBALL)\b/g),
+    Baseball: n(/\b(?:AVG|HR|RBI|ERA|OBP|SLG|WHIP|OPS|SB|IP|PITCHER|SHORTSTOP|OUTFIELDER|CATCHER|INFIELDER|LHP|RHP|BASEBALL)\b/g) };
+  const top = Object.entries(sc).sort((a, b) => b[1] - a[1]); return top[0][1] >= 2 && top[0][1] >= top[1][1] * 2 ? top[0][0] : '';
+}
+/* a college player who isn't in the pro lists yet: eBay listings of the same set confirm or fix the printed spelling */
+async function collegeNameCheck(f) {
+  if (!ebOn() || !f.player) return null; const { first, last } = splitName(f.player); if (!first || last.length < 3) return null;
+  try { const q = [f.set || 'Bowman University', f.player].join(' '); const r = await ebay('search', { q, mode: 'market' }); const votes = {};
+    for (const x of r.items || []) { const w = fold(String(x.title || '')).replace(/[^A-Za-z' \-]/g, ' ').split(/\s+/).filter(Boolean);
+      for (let i = 1; i < w.length; i++) { const L = nkey(w[i]), F = nkey(w[i - 1]); if (L.length < 3 || lev(L, last, 1) > 1 || lev(F, first, Math.max(1, Math.floor(first.length * 0.4))) > Math.max(1, Math.floor(first.length * 0.4))) continue;
+        const nm = titleCase(w[i - 1]) + ' ' + titleCase(w[i]) + (/^(jr|sr|ii|iii|iv)\.?$/i.test(w[i + 1] || '') ? ' ' + (w[i + 1].length <= 3 && /^[js]r/i.test(w[i + 1]) ? titleCase(w[i + 1].replace(/\.$/, '')) + '.' : w[i + 1].toUpperCase()) : ''); votes[nm] = (votes[nm] || 0) + 1; break; } }
+    const top = Object.entries(votes).sort((a, b) => b[1] - a[1]); if (!top.length || top[0][1] < 3 || (top[1] && top[0][1] < top[1][1] * 2)) return null;
+    return { full: top[0][0], conf: nkey(top[0][0]) === nkey(f.player) && top[0][1] >= 4 ? 'high' : 'medium' };
+  } catch (e) { return null; }
 }
 /* real player names (NBA, MLB incl. prospects, NFL) to fix misreads like "EFF HORNACEK" */
 const PN = { idx: null, loading: null };
@@ -4661,7 +4735,8 @@ FORMS.batchGo = async f => {
           const sp = parseCardBack(bt).sport || cf.sport || usualSport(); // nothing says which sport: the one most of your cards are
           let mf = matchPlayer(cf.cands, sp); const shaky = !m || conf === 'low';
           if (!mf && shaky) mf = looseName(ft, sp);
-          if (!mf && shaky) mf = lastNameOnly(ft, sp) || await lastNameLookup(ft, sp, cf); // the big surname on the front reads well; the small first name rarely does
+          const coll = parseCardBack(bt, ft).college; // a college player may share a surname with a pro (BOOZER): no surname-only guesses
+          if (!mf && shaky && !coll) mf = lastNameOnly(ft, sp) || await lastNameLookup(ft, sp, cf); // the big surname on the front reads well; the small first name rarely does
           if (m && mf && m.full === mf.full) conf = nameConfidence(m, true);
           else if (mf && (!m || mf.score < m.score)) { m = mf; conf = nameConfidence(mf, false); }
         }
@@ -4671,6 +4746,7 @@ FORMS.batchGo = async f => {
       if (!m && BS.opts.read && bt) { const mb = nameFromBio(bt, it.fields.sport); if (mb) { m = mb; conf = 'medium'; } } // header misread: find the name in the write-up
       if ((!m || conf === 'low') && BS.opts.read && bt) { const ml = looseName(bt, it.fields.sport); if (ml && (!m || ml.full !== m.full)) { m = ml; conf = 'medium'; } } // first name misread, last name exact: beats a shaky guess
       if (m) { it.fields.player = m.full; it.fields.matched = true; }
+      else if (it.fields.college && BS.opts.read && it.fields.player) { const v = await collegeNameCheck(it.fields); if (v) { it.fields.player = v.full; it.fields.matched = true; conf = v.conf; } } // not in the pro lists yet: the printed name, checked against eBay
       else if (it.fields.player && it.fields.player.split(' ').some(w => w.replace(/[^A-Za-z]/g, '').length < 3)) it.fields.player = ''; // a scrap like "Lu Mz" is worse than a blank
       it.fields.conf = BS.opts.read ? conf : '';
       if (BS.opts.read) {
@@ -5500,7 +5576,7 @@ function ebayListing(c, o) {
     if (c.cert) descriptors.push({ name: '27503', additionalInfo: String(c.cert).slice(0, 30) });
   } else { condition = 'USED_VERY_GOOD'; descriptors = [{ name: '40001', values: [EB_RAW[c.condition] || '400010'] }]; }
   const yr = String(c.year || ''); const y4 = (yr.match(/\d{4}/) || [''])[0];
-  const A = { 'Sport': [c.sport], 'Player/Athlete': [c.player], 'Manufacturer': [c.brand], 'Set': [c.set || c.brand], 'Season': [yr], 'Year Manufactured': [y4], 'Card Number': [c.number], 'Parallel/Variety': [c.parallel && c.parallel !== 'Base' ? c.parallel : ''], 'Team': [c.team], 'Card Name': [c.player], 'Type': ['Sports Trading Card'],
+  const A = { 'Sport': [c.sport], 'Player/Athlete': [c.player], 'Manufacturer': [c.brand], 'Set': [c.set || c.brand], 'Season': [yr], 'Year Manufactured': [y4], 'Card Number': [c.number], 'Parallel/Variety': [c.parallel && c.parallel !== 'Base' ? c.parallel : ''], 'Team': [c.team], 'League': [typeof isCollegeTeam === 'function' && isCollegeTeam(c.team) ? 'NCAA' : ''], 'Card Name': [c.player], 'Type': ['Sports Trading Card'],
     'Autographed': [c.auto ? 'Yes' : 'No'], 'Features': [[c.rookie && 'Rookie', c.serial && 'Serial Numbered', c.patch && 'Patch'].filter(Boolean).join(', ')], 'Print Run': [c.serial ? String(c.serial).replace(/^.*\//, '') : ''],
     'Graded': [c.graded ? 'Yes' : 'No'], 'Professional Grader': [c.graded ? c.gradeCo : ''], 'Grade': [c.graded ? String(c.grade) : ''], 'Certification Number': [c.graded ? c.cert : ''] };
   const aspects = {}; for (const [k, v] of Object.entries(A)) { const vals = v.filter(x => x !== undefined && x !== null && String(x).trim()); if (vals.length) aspects[k] = vals.map(String); }
@@ -7741,6 +7817,9 @@ document.addEventListener('pointerout', e => { if (SCRUB.down || !SCRUB.svg || e
 const SELM = { on: false, ids: new Set() };
 { const vi = V.inv; V.inv = (...a) => Promise.resolve(vi(...a)).then(h => h.replace('<button type="button" class="only-phone" data-act="moreFilters"', () => `<button type="button" data-act="selMode" aria-pressed="${SELM.on}">${SELM.on ? '✓ Selecting' : '☐ Select'}</button><button type="button" class="only-phone" data-act="moreFilters"`)); V.inv.after = vi.after; }
 { const ui = updateInv; updateInv = (...a) => { const r = ui(...a); selPaint(); return r; }; }
+// switch select mode on or off in place: no re-render, so you stay where you've scrolled to
+function selRefresh() { const y = scrollY; const chip = $('.chiprow [data-act=selMode]'); if (chip) { chip.setAttribute('aria-pressed', String(SELM.on)); chip.textContent = SELM.on ? '✓ Selecting' : '☐ Select'; }
+  if (!$('#inv-results')) return route(); selPaint(); if (scrollY !== y) scrollTo(0, y); }
 function selPaint() {
   const box = $('#inv-results');
   // a floating Select button that stays on screen wherever you've scrolled to
@@ -7763,7 +7842,7 @@ function swApply(idx) { const tiles = selTiles(); const a = Math.min(SW.startIdx
 function swAt(x, y) { const el = document.elementFromPoint(x, y); const t = el && el.closest('#inv-results [data-sel-id]'); return t ? selTiles().indexOf(t) : -1; }
 function swScroll() { if (!SW.on) return; const h = innerHeight, edge = 70; const v = SW.py < edge ? -(edge - SW.py) / 3 : SW.py > h - edge - 80 ? (SW.py - (h - edge - 80)) / 3 : 0; if (v) { scrollBy(0, v); const i = swAt(SW.px, SW.py); if (i >= 0) swApply(i); } SW.raf = requestAnimationFrame(swScroll); }
 document.addEventListener('touchstart', e => { const t = e.target.closest && e.target.closest('#inv-results [data-sel-id]'); if (!t || e.touches.length > 1) return; const p = e.touches[0]; SW.x0 = p.clientX; SW.y0 = p.clientY; SW.held = false; SW.start = t;
-  clearTimeout(SW.timer); if (!SELM.on) SW.timer = setTimeout(() => { SW.held = true; SELM.on = true; SELM.ids = new Set([t.dataset.selId]); if (navigator.vibrate) navigator.vibrate(15); route(); }, 550); }, { passive: true });
+  clearTimeout(SW.timer); if (!SELM.on) SW.timer = setTimeout(() => { SW.held = true; SELM.on = true; SELM.ids = new Set([t.dataset.selId]); if (navigator.vibrate) navigator.vibrate(15); selRefresh(); }, 550); }, { passive: true });
 document.addEventListener('touchmove', e => { const p = e.touches[0]; if (!p) return; const dx = p.clientX - SW.x0, dy = p.clientY - SW.y0;
   if (Math.hypot(dx, dy) > 8) clearTimeout(SW.timer);
   if (!SW.on && SELM.on && SW.start && document.contains(SW.start) && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2) { SW.on = true; SW.startIdx = selTiles().indexOf(SW.start); SW.snap = new Set(SELM.ids); SW.target = !SELM.ids.has(SW.start.dataset.selId); SW.raf = requestAnimationFrame(swScroll); }
@@ -7784,7 +7863,7 @@ document.addEventListener('click', e => {
 }, true);
 window.addEventListener('hashchange', () => { if (!location.hash.startsWith('#/inv')) { const fb = $('#sel-fab'); if (fb) fb.remove(); } if (!location.hash.startsWith('#/inv') && SELM.on) { SELM.on = false; SELM.ids.clear(); const b = $('#sel-bar'); if (b) b.remove(); } });
 Object.assign(A, {
-  selMode: () => { SELM.on = !SELM.on; if (!SELM.on) SELM.ids.clear(); route(); },
+  selMode: () => { SELM.on = !SELM.on; if (!SELM.on) SELM.ids.clear(); selRefresh(); },
   selAll: () => { filterCards().forEach(c => SELM.ids.add(c.id)); selPaint(); },
   selNone: () => { SELM.ids.clear(); selPaint(); },
   bulkEdit: () => {
