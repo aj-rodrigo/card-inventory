@@ -7884,7 +7884,7 @@ function selPaint() {
   let bar = $('#sel-bar'); if (!SELM.on) { if (bar) bar.remove(); return; }
   if (!bar) { bar = document.createElement('div'); bar.id = 'sel-bar'; document.body.appendChild(bar); }
   const n = SELM.ids.size;
-  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massStraighten">Straighten</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="rerdChoose">Reread</button>' : ''}${n ? `<button class="btn sm" type="button" data-act="massTrash">Delete ${n}</button>` : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
+  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massStraighten">Straighten</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="rerdChoose">Reread</button>' : ''}${n > 1 ? '<button class="btn sm" type="button" data-act="selLot">Make eBay lot</button>' : ''}${n ? `<button class="btn sm" type="button" data-act="massTrash">Delete ${n}</button>` : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
 }
 /* swipe to select: while selecting, drag sideways from a card and keep going across and down; every card from the first to the one under
    your finger is set the same way (ticked, or unticked if the first one was ticked), like Photos. Up/down without the sideways start still scrolls.
@@ -8257,6 +8257,19 @@ FORMS.dupMerge = async f => {
     for (const u of undo.reverse()) { if (u.card) { const i = S.cards.findIndex(c => c.id === u.card.id); if (i >= 0) S.cards[i] = u.card; await save('cards', u.card, { quiet: true }); } else if (u.txn) { const i = S.txns.findIndex(t => t.id === u.txn.id); if (i >= 0) S.txns[i] = u.txn; await save('txns', u.txn, { quiet: true }); } }
     onChange('cards'); toast('Merge undone'); } });
 };
+
+/* Make eBay lot from the selection: straight into the lot form (title, price, photos, aspects are filled in) */
+A.selLot = async el => {
+  if (!ebOn()) return toast('Turn on eBay in Settings first');
+  const sel = [...SELM.ids].map(cardById).filter(c => c && live(c)); const ok = new Set(lotCards().map(c => c.id)); const cards = sel.filter(c => ok.has(c.id)); const skip = sel.filter(c => !ok.has(c.id));
+  const why = c => c.status !== 'in_stock' ? (STATUS[c.status] || c.status).toLowerCase() : !c.front ? 'no front photo' : 'already on eBay';
+  if (cards.length < 2) return toast(`A lot needs at least 2 in-stock cards with a front photo that aren't listed yet${skip.length ? `. Left out: ${skip.slice(0, 3).map(c => `${c.code} (${why(c)})`).join(', ')}` : ''}`);
+  const t = el.textContent; el.disabled = true; el.textContent = 'Checking eBay…';
+  let info; try { info = await lotInfo(); } catch (e) { el.disabled = false; el.textContent = t; return toast(e.message); }
+  el.disabled = false; el.textContent = t; openLotForm(cards, info);
+  if (skip.length) { const f = $('#modal-root form[data-form="lotList"]'); if (f) f.querySelector('.eb-mode').insertAdjacentHTML('afterend', `<div class="warn">Left out ${skip.length} card${skip.length === 1 ? '' : 's'}: ${skip.slice(0, 6).map(c => `${esc(c.code)} (${esc(why(c))})`).join(', ')}${skip.length > 6 ? '…' : ''}</div>`); }
+};
+{ const ll = FORMS.lotList; FORMS.lotList = async f => { const r = await ll(f); if (!$('#modal-root form[data-form="lotList"]') && SELM.on) { SELM.on = false; SELM.ids.clear(); if (typeof selRefresh === 'function') selRefresh(); } return r; }; } // posted: leave select mode
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
 async function loadDemo() {
