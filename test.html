@@ -642,7 +642,7 @@ async function fileGet(id) {
 }
 async function fileURL(id) {
   if (urlCache.has(id)) return urlCache.get(id);
-  const r = await fileGet(id);
+  const r = typeof fileGetOrPull === 'function' ? await fileGetOrPull(id) : await fileGet(id);
   if (!r) return null;
   const u = URL.createObjectURL(r.blob);
   urlCache.set(id, u);
@@ -867,6 +867,13 @@ async function restoreBackup(file) {
     onChange('restore');
     toast(`Restored. ${changed} records added or updated.`);
   } catch (e) { toast('That file is not a Dugout backup: ' + e.message); }
+}
+
+/* a photo this device doesn't have yet (added on the other device, sync not finished): fetch just that one from the sync repo */
+const pullTried = new Set();
+async function fileGetOrPull(id) {
+  const r = await fileGet(id); if (r || !id || !syncCfg() || pullTried.has(id) || !navigator.onLine) return r; pullTried.add(id);
+  try { const res = await gh('files/' + id, { raw: true }); if (!res.ok) return null; const blob = await res.blob(); await fileSave(blob, '', id); return await fileGet(id); } catch (e) { return null; }
 }
 
 /* Dugout core: constants, helpers, shell, router, home, inventory, card page */
@@ -1241,6 +1248,7 @@ V.inv = () => {
     <button class="btn" data-act="batch" type="button">Bulk add</button>
     <button class="btn pri" data-act="addCard" type="button">+ Add card</button>${addMenuBtn()}</div></div>
   <div class="chiprow" role="group" aria-label="Quick filters">${chip('', 'All')}${chip('graded', 'Graded')}${chip('rookie', 'Rookies')}${chip('auto', 'Autos')}${chip('listed', 'Listed')}${chip('needprice', 'Needs price')}${F.quick && !['graded', 'rookie', 'auto', 'listed', 'needprice'].includes(F.quick) ? chip(F.quick, { listedlong: 'Listed 3+ weeks', grading: 'At grading', nophoto: 'No photo' }[F.quick]) : ''}
+    <button type="button" data-act="findDups">⧉ Find duplicates</button>
     <button type="button" data-act="invSide" aria-pressed="${S.settings.invSide === 'back'}">${S.settings.invSide === 'back' ? '↺ Showing backs' : '↻ Show backs'}</button>
     <button type="button" class="only-phone" data-act="moreFilters" aria-expanded="${INVUI.more}">⚙ More filters${more ? ' •' : ''}</button></div>
   <section class="panel inv-filters${INVUI.more ? ' open' : ''}">
@@ -1923,7 +1931,7 @@ A.taxExport = async () => {
   const recs = S.receipts.filter(r => !r.purged && (r.date || '').startsWith(y));
   const rows = [['Date', 'Amount', 'Note', 'Linked cards', 'Pickup', 'File']];
   for (const r of recs) {
-    const f = await fileGet(r.fileId); const ext = r.fileType === 'application/pdf' ? 'pdf' : 'jpg';
+    const f = await fileGetOrPull(r.fileId); const ext = r.fileType === 'application/pdf' ? 'pdf' : 'jpg';
     const name = `receipts/${r.date}_${String(r.note || 'receipt').replace(/[^\w-]+/g, '_').slice(0, 40)}_${r.id.slice(-4)}.${ext}`;
     if (f) zip.file(name, f.blob);
     rows.push([r.date, r.amount, r.note, (r.cardIds || []).map(id => (cardById(id) || {}).code).join(' '), (pickupById(r.pickupId) || {}).location, f ? name : 'missing on this device']);
@@ -3469,7 +3477,7 @@ async function openStraighten(cardId, side = 'front', keep = false) {
   if (!keep) ST.pending = {}; // corners adjusted on the other side, waiting to be saved together
   const c = cardById(cardId); ST.card = c; ST.side = side;
   const fileId = c[side + 'Orig'] || c[side]; if (!fileId) return toast('Add a ' + side + ' photo first');
-  const f = await fileGet(fileId); if (!f) return toast('Photo missing on this device');
+  const f = await fileGetOrPull(fileId); if (!f) return toast('Photo missing on this device');
   ST.bmp = await bitmapOf(f.blob); ST.src = bitmapPixels(ST.bmp, 2400);
   if (ST.pending && ST.pending[side]) ST.quad = ST.pending[side].quad.map(p => p.slice());
   else if (c[side + 'Quad'] && c[side + 'Orig']) ST.quad = c[side + 'Quad'].map(p => p.slice());
@@ -5330,12 +5338,12 @@ async function openSlabRead(id) {
   openModal(`<div>${mhead('Reading the slab')}<div class="calc"><div><span id="sl-step">Finding the card and label</span><b id="sl-pct"></b></div></div></div>`, { narrow: true });
   let res = null;
   try {
-    const rec = await fileGet(fid); const blob = rec && rec.blob; if (!blob) throw new Error('photo missing');
+    const rec = await fileGetOrPull(fid); const blob = rec && rec.blob; if (!blob) throw new Error('photo missing');
     await loadPlayerNames().catch(() => {});
     res = await processSlabPhoto(blob, { orig: blob, onProgress: (p, label) => { const a = $('#sl-step'), b = $('#sl-pct'); if (a) a.textContent = label === 'Reading text' ? 'Reading the label' : label; if (b && p !== null) b.textContent = Math.round(p * 100) + '%'; } });
   } catch (e) { console.warn(e); }
   const bid = c.backOrig || c.back; // the back of the slab: its own label back and the card's back
-  if (res && res.label && bid) { try { const a = $('#sl-step'); if (a) a.textContent = 'Finding the back label'; const rec = await fileGet(bid); if (rec && rec.blob) { const b = await processSlabPhoto(rec.blob, { orig: rec.blob, read: false, labelAt: mirrorLabel(res.labelRect) || SLAB_LABEL_PSA }); if (b && b.label) SL.back = b; } } catch (e) { console.warn(e); } }
+  if (res && res.label && bid) { try { const a = $('#sl-step'); if (a) a.textContent = 'Finding the back label'; const rec = await fileGetOrPull(bid); if (rec && rec.blob) { const b = await processSlabPhoto(rec.blob, { orig: rec.blob, read: false, labelAt: mirrorLabel(res.labelRect) || SLAB_LABEL_PSA }); if (b && b.label) SL.back = b; } } catch (e) { console.warn(e); } }
   const sheet = $('#modal-root .sheet'); if (!sheet) return;
   if (!res || !res.label) { sheet.innerHTML = `${mhead('Couldn\'t find the label')}<p>Dugout couldn't find a grading label above the card in this photo. Use a straight-on photo or scan of the whole slab, with the label at the top.</p><div class="sheet-foot"><button class="btn" data-act="close" type="button">Close</button></div>`; return; }
   SL.res = res; renderSlabRead();
@@ -5561,7 +5569,7 @@ async function listingPhotos(c, { studio = true } = {}) {
   const p = (async () => {
     const slab = !!c.graded; const out = { studio: null, photos: [] };
     for (const side of ['front', 'back']) {
-      const id = c[side + 'Orig'] || c[side]; if (!id) continue; const rec = await fileGet(id); if (!rec) continue;
+      const id = c[side + 'Orig'] || c[side]; if (!id) continue; const rec = await fileGetOrPull(id); if (!rec) continue;
       let { bmp, quad, whole } = await locate(rec.blob, { slab, quad: slab ? null : c[side + 'Quad'], cropped: !c[side + 'Orig'] });
       // turn the photo the way the card reads: the turn made in Straighten (the order of its corners) plus any turn set in the listing form
       const turn = ((quarterTurn(c[side + 'Quad']) + (+c[side + 'Rot'] || 0)) % 360 + 360) % 360;
@@ -5672,7 +5680,7 @@ async function ebay(op, body = {}) {
   if (j.env !== EB_ENV) throw new Error(EB_LIVE ? 'That worker is not your live eBay worker (it says ' + (j.env || 'nothing') + '). Use the dugout-ebay-live address.' : 'Your worker is set to live eBay. This test build only talks to the sandbox.');
   return j;
 }
-const b64OfFile = async id => { const rec = await fileGet(id); if (!rec) return null; const buf = new Uint8Array(await rec.blob.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000)); return { base64: btoa(s), type: rec.blob.type || 'image/jpeg', name: rec.name || 'card.jpg' }; };
+const b64OfFile = async id => { const rec = await fileGetOrPull(id); if (!rec) return null; const buf = new Uint8Array(await rec.blob.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000)); return { base64: btoa(s), type: rec.blob.type || 'image/jpeg', name: rec.name || 'card.jpg' }; };
 
 /* ---------- the simulator: a pretend eBay that behaves like the real API's results ---------- */
 const EBSIM = {
@@ -6185,7 +6193,7 @@ FORMS.lotList = async f => {
     const sku = 'LOT-' + Date.now().toString(36).toUpperCase();
     const desc = `<p><b>${esc(title)}</b></p><p>${cards.length} cards, all pictured:</p><ul>${cards.map(c => `<li>${esc(cardFull(c))}</li>`).join('')}</ul>`;
     const urls = []; const up = async b => { if (urls.length >= 24) return; const r = await ebUploadPhoto(b, `lot-${urls.length + 1}.jpg`); urls.push(r.imageUrl); };
-    const fronts = []; for (const c of cards) { const rec = await fileGet(c.front); if (rec) fronts.push(rec.blob); }
+    const fronts = []; for (const c of cards) { const rec = await fileGetOrPull(c.front); if (rec) fronts.push(rec.blob); }
     const grid = await studioGrid(fronts); if (grid) await up(await canvasBlob(grid));
     btn.textContent = 'Uploading photos…';
     const sides = []; for (const c of cards) { try { const P = await listingPhotos(c, { studio: false }); sides.push(P.photos.filter(x => !/corners/.test(x.what))); } catch (e) { sides.push([]); } }
@@ -7984,7 +7992,7 @@ A.lotPhoto = async el => {
   if (cards.length < 2) return toast(`Pick at least 2 cards that have a ${side} photo`);
   if (el && !el.closest('.sheet-foot')) { el.disabled = true; el.textContent = 'Making photo…'; }
   try {
-    const imgs = []; for (const c of cards) { const rec = await fileGet(c[side]); if (rec) imgs.push(rec.blob); } // just the card: its straightened photo, no loader or background
+    const imgs = []; for (const c of cards) { const rec = await fileGetOrPull(c[side]); if (rec) imgs.push(rec.blob); } // just the card: its straightened photo, no loader or background
     const cv = await studioGrid(imgs); if (!cv) throw new Error('No photos to use');
     const blob = await canvasBlob(cv); const url = URL.createObjectURL(blob); const name = `lot-${cards.length}-cards-${side}s.jpg`;
     const missing = picked.length - cards.length; const other = side === 'front' ? 'back' : 'front';
@@ -8032,7 +8040,7 @@ FORMS.massGo = async f => {
   let done = 0; const total = cards.length * sides.length;
   for (const c of cards) for (const side of sides) {
     done++; if (sheet) sheet.innerHTML = `${mhead('Straightening')}<p class="muted">Finding corners: ${done} of ${total}…</p>`; await new Promise(r => setTimeout(r, 10));
-    const id = c[side + 'Orig'] || c[side]; if (!id) continue; const rec = await fileGet(id); if (!rec) continue;
+    const id = c[side + 'Orig'] || c[side]; if (!id) continue; const rec = await fileGetOrPull(id); if (!rec) continue;
     try { const bmp = await bitmapOf(rec.blob); const r = autoCorners(bmp, loader, c[side + 'CardW'], c[side + 'Orig'] && c[side + 'Quad']); if (!r) { MS.items.push({ c, side, fail: true }); continue; }
       const src = bitmapPixels(bmp, 2400); const blob = await canvasBlob(warpCard(src, r.quad)); bmp.close && bmp.close();
       MS.items.push({ c, side, blob, quad: r.quad, sure: r.sure, url: URL.createObjectURL(blob), how: r.how }); } catch (e) { MS.items.push({ c, side, fail: true }); } }
@@ -8040,7 +8048,7 @@ FORMS.massGo = async f => {
   if (!loader) { const qs = MS.items.filter(x => !x.fail && x.sure && x.how === 'outline').map(x => { const q = x.quad; return Math.min(Math.hypot(q[1][0] - q[0][0], q[1][1] - q[0][1]), Math.hypot(q[3][0] - q[0][0], q[3][1] - q[0][1])); }).sort((a, b) => a - b);
     const cw = qs.length >= 2 ? qs[qs.length >> 1] : 0;
     if (cw) for (const x of MS.items) { if (!x.fail && x.sure) continue; if (sheet) sheet.innerHTML = `${mhead('Straightening')}<p class="muted">Taking a closer look at the hard ones…</p>`; await new Promise(r => setTimeout(r, 10));
-      try { const id = x.c[x.side + 'Orig'] || x.c[x.side]; const rec = await fileGet(id); const bmp = await bitmapOf(rec.blob); const P = plainCards(bmp, { res: 700, single: true, cardW: cw });
+      try { const id = x.c[x.side + 'Orig'] || x.c[x.side]; const rec = await fileGetOrPull(id); const bmp = await bitmapOf(rec.blob); const P = plainCards(bmp, { res: 700, single: true, cardW: cw });
         if (P.cards.length) { const q = P.cards[0].quad; const src = bitmapPixels(bmp, 2400); const blob = await canvasBlob(warpCard(src, q)); if (x.url) URL.revokeObjectURL(x.url); Object.assign(x, { fail: false, blob, quad: q, sure: P.ok, url: URL.createObjectURL(blob), how: 'sized' }); }
         bmp.close && bmp.close(); } catch (e) {} } }
   massReview();
@@ -8080,7 +8088,7 @@ async function massFromSheets(cards, sides, loader, files, sheetEl) {
       for (const c of F.cards) { let q = c.quad; if (loader) { const r = cardInBox(sh.bmp, q, cw ? { width: cw, grow: 0.22 } : { grow: 0.22 }); if (r && r.score >= 0.6) q = r.quad; }
         const im = await cardImages(sh, q); found.push({ im, vec: await thumbVec(im.warped, side === 'back'), by: F.by, si, c }); } sheetsBy[side] = sheetsBy[side] || []; sheetsBy[side][si] = { sh, cards: F.cards, found: found.filter(x => x.si === si) }; }
     say(`Matching ${side}s to your cards…`);
-    const want = []; for (const c of cards) { const id = c[side]; if (!id) continue; const rec = await fileGet(id); if (!rec) continue; want.push({ c, vec: await thumbVec(rec.blob, side === 'back') }); }
+    const want = []; for (const c of cards) { const id = c[side]; if (!id) continue; const rec = await fileGetOrPull(id); if (!rec) continue; want.push({ c, vec: await thumbVec(rec.blob, side === 'back') }); }
     const usedW = new Set(), usedF = new Set(); const put = (i, j, dd, sure) => { usedW.add(i); usedF.add(j); const f = found[j]; if (side === 'front') frontOf.set(want[i].c.id, f);
       MS.items.push({ c: want[i].c, side, blob: f.im.warped, orig: f.im.orig, quad: f.im.quad, sure, url: URL.createObjectURL(f.im.warped), how: 'sheet', dd, fj: j }); };
     // backs: when the front sheets came too, a back sits in the same spot as its front (flipped card by card), so pair them like Bulk add does
@@ -8109,26 +8117,28 @@ A.massTrash = async el => {
 /* Reread: read the selected cards' saved photos again (player, team, year, set, number…) and show what changed before saving */
 const RR = { stop: false, items: [] };
 const RR_FIELDS = [['player', 'Player'], ['team', 'Team'], ['sport', 'Sport'], ['year', 'Year'], ['brand', 'Brand'], ['set', 'Set'], ['number', 'Card #'], ['serial', 'Serial'], ['rookie', 'Rookie'], ['auto', 'Auto']];
-/* Reread asks first: everything, or just the player names (quicker, and you can type over any that are still wrong) */
+/* Reread asks first: everything, just the player names, or just the card numbers (quicker, and you can type over any that are still wrong) */
 A.rerdChoose = el => { const one = el && el.dataset.id; const n = one ? 1 : SELM.ids.size; if (!n) return toast('Pick some cards first');
   openModal(`<div>${mhead(n === 1 ? 'Reread this card' : `Reread ${n} cards`)}<p class="muted">Dugout reads the saved photos again and shows you what changed. Nothing is saved until you check it.</p>
     <div style="display:flex;flex-direction:column;gap:8px"><button class="btn pri" type="button" data-act="massReread" data-mode="names"${one ? ` data-id="${esc(one)}"` : ''}>Player names only</button><small class="muted">Quicker. Every card is listed with a name box, so you can also type over any name that's still wrong.</small>
+    <button class="btn pri" type="button" data-act="massReread" data-mode="numbers"${one ? ` data-id="${esc(one)}"` : ''}>Card numbers only</button><small class="muted">Same idea for card numbers: every card gets a number box you can type over.</small>
     <button class="btn" type="button" data-act="massReread" data-mode="all"${one ? ` data-id="${esc(one)}"` : ''}>Everything</button><small class="muted">Player, team, sport, year, brand, set, card #, serial, rookie and auto.</small></div>
     <div class="sheet-foot"><button class="btn" data-act="close" type="button">Cancel</button></div></div>`); };
 A.massReread = async el => {
-  const one = el && el.dataset.id; RR.names = !!(el && el.dataset.mode === 'names'); RR.one = !!one;
+  const one = el && el.dataset.id; RR.field = el && el.dataset.mode === 'names' ? 'player' : el && el.dataset.mode === 'numbers' ? 'number' : null; RR.names = !!RR.field; RR.one = !!one;
   const cards = (one ? [one] : [...SELM.ids]).map(cardById).filter(c => c && !c.purged && (c.front || c.back)); if (!cards.length) return toast('Pick some cards with photos');
   RR.stop = false; RR.items = []; RR.fail = [];
-  openModal(`<div>${mhead(RR.names ? 'Rereading player names' : 'Rereading cards')}<div id="rr-prog"></div><div class="sheet-foot"><button class="btn" type="button" data-act="rrStop">Stop and review</button></div></div>`);
+  openModal(`<div>${mhead(RR.field === 'player' ? 'Rereading player names' : RR.field === 'number' ? 'Rereading card numbers' : 'Rereading cards')}<div id="rr-prog"></div><div class="sheet-foot"><button class="btn" type="button" data-act="rrStop">Stop and review</button></div></div>`);
   const show = (i, p) => { const el = $('#rr-prog'); if (!el) return; const f = (i + Math.min(1, p || 0)) / cards.length;
     el.innerHTML = `<div class="calc"><div><span>Reading card ${i + 1} of ${cards.length}</span><b>${Math.round(f * 100)}%</b></div></div><div style="height:8px;background:var(--line);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(2, f * 100)}%;background:var(--acc)"></div></div><small class="muted">Keep this screen open. Each card takes a few seconds. Nothing is saved until you review the changes.</small>`; };
   show(0, 0); await loadPlayerNames();
   for (let i = 0; i < cards.length && !RR.stop; i++) { const c = cards[i];
-    try { const fr = c.front ? await fileGet(c.front) : null, bk = c.back ? await fileGet(c.back) : null; const fb = fr && fr.blob, bb = bk && bk.blob; if (!fb && !bb) { RR.fail.push({ c, msg: 'its photos aren\'t on this device' }); continue; }
+    try { const fr = c.front ? await fileGetOrPull(c.front) : null, bk = c.back ? await fileGetOrPull(c.back) : null; const fb = fr && fr.blob, bb = bk && bk.blob; if (!fb && !bb) { RR.fail.push({ c, msg: syncCfg() ? 'its photos aren\'t on this device or in your sync yet. Open Dugout on the device you added it with and tap Sync' : 'its photos aren\'t on this device' }); continue; }
       const it = { f: { warped: fb || bb }, b: fb && bb ? { warped: bb } : null };
-      await readOne(it, p => show(i, p), { read: true, serial: !RR.names, namesOnly: RR.names });
+      await readOne(it, p => show(i, p), { read: true, serial: !RR.names, namesOnly: RR.field === 'player' });
       const f = it.fields || {}; const diffs = [];
-      if (RR.names) { RR.items.push({ c, read: String(f.player || '').trim(), conf: f.conf, college: !!f.college, diffs: [] }); continue; }
+      if (RR.field === 'player') { RR.items.push({ c, read: String(f.player || '').trim(), conf: f.conf, college: !!f.college, diffs: [] }); continue; }
+      if (RR.field === 'number') { RR.items.push({ c, read: String(f.number || '').trim(), conf: !f.number ? 'low' : !f.numberFrom ? 'high' : f.numberFrom === 'ebay' ? 'medium' : 'low', diffs: [] }); continue; }
       for (const [k, label] of RR_FIELDS) { let nv = f[k], ov = c[k];
         if (k === 'rookie' || k === 'auto') { if (nv && !ov) diffs.push({ k, label, ov: 'No', nv: 'Yes', val: true, on: true }); continue; }
         nv = String(nv || '').trim(); ov = String(ov || '').trim(); if (!nv || nv === ov) continue;
@@ -8168,31 +8178,85 @@ const rrFailNote = () => (RR.fail || []).length ? `<div class="warn" style="marg
 const surnameGuess = (saved, read, college) => { if (!college || !saved || !read) return false; const a = splitName(saved), b = splitName(read); return a.last === b.last && b.first.length >= 3 && a.first !== b.first; };
 const knownName = n => { const m = n && matchPlayer([n], ''); return !!(m && m.exact && nkey(m.full) === nkey(n)); };
 async function rrNames(sheet, total) {
-  const names = uniq([...S.cards.filter(live).map(c => c.player), ...RR.items.map(x => x.read)].filter(Boolean)).sort();
-  const lab = { high: 'Confirmed', medium: 'Check', low: 'Not sure' };
+  const F = RR.field || 'player', num = F === 'number';
+  const names = num ? [] : uniq([...S.cards.filter(live).map(c => c.player), ...RR.items.map(x => x.read)].filter(Boolean)).sort();
+  const lab = num ? { high: 'Read clearly', medium: 'From eBay listings', low: 'Not sure' } : { high: 'Confirmed', medium: 'Check', low: 'Not sure' };
   const rows = await Promise.all(RR.items.map(async ({ c, read, conf, college }, j) => { const u = c.front ? await fileURL(c.front) : c.back ? await fileURL(c.back) : '';
-    const differs = read && read !== (c.player || ''); const pre = differs && (conf === 'high' || !c.player || (!knownName(c.player) && (conf === 'medium' || knownName(read))) || surnameGuess(c.player, read, college)) ? read : (c.player || ''); /* a saved name that isn't a real player gives way to a decent read */
+    const saved = String(c[F] || ''); const differs = read && read !== saved; const pre = differs && (conf === 'high' || !saved || (!num && ((!knownName(saved) && (conf === 'medium' || knownName(read))) || surnameGuess(saved, read, college)))) ? read : saved; /* a saved name that isn't a real player gives way to a decent read */
     return `<fieldset class="bs-item"><legend>${esc(c.code || '')}</legend><div style="display:flex;gap:10px;align-items:flex-start">${u ? `<img src="${u}" alt="" style="width:64px;border-radius:4px;flex:none">` : ''}<div style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:0">
-      <input name="rn_${j}" value="${esc(pre)}" list="dl-rrn" aria-label="Player for ${esc(c.code || '')}" class="${pre !== (c.player || '') ? 'bs-mid' : ''}">
-      <small class="muted">Saved: ${esc(c.player || '(blank)')}${read ? ` · Read: <b>${esc(read)}</b> (${lab[conf] || 'Not sure'})` : ' · Couldn\'t read a name'}</small>
-      ${differs ? `<div class="row" style="gap:6px"><button class="btn sm" type="button" data-act="rrUse" data-j="${j}" data-v="${esc(read)}">Use ${esc(read)}</button><button class="btn sm ghost" type="button" data-act="rrUse" data-j="${j}" data-v="${esc(c.player || '')}">Keep saved</button></div>` : ''}</div></div></fieldset>`; }));
-  const ch = RR.items.filter(x => x.read && x.read !== (x.c.player || '')).length;
-  sheet.innerHTML = `<form data-form="rrNamesSave">${mhead('Player names')}
-    ${rrFailNote()}<p class="muted">Read ${RR.items.length} of ${total} card${total === 1 ? '' : 's'}. ${ch ? `${ch} read differently from what's saved; the highlighted boxes will change.` : 'Every read matched what\'s saved.'} Type over any name that's wrong, then save.</p>
+      <input name="rn_${j}" value="${esc(pre)}" ${num ? 'inputmode="text" autocapitalize="characters"' : 'list="dl-rrn"'} aria-label="${num ? 'Card number' : 'Player'} for ${esc(c.code || '')}" class="${pre !== saved ? 'bs-mid' : ''}">
+      <small class="muted">${num && c.player ? esc(c.player) + ' · ' : ''}Saved: ${esc(saved || '(blank)')}${read ? ` · Read: <b>${esc(read)}</b> (${lab[conf] || 'Not sure'})` : ` · Couldn't read ${num ? 'a number' : 'a name'}`}</small>
+      ${differs ? `<div class="row" style="gap:6px"><button class="btn sm" type="button" data-act="rrUse" data-j="${j}" data-v="${esc(read)}">Use ${esc(read)}</button><button class="btn sm ghost" type="button" data-act="rrUse" data-j="${j}" data-v="${esc(saved)}">Keep saved</button></div>` : ''}</div></div></fieldset>`; }));
+  const ch = RR.items.filter(x => x.read && x.read !== String(x.c[F] || '')).length;
+  sheet.innerHTML = `<form data-form="rrNamesSave">${mhead(num ? 'Card numbers' : 'Player names')}
+    ${rrFailNote()}<p class="muted">Read ${RR.items.length} of ${total} card${total === 1 ? '' : 's'}. ${ch ? `${ch} read differently from what's saved; the highlighted boxes will change.` : 'Every read matched what\'s saved.'} Type over any ${num ? 'number' : 'name'} that's wrong, then save.</p>
     <datalist id="dl-rrn">${names.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
-    <div style="display:flex;flex-direction:column;gap:8px">${rows.join('')}</div>${mfoot('Save names')}</form>`;
+    <div style="display:flex;flex-direction:column;gap:8px">${rows.join('')}</div>${mfoot(num ? 'Save numbers' : 'Save names')}</form>`;
 }
-A.rrUse = el => { const i = el.closest('form').querySelector(`[name="rn_${el.dataset.j}"]`); if (i) { i.value = el.dataset.v; i.classList.toggle('bs-mid', el.dataset.v !== (RR.items[+el.dataset.j].c.player || '')); } };
+A.rrUse = el => { const i = el.closest('form').querySelector(`[name="rn_${el.dataset.j}"]`); if (i) { i.value = el.dataset.v; i.classList.toggle('bs-mid', el.dataset.v !== String(RR.items[+el.dataset.j].c[RR.field || 'player'] || '')); } };
 FORMS.rrNamesSave = async f => {
   const fd = new FormData(f); let n = 0;
-  for (const [j, { c }] of RR.items.entries()) { const v = String(fd.get('rn_' + j) || '').replace(/\s+/g, ' ').trim(); const old = c.player || '';
-    if (v === old) continue; c.player = v; await save('cards', c, { quiet: true }); await logTxn({ cardId: c.id, type: 'edit', date: today(), changes: [{ f: 'player', from: old, to: v }], note: 'Reread names' }); n++; }
+  const F = RR.field || 'player';
+  for (const [j, { c }] of RR.items.entries()) { let v = String(fd.get('rn_' + j) || '').replace(/\s+/g, ' ').trim(); if (F === 'number') v = v.replace(/^#\s*/, ''); const old = String(c[F] || '');
+    if (v === old) continue; c[F] = v; await save('cards', c, { quiet: true }); await logTxn({ cardId: c.id, type: 'edit', date: today(), changes: [{ f: F, from: old, to: v }], note: F === 'number' ? 'Reread card numbers' : 'Reread names' }); n++; }
   rrDone(n);
 };
 /* Fronts / backs in the card grid, switched in place so the list doesn't jump */
 A.invSide = async el => { S.settings.invSide = S.settings.invSide === 'back' ? 'front' : 'back'; S.settings.updatedAt = nowISO(); try { await idb.put('meta', S.settings); } catch (e) {}
   const b = S.settings.invSide === 'back'; el.setAttribute('aria-pressed', b); el.textContent = b ? '↺ Showing backs' : '↻ Show backs'; const y = scrollY; updateInv(); scrollTo(0, y);
   if (b && !S.cards.some(c => live(c) && c.back)) toast('None of these cards have a back photo yet'); };
+
+/* Find duplicates: the same card saved more than once becomes one card with a bigger quantity.
+   Same = player, year, brand, set, card #, parallel, serial, auto/patch and grade all match. Only in-stock cards that aren't live on eBay. */
+const DUP = { groups: [] };
+const dupKey2 = c => [nkey(c.player || ''), c.year, c.brand, c.set, String(c.number || '').replace(/^#\s*/, '').replace(/(^|[^0-9])0+(?=\d)/g, '$1'), c.parallel, c.serial, c.auto ? 'a' : '', c.patch ? 'p' : '', c.graded ? [c.gradeCo, c.grade].join(' ') : 'raw']
+  .map(x => String(x || '').toLowerCase().replace(/[^a-z0-9/]+/g, ' ').trim()).join('|');
+function findDupGroups() {
+  const m = new Map();
+  for (const c of S.cards) { if (!live(c) || c.status !== 'in_stock' || !c.player || (c.ebay && ['active', 'lot'].includes(c.ebay.status))) continue;
+    const k = dupKey2(c); if (!m.has(k)) m.set(k, []); m.get(k).push(c); }
+  const when = c => c.createdAt || c.code || '';
+  return [...m.values()].filter(g => g.length > 1).map(g => g.sort((a, b) => (!!b.front - !!a.front) || String(when(a)).localeCompare(String(when(b)))));
+}
+const whereOf = c => { const l = locById(c.locationId); return l ? l.code + (c.slot ? ' · ' + c.slot : '') : c.slot ? 'slot ' + c.slot : ''; };
+A.findDups = async () => {
+  DUP.groups = findDupGroups();
+  if (!DUP.groups.length) { openModal(`<div>${mhead('Find duplicates')}<p>No duplicates found. Every in-stock card is different from the others (player, year, brand, set, card #, parallel, serial and grade).</p><div class="sheet-foot"><button class="btn pri" data-act="close" type="button">Done</button></div></div>`); return; }
+  const extra = DUP.groups.reduce((a, g) => a + g.length - 1, 0);
+  const rows = await Promise.all(DUP.groups.map(async (g, gi) => { const c0 = g[0]; const noNum = !c0.number;
+    const opts = await Promise.all(g.map(async (c, ci) => { const u = c.front ? await fileURL(c.front) : c.back ? await fileURL(c.back) : '';
+      return `<label class="chk" style="align-items:center;gap:8px"><input type="radio" name="keep_${gi}" value="${ci}" ${ci === 0 ? 'checked' : ''}>${u ? `<img src="${u}" alt="" style="width:44px;border-radius:3px">` : '<span style="width:44px"></span>'}<span><b>${esc(c.code)}</b> · qty ${+c.qty || 1}${whereOf(c) ? ' · ' + esc(whereOf(c)) : ''}<br><small class="muted">${money(unitCost(c))} each${c.value ? ' · value ' + money(num(c.value)) : ''}</small></span></label>`; }));
+    return `<fieldset class="bs-item"><legend>${esc([c0.year, c0.set || c0.brand, c0.player, c0.number ? '#' + c0.number : '', c0.parallel].filter(Boolean).join(' '))}</legend>
+      <label class="chk"><input type="checkbox" name="merge_${gi}" ${noNum ? '' : 'checked'}> <b>Merge these ${g.length} into one card (qty ${g.reduce((a, c) => a + (+c.qty || 1), 0)})</b></label>
+      ${noNum ? '<small class="warn" style="display:block">No card # saved, so check these really are the same card before merging.</small>' : ''}
+      <small class="muted">Keep:</small><div style="display:flex;flex-direction:column;gap:6px">${opts.join('')}</div></fieldset>`; }));
+  openModal(`<form data-form="dupMerge">${mhead('Find duplicates')}
+    <p class="muted">Found ${DUP.groups.length} card${DUP.groups.length === 1 ? '' : 's'} saved more than once (${extra} extra cop${extra === 1 ? 'y' : 'ies'}). Merging keeps the card you pick, adds the others' quantity and what you paid, moves their history over, and puts them in the trash. Their storage spots are written in the kept card's notes so you can find the physical cards.</p>
+    <div style="display:flex;flex-direction:column;gap:8px">${rows.join('')}</div>${mfoot('Merge ticked')}</form>`);
+};
+FORMS.dupMerge = async f => {
+  const fd = new FormData(f); const at = nowISO(); const undo = []; let merged = 0, gone = 0;
+  for (const [gi, g] of DUP.groups.entries()) { if (!fd.get('merge_' + gi)) continue;
+    const ki = +fd.get('keep_' + gi) || 0; const keep = g[ki]; const others = g.filter((_, i) => i !== ki); if (!keep || !others.length) continue;
+    undo.push({ card: structuredClone(keep) }); for (const o of others) undo.push({ card: structuredClone(o) });
+    const before = +keep.qty || 1; keep.buy = keep.buy || { qty: before, price: 0 }; keep.buy.qty = Math.max(1, num(keep.buy.qty) || 1);
+    const notes = [];
+    for (const o of others) { const b = o.buy || {}; keep.qty = (+keep.qty || 1) + (+o.qty || 1); keep.buy.qty += Math.max(1, num(b.qty) || 1);
+      for (const k of ['price', 'ship', 'tax', 'fees']) keep.buy[k] = r2(num(keep.buy[k]) + num(b[k]));
+      if (num(o.extraCost)) keep.extraCost = r2(num(keep.extraCost) + num(o.extraCost));
+      if (!keep.value && o.value) keep.value = o.value; if (!keep.front && o.front) { keep.front = o.front; keep.frontOrig = o.frontOrig; keep.frontQuad = o.frontQuad; } if (!keep.back && o.back) { keep.back = o.back; keep.backOrig = o.backOrig; keep.backQuad = o.backQuad; }
+      for (const k of ['rookie', 'team', 'sport']) if (!keep[k] && o[k]) keep[k] = o[k];
+      notes.push(o.code + (whereOf(o) ? ' (was in ' + whereOf(o) + ')' : ''));
+      for (const t of S.txns.filter(t => t.cardId === o.id)) { undo.push({ txn: structuredClone(t) }); t.cardId = keep.id; await save('txns', t, { quiet: true }); }
+      o.deletedAt = at; o.mergedInto = keep.id; await save('cards', o, { quiet: true }); gone++; }
+    keep.notes = [keep.notes, 'Merged duplicates: ' + notes.join(', ')].filter(Boolean).join('\n');
+    await save('cards', keep, { quiet: true }); await logTxn({ cardId: keep.id, type: 'edit', date: today(), changes: [{ f: 'qty', from: String(before), to: String(keep.qty) }], note: 'Merged duplicates ' + others.map(o => o.code).join(', ') }); merged++; }
+  closeModal(); onChange('cards');
+  if (!merged) return toast('Nothing merged');
+  toast(`Merged ${merged} card${merged === 1 ? '' : 's'}, ${gone} extra cop${gone === 1 ? 'y' : 'ies'} moved to trash`, { label: 'Undo', run: async () => {
+    for (const u of undo.reverse()) { if (u.card) { const i = S.cards.findIndex(c => c.id === u.card.id); if (i >= 0) S.cards[i] = u.card; await save('cards', u.card, { quiet: true }); } else if (u.txn) { const i = S.txns.findIndex(t => t.id === u.txn.id); if (i >= 0) S.txns[i] = u.txn; await save('txns', u.txn, { quiet: true }); } }
+    onChange('cards'); toast('Merge undone'); } });
+};
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
 async function loadDemo() {
