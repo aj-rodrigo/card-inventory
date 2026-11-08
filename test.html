@@ -6129,6 +6129,20 @@ function marketPanel() {
 }
 
 /* ---------- studio group photo for a lot: every card, as photographed, on the same backdrop ---------- */
+/* eBay caps the description at 4000 characters: full card names while they fit, then shorter lines grouped by set, then "and N more" */
+function lotDesc(title, cards) {
+  const MAX = 3900; const head = `<p><b>${esc(title)}</b></p><p>${cards.length} cards, all pictured:</p>`;
+  const full = head + `<ul>${cards.map(c => `<li>${esc(cardFull(c))}</li>`).join('')}</ul>`; if (full.length <= MAX) return full;
+  const groups = {}; for (const c of cards) { const k = [c.year, c.set || c.brand].filter(Boolean).join(' ') || 'Other'; (groups[k] = groups[k] || []).push(c); }
+  const line = c => [c.number ? '#' + String(c.number).replace(/^#/, '') : '', c.player, c.rookie ? 'RC' : '', c.parallel && !/^base$/i.test(c.parallel) ? c.parallel : '', c.serial ? (String(c.serial).includes('/') ? c.serial : '/' + c.serial) : '', c.auto ? 'Auto' : ''].filter(Boolean).join(' ');
+  let out = head, shown = 0;
+  for (const [k, L] of Object.entries(groups)) { const sorted = L.slice().sort((a, b) => (parseInt(String(a.number).replace(/\D/g, '')) || 0) - (parseInt(String(b.number).replace(/\D/g, '')) || 0));
+    let part = `<p><b>${esc(k)}</b> (${L.length}): `; const bits = [];
+    for (const c of sorted) { const add = esc(line(c)); if ((out + part + bits.concat(add).join(', ') + '</p>').length > MAX - 60) break; bits.push(add); }
+    if (!bits.length) break; out += part + bits.join(', ') + '</p>'; shown += bits.length; if (bits.length < L.length) break; }
+  if (shown < cards.length) out += `<p>…and ${cards.length - shown} more. Every card is in the photos.</p>`;
+  return out.slice(0, 4000);
+}
 const LOT_BIG = 12; /* over this many cards, a lot gets group photos only */
 const lotPages = n => { const per = Math.max(25, Math.ceil(n / 12)); return { per, pages: Math.ceil(n / per) }; }; // fronts + backs fit in eBay's 24 photos
 async function studioGrid(blobs) {
@@ -6255,7 +6269,7 @@ FORMS.lotList = async f => {
     for (const k of LOT_SINGLE) if (aspects[k] && aspects[k].length > 1) { if (!(info.aspects || []).some(a => a.name === k)) delete aspects[k]; else aspects[k] = aspects[k].slice(0, 1); } // mixed and not required: leave it off rather than pick one // eBay allows one value for these
     const lc = lotCondition(info, fd.get('cond'), fd.get('desc'));
     const sku = 'LOT-' + Date.now().toString(36).toUpperCase();
-    const desc = `<p><b>${esc(title)}</b></p><p>${cards.length} cards, all pictured:</p><ul>${cards.map(c => `<li>${esc(cardFull(c))}</li>`).join('')}</ul>`;
+    const desc = lotDesc(title, cards);
     const urls = []; const up = async b => { if (urls.length >= 24) return; const r = await ebUploadPhoto(b, `lot-${urls.length + 1}.jpg`); urls.push(r.imageUrl); };
     if (cards.length > LOT_BIG) { /* a big lot: group photos only, fronts then backs, a page of cards per photo so every card is still visible (eBay allows 24 photos) */
       const pages = lotPages(cards.length); let pg = 0;
