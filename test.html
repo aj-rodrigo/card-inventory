@@ -6152,16 +6152,46 @@ const lotCards = () => S.cards.filter(live).filter(c => c.status === 'in_stock' 
 const lotWeight = c => num(c.value) || unitCost(c) || 1;
 const lotUniq = a => [...new Set(a.filter(Boolean).map(x => String(x).trim()).filter(Boolean))];
 const LOT_SINGLE = ['Manufacturer', 'Set', 'Year Manufactured', 'Season', 'Sport', 'Graded', 'Autographed', 'Number of Cards', 'Type', 'Vintage', 'Original/Licensed Reprint', 'Card Condition', 'Language', 'Country/Region of Manufacture'];
+/* Lot titles that get clicked: the biggest names and the draws (rookies, autos, numbered, parallels) up front, then team, years, set and sport.
+   Every word is true for the cards in the lot; nothing like L@@K or "HOF" that the cards can't back up. Three styles to pick from. */
+function lotTitles(cards) {
+  const n = cards.length; const one = k => { const u = lotUniq(cards.map(c => c[k])); return u.length === 1 ? u[0] : ''; };
+  const val = c => num(c.value) + (c.rookie ? 3 : 0) + (c.auto ? 20 : 0) + (c.serial ? 5 : 0) + (c.graded ? 10 : 0);
+  const byPlayer = {}; for (const c of cards) if (c.player) byPlayer[c.player] = Math.max(byPlayer[c.player] || 0, val(c)) + 0.01;
+  const stars = Object.keys(byPlayer).sort((a, b) => byPlayer[b] - byPlayer[a]); const player = one('player');
+  const nick = t => { const f = typeof fullTeam === 'function' ? fullTeam(t) : t; const sch = typeof isCollegeTeam === 'function' && isCollegeTeam(f) ? Object.keys(COLLEGES).find(k => COLLEGES[k] === f) : ''; return sch || (TEAMS[String(f).split(' ').slice(-1)[0]] ? f.split(' ').slice(-1)[0] : f).replace(/^Trail$/, 'Trail Blazers'); };
+  const team = one('team') ? nick(one('team')) : ''; const sport = one('sport');
+  const yrs = lotUniq(cards.map(c => String(c.year || '').slice(0, 4))).map(Number).filter(Boolean).sort((a, b) => a - b);
+  const years = !yrs.length ? '' : yrs.length === 1 ? String(yrs[0]) : yrs[yrs.length - 1] - yrs[0] <= 12 ? `${yrs[0]}-${yrs[yrs.length - 1]}` : '';
+  const sets = (() => { const cnt = {}; for (const c of cards) { const k = c.set || c.brand; if (k) cnt[k] = (cnt[k] || 0) + 1; } return Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]); })();
+  const setTxt = sets.length === 1 ? sets[0] : sets.length <= 3 ? sets.slice(0, 2).map(x => x.replace(/^(Panini|Topps|Upper Deck|Donruss)\s+(?=\S)/, '')).join(' ') : '';
+  const rc = cards.filter(c => c.rookie).length, au = cards.filter(c => c.auto).length, pa = cards.filter(c => c.patch).length;
+  const ser = cards.map(c => num(String(c.serial || '').split('/').pop())).filter(x => x > 0).sort((a, b) => a - b);
+  const par = cards.filter(c => c.parallel && !/^base$/i.test(c.parallel)); const parWord = !par.length ? '' : (u => u.length === 1 ? u[0] : /refractor/i.test(u.join(' ')) ? 'Refractors' : /prizm/i.test(u.join(' ')) ? 'Prizms' : 'Parallels')(lotUniq(par.map(c => c.parallel)));
+  const graded = cards.filter(c => c.graded); const slab = !graded.length ? '' : (u => u.length === 1 ? u[0] : 'Graded')(lotUniq(graded.map(c => c.gradeCo)));
+  const hooks = [rc ? (rc > 1 ? `${rc} RC Rookies` : 'RC Rookie') : '', au ? (au > 1 ? `${au} Autos` : 'Auto') : '', pa ? 'Patch' : '', ser.length ? `Numbered /${ser[0]}` : '', parWord, slab].filter(Boolean);
+  const many = stars.length > 3 ? 'Stars' : ''; const lot = `${n} Card Lot`;
+  const last = p => p.split(/\s+/).filter(w => !/^(Jr\.?|Sr\.?|II|III|IV)$/i.test(w)).slice(-1)[0] || p;
+  /* fill a title from parts in priority order; names shrink to last names, then drop, until it fits 80 */
+  const fit = (order, prio, nameCount) => { for (let k = nameCount; k >= 0; k--) for (const short of [false, true]) {
+      const names = player ? [player] : stars.slice(0, k).map(p => short ? last(p) : p); const P = { names: names.join(' '), team, lot, hooks: hooks.join(' '), years, set: setTxt, sport, many: !player && stars.length > k ? many : '' };
+      let keep = new Set(order); const build = () => order.filter(x => keep.has(x) && P[x]).map(x => P[x]).join(' ').replace(/\s+/g, ' ').trim();
+      for (const x of [...prio].reverse()) { if (build().length <= 80) break; keep.delete(x); }
+      const t = build(); if (t.length <= 80 && (!names.length || t.includes(names[0]))) return t; }
+    return lot; };
+  const a = fit(['names', 'team', 'lot', 'hooks', 'years', 'set', 'sport', 'many'], ['lot', 'names', 'hooks', 'team', 'years', 'set', 'sport', 'many'], 3); // stars first
+  const b = fit(['hooks', 'names', 'team', 'years', 'set', 'many', 'lot'], ['lot', 'hooks', 'names', 'team', 'years', 'set', 'many', 'sport'], 3); // the draws first
+  const c = fit(['team', 'lot', 'years', 'set', 'hooks', 'names', 'sport', 'many'], ['lot', 'team', 'hooks', 'years', 'set', 'names', 'sport', 'many'], 2); // team/set first, for team collectors
+  return lotUniq([a, b, c]);
+}
 function lotAuto(cards) {
   const one = k => { const u = lotUniq(cards.map(c => c[k])); return u.length === 1 ? u[0] : ''; };
   const players = lotUniq(cards.map(c => c.player));
   const head = one('team') || one('player') || one('sport') || 'Sports card';
   const rc = cards.some(c => c.rookie) ? ' RC' : ''; const lead = `${head}${rc} lot (${cards.length}): `;
-  let title = lead + players.join(', ');
-  if (title.length > 80) title = lead + players.map(p => p.split(/\s+/).slice(-1)[0].replace(/^(Jr\.?|Sr\.?|II|III)$/i, '') || p).join(', '); // last names when full names don't fit
-  if (title.length > 80) title = title.slice(0, 77).replace(/,\s*[^,]*$/, '') + '…';
+  const titles = lotTitles(cards);
   return {
-    title: title.slice(0, 80),
+    title: titles[0], titles,
     aspects: { 'Sport': [one('sport')], 'Player/Athlete': players.slice(0, 30), 'Team': lotUniq(cards.map(c => c.team)).slice(0, 30), 'Manufacturer': [(u => u.length === 1 ? u[0] : '')(lotUniq(cards.map(c => c.brand)))], 'Number of Cards': [String(cards.length)], 'Graded': [cards.some(c => c.graded) ? 'Yes' : 'No'], 'Autographed': [cards.some(c => c.auto) ? 'Yes' : 'No'], 'Type': ['Sports Trading Card'], 'Year Manufactured': [(u => u.length === 1 ? u[0] : '')(lotUniq(cards.map(c => (String(c.year || '').match(/\d{4}/) || [''])[0]).filter(Boolean)))] }, // eBay takes one year only: left off when the lot mixes years
   };
 }
@@ -6186,6 +6216,7 @@ function lotCondition(info, condId, descVal) {
   const d = (c.descriptors || [])[0]; const vals = d ? d.values : [];
   return { condition: EB_COND_ENUM[c.id] || 'USED_VERY_GOOD', descriptors: d && vals.length ? [{ name: d.id, values: [String(descVal || vals[0].id)] }] : undefined, label: c.name, cond: c, desc: d };
 }
+A.lotNextTitle = el => { const f = el.closest('form'); const T = f._titles || []; const i = f.querySelector('[name=title]'); const k = (T.indexOf(i.value) + 1) % T.length; i.value = T[k]; const l = $('#lot-tlen'); if (l) l.textContent = i.value.length + '/80'; };
 function openLotForm(cards, info) {
   const cfg = ebCfg(); const auto = lotAuto(cards); const sum = r2(cards.reduce((a, c) => a + num(c.value), 0)); const cost = r2(cards.reduce((a, c) => a + unitCost(c), 0));
   const lc = lotCondition(info); const conds = info.conditions || [];
@@ -6194,6 +6225,7 @@ function openLotForm(cards, info) {
   openModal(`<form data-form="lotList" data-ids="${cards.map(c => c.id).join(',')}">${mhead('List a lot of ' + cards.length + ' on ' + ebModeName())}
     <div class="eb-mode ${cfg.mode}">${cfg.mode === 'live' ? '<b>LIVE eBay:</b> this posts a real listing. When it sells, every card in it is marked sold.' : cfg.mode === 'sim' ? 'Simulator: nothing is sent to eBay.' : "eBay Sandbox: a test listing on eBay's practice site."}</div>
     ${field('Title (80 characters max)', `<input name="title" value="${esc(auto.title)}" maxlength="80" required>`)}
+    ${auto.titles.length > 1 ? `<div class="row" style="gap:6px;align-items:center"><button class="btn sm" type="button" data-act="lotNextTitle">↻ Another title</button><small class="muted" id="lot-tlen">${auto.title.length}/80</small></div>` : ''}
     <div class="fgrid">${field(`Price (cards add up to ${money(sum)})`, money_inp('price', r2(sum * 0.85), 'required'))}${field('Package weight (oz, packed)', inp('oz', oz, 'inputmode="decimal"'))}
     ${conds.length ? field('Condition', `<select name="cond">${conds.map(c => `<option value="${esc(c.id)}"${c.id === (lc.cond && lc.cond.id) ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`) : ''}
     ${lc.desc ? field(lc.desc.name || 'Card condition', `<select name="desc">${lc.desc.values.map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('')}</select>`) : ''}
@@ -6202,6 +6234,7 @@ function openLotForm(cards, info) {
     <small class="muted">Photos: one group photo of all ${cards.length} cards exactly as photographed, then each card's front${cards.some(c => c.back) ? ' and back' : ''} from your full-size originals, straightened with the edges and corners showing (eBay allows 24). Cost of these cards: ${money(cost)}.</small>
     <div class="list">${cards.map(c => `<div class="li"><span class="code">${esc(c.code)}</span><span class="grow">${esc(cardName(c))}</span><span class="num muted">${money(c.value)}</span></div>`).join('')}</div>
     ${mfoot('Post lot')}</form>`);
+  { const f = $('#modal-root form[data-form="lotList"]'); if (f) f._titles = auto.titles; }
 }
 FORMS.lotList = async f => {
   const cfg = ebCfg(); const fd = new FormData(f); const cards = f.dataset.ids.split(',').map(cardById).filter(Boolean); const info = cfg.lotInfo;
@@ -7912,7 +7945,7 @@ function selPaint() {
   let bar = $('#sel-bar'); if (!SELM.on) { if (bar) bar.remove(); return; }
   if (!bar) { bar = document.createElement('div'); bar.id = 'sel-bar'; document.body.appendChild(bar); }
   const n = SELM.ids.size;
-  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massStraighten">Straighten</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="rerdChoose">Reread</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="selListEach">List each on eBay</button>' : ''}${n > 1 ? '<button class="btn sm" type="button" data-act="selLot">Make eBay lot</button>' : ''}${n ? `<button class="btn sm" type="button" data-act="massTrash">Delete ${n}</button>` : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
+  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massStraighten">Straighten</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="rerdChoose">Reread</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="selPrice">Check prices</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="selListEach">List each on eBay</button>' : ''}${n > 1 ? '<button class="btn sm" type="button" data-act="selLot">Make eBay lot</button>' : ''}${n ? `<button class="btn sm" type="button" data-act="massTrash">Delete ${n}</button>` : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
 }
 /* swipe to select: while selecting, drag sideways from a card and keep going across and down; every card from the first to the one under
    your finger is set the same way (ticked, or unticked if the first one was ticked), like Photos. Up/down without the sideways start still scrolls.
@@ -8346,6 +8379,45 @@ FORMS.listEach = async f => {
   const u = await pushUndo(`Listed ${ok} selected cards`, steps); closeModal(); SELM.on = false; SELM.ids.clear(); onChange('cards');
   undoToast(`Listed ${ok} of ${todo.length} on ${ebModeName()}.${stop ? ' ' + stop + '.' : ''}${over ? ` Skipped ${over} over your monthly dollar limit.` : ''}`, u);
   if (errs.length) openModal(`<div>${mhead('Some cards didn\'t list')}<div class="warn">${errs.map(esc).join('<br>')}</div><div class="sheet-foot"><button class="btn pri" data-act="close" type="button">OK</button></div></div>`);
+};
+
+/* Check prices for the selection: eBay market check for all of them at once (then pick which values to update), or the one-by-one price check */
+A.selPrice = () => { const n = SELM.ids.size; if (!n) return toast('Pick some cards first');
+  openModal(`<div>${mhead(`Check prices · ${n} card${n === 1 ? '' : 's'}`)}<div style="display:flex;flex-direction:column;gap:8px">
+    <button class="btn pri" type="button" data-act="selMarket">eBay market check</button><small class="muted">Looks up what matching cards are listed for on eBay right now, all at once. Then you pick which values to update.</small>
+    <button class="btn" type="button" data-act="selPQ">One by one</button><small class="muted">Each card with its sold-comps link and a box for the new value.</small></div>
+    <div class="sheet-foot"><button class="btn" data-act="close" type="button">Cancel</button></div></div>`); };
+A.selPQ = () => { PQ.list = [...SELM.ids].filter(id => { const c = cardById(id); return c && live(c); }); PQ.i = 0; if (!PQ.list.length) return toast('Nothing to price'); showPQ(); };
+const MKS = { cards: [], stop: false };
+A.selMarket = async () => {
+  if (!ebOn()) return toast('Turn on eBay in Settings first');
+  const cards = [...SELM.ids].map(cardById).filter(c => c && live(c) && c.player); if (!cards.length) return toast('These cards need player names first');
+  MKS.cards = cards; MKS.stop = false;
+  openModal(`<div>${mhead('eBay market check')}<div id="ms-prog"></div><div class="sheet-foot"><button class="btn" type="button" data-act="msStop">Stop and review</button></div></div>`);
+  while (MK_RUN) await new Promise(r => setTimeout(r, 300));
+  MK_RUN = true; const fails = [];
+  try { for (const [i, c] of cards.entries()) { if (MKS.stop) break; const el = $('#ms-prog'); if (el) el.innerHTML = `<div class="calc"><div><span>Checking ${i + 1} of ${cards.length}</span><b>${esc(cardName(c))}</b></div></div><div style="height:8px;background:var(--line);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(2, i / cards.length * 100)}%;background:var(--acc)"></div></div>`;
+      try { await marketCheck(c); } catch (e) { fails.push(`${c.code}: ${e.message}`); if (/sign|key|worker|reach/i.test(e.message)) break; } await new Promise(r => setTimeout(r, 350)); } }
+  finally { MK_RUN = false; }
+  const sheet = $('#modal-root .sheet') || (openModal('<div></div>'), $('#modal-root .sheet'));
+  const rows = await Promise.all(cards.map(async (c, i) => { const m = c.market && c.market.date === today() ? c.market : null; const mp = m ? r2(mkPrice(m)) : 0; const ok = m && m.n >= 3 && mp > 0; const u = c.front ? await fileURL(c.front) : '';
+    const diff = ok ? mp - num(c.value) : 0;
+    return `<div class="li" style="align-items:center;gap:10px">${ok ? `<input type="checkbox" name="ms_${i}" ${Math.abs(diff) >= 0.5 ? 'checked' : ''} aria-label="Update ${esc(c.code)}">` : '<span style="width:20px"></span>'}${u ? `<img src="${u}" alt="" style="width:40px;border-radius:3px">` : ''}
+      <span class="grow"><b>${esc(cardName(c))}</b><small>${esc(c.code)} · ${esc(cardSet(c))} · cost ${money(unitCost(c))}</small><small>${ok ? `${m.n} matching listings` : m ? `only ${m.n} matching listing${m.n === 1 ? '' : 's'}, not enough to go on` : 'not checked'}</small></span>
+      <span class="num" style="text-align:right">${money(c.value)}${ok ? `<br>→ <b class="${diff > 0 ? 'pos' : diff < 0 ? 'neg' : ''}">${money(mp)}</b>` : ''}</span></div>`; }));
+  const can = cards.filter(c => c.market && c.market.date === today() && c.market.n >= 3 && mkPrice(c.market) > 0).length;
+  sheet.innerHTML = `<form data-form="msSave">${mhead('Market prices')}
+    ${fails.length ? `<div class="warn">${fails.slice(0, 4).map(esc).join('<br>')}</div>` : ''}
+    <p class="muted">Checked ${cards.length} card${cards.length === 1 ? '' : 's'}. ${can} had at least 3 matching eBay listings. The price shown is their average asking price (what's listed now, not what sold). Ticked ones get their value updated.</p>
+    ${can ? `<div class="row"><button class="btn sm" type="button" data-act="rrTick" data-v="1">Tick all</button><button class="btn sm" type="button" data-act="rrTick" data-v="0">Untick all</button></div>` : ''}
+    <div class="list">${rows.join('')}</div>${can ? mfoot('Update ticked values') : '<div class="sheet-foot"><button class="btn pri" data-act="close" type="button">Done</button></div>'}</form>`;
+};
+A.msStop = el => { MKS.stop = true; el.disabled = true; el.textContent = 'Stopping after this card…'; };
+FORMS.msSave = async f => {
+  const fd = new FormData(f); const pick = MKS.cards.filter((c, i) => fd.get('ms_' + i)); if (!pick.length) return toast('Nothing ticked');
+  await rememberUndo(pick); let n = 0; for (const c of pick) { const v = mkPrice(c.market); if (r2(v) !== num(c.value)) { await setValue(c, v, 'Market check (average asking price)'); n++; } }
+  closeModal(); SELM.on = false; SELM.ids.clear(); onChange('cards');
+  toast(`Updated ${n} value${n === 1 ? '' : 's'}`, { label: 'Undo', run: async () => { const u = ebCfg().marketUndo; if (!u) return; for (const it of u.items) { const c = cardById(it.id); if (c) await setValue(c, it.value, 'Undo market check'); } ebCfg().marketUndo = null; await saveSettings(); onChange('cards'); toast('Values put back'); } });
 };
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
