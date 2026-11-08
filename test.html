@@ -531,6 +531,8 @@ svg[data-scrub] { touch-action: pan-y; cursor: crosshair; -webkit-user-select: n
 @media (min-width: 900px) { #sel-fab { bottom: 24px; } }
 #inv-results.selecting [data-sel-id] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 #inv-results [data-sel-id] { -webkit-touch-callout: none; }
+#upd-banner span { white-space: nowrap; }
+#upd-banner { position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 8px); z-index: 60; display: flex; gap: 8px; align-items: center; padding: 8px 8px 8px 14px; border-radius: 12px; background: var(--panel, #161a20); color: var(--ink, #fff); border: 1px solid var(--acc, #ffb000); box-shadow: 0 8px 28px rgba(0,0,0,.35); font-weight: 600; max-width: calc(100vw - 24px); }
 </style>
 <div id="app"></div>
 <div id="modal-root"></div>
@@ -1249,6 +1251,7 @@ V.inv = () => {
     <button class="btn pri" data-act="addCard" type="button">+ Add card</button>${addMenuBtn()}</div></div>
   <div class="chiprow" role="group" aria-label="Quick filters">${chip('', 'All')}${chip('graded', 'Graded')}${chip('rookie', 'Rookies')}${chip('auto', 'Autos')}${chip('listed', 'Listed')}${chip('needprice', 'Needs price')}${F.quick && !['graded', 'rookie', 'auto', 'listed', 'needprice'].includes(F.quick) ? chip(F.quick, { listedlong: 'Listed 3+ weeks', grading: 'At grading', nophoto: 'No photo' }[F.quick]) : ''}
     <button type="button" data-act="findDups">⧉ Find duplicates</button>
+    <button type="button" data-act="suggestLots">▦ Suggest lots</button>
     <button type="button" data-act="invSide" aria-pressed="${S.settings.invSide === 'back'}">${S.settings.invSide === 'back' ? '↺ Showing backs' : '↻ Show backs'}</button>
     <button type="button" class="only-phone" data-act="moreFilters" aria-expanded="${INVUI.more}">⚙ More filters${more ? ' •' : ''}</button></div>
   <section class="panel inv-filters${INVUI.more ? ' open' : ''}">
@@ -4813,6 +4816,7 @@ async function readOne(it, pr, o) {
     if (conf !== 'high') {
       ft = (await readImageText(it.f.warped, pr, '11')).text;
       try { ft += '\n' + (await readImageText(await nameplateStrip(it.f.warped), pr, '11')).text; } catch (e) {} // the nameplate, enlarged
+      if (typeof learnedStripText === 'function') { const lt = await learnedStripText(it, bt); if (lt) ft = lt + '\n' + ft; } // where this set prints its names, learned from your fixes
       if (!it.b) { try { ft += '\n' + (await readImageText(await zoomPart(it.f.warped, 0, 0.82, 1, 1), pr, '6')).text; } catch (e) {} } /* the nameplate alone, enlarged */
       /* nameplates a plain read misses: pale outlined letters on a silver bar (Bowman), and the position/team line in white on colour above it */
       for (const [y0, y1, mode] of [[0.85, 0.95, 'stretch'], [0.80, 0.90, 'stretch'], [0.81, 0.875, true]]) { try { ft += '\n' + (await readImageText(await zoomPart(it.f.warped, 0.05, y0, 0.95, y1, 0, 2000, mode), pr, '7', { raw: true })).text; } catch (e) {} }
@@ -4844,6 +4848,8 @@ async function readOne(it, pr, o) {
 }
 const bsURL = new Map();
 const blobURL = b => { if (!bsURL.has(b)) bsURL.set(b, URL.createObjectURL(b)); return bsURL.get(b); };
+/* cards that need checking first: shaky name, then a number from eBay or a guess, then the sure ones (each keeps its Card N label) */
+const bsRank = it => { const c = it.fields || {}; if (!BS.opts.read) return 0; return c.conf === 'low' || !c.player ? 0 : c.conf === 'medium' ? 1 : c.numberFrom || !c.number ? 2 : 3; };
 function renderBatchReview() {
   const n = BS.items.length; const pickups = S.pickups.filter(p => !p.purged).sort((a, b) => b.date.localeCompare(a.date));
   const row = (it, i) => { const c = it.fields;
@@ -4878,7 +4884,7 @@ function renderBatchReview() {
   <div class="row"><span class="muted">Same on every card:</span>
     <input id="bs-fill-set" placeholder="Set" value="${esc(common('set'))}" style="width:130px" aria-label="Set for all"><input id="bs-fill-year" placeholder="Year" value="${esc(common('year'))}" style="width:80px" aria-label="Year for all"><input id="bs-fill-brand" placeholder="Brand" value="${esc(common('brand'))}" style="width:110px" aria-label="Brand for all"><select id="bs-fill-sport" style="width:auto" aria-label="Sport for all">${opts(SPORTS, common('sport'), 'Sport')}</select>
     <button class="btn sm" type="button" data-act="bsFill">Fill blanks</button><button class="btn sm" type="button" data-act="bsFill" data-all="1" title="Replaces what's there on every card">Apply to all cards</button></div></fieldset>
-  <div style="display:flex;flex-direction:column;gap:12px">${BS.items.map(row).join('')}</div>
+  <div style="display:flex;flex-direction:column;gap:12px">${BS.items.map((it, i) => [it, i]).sort((a, b) => bsRank(a[0]) - bsRank(b[0]) || a[1] - b[1]).map(([it, i]) => row(it, i)).join('')}</div>
   ${platformList()}${dl('dl-bpl', all.map(x => x.player))}${dl('dl-bbr', ['Panini', 'Topps', 'Upper Deck', 'Bowman', 'Donruss', 'Fleer', ...all.map(x => x.brand)])}${dl('dl-bset', all.map(x => x.set))}
   <div class="sheet-foot"><label class="chk" style="margin-right:auto"><input type="checkbox" name="labels" checked> Print QR labels after saving</label><button class="btn" type="button" data-act="close">Cancel</button><button class="btn pri" type="submit">Add ${n} card${n === 1 ? '' : 's'}</button></div></form>`;
 }
@@ -5592,7 +5598,7 @@ function turnBitmap(bmp, deg) {
   return { bmp: cv, pt };
 }
 async function listingPhotos(c, { studio = true } = {}) {
-  const key = [c.id, c.frontOrig || c.front, c.backOrig || c.back, JSON.stringify(c.frontQuad || ''), JSON.stringify(c.backQuad || ''), studio, c.frontRot || 0, c.backRot || 0].join('|');
+  const key = [c.id, c.frontOrig || c.front, c.backOrig || c.back, JSON.stringify(c.frontQuad || ''), JSON.stringify(c.backQuad || ''), studio, c.frontRot || 0, c.backRot || 0, (S.settings && S.settings.photo || {}).stamp ? S.settings.photo.shop : ''].join('|');
   if (PHOTO_CACHE.has(key)) return PHOTO_CACHE.get(key);
   const p = (async () => {
     const slab = !!c.graded; const out = { studio: null, photos: [] };
@@ -5607,7 +5613,7 @@ async function listingPhotos(c, { studio = true } = {}) {
       if (!whole) { const cut = cutSides(bmp, quad); if (cut.length) (out.warn = out.warn || []).push(`The card runs into the ${cut.join(' and ')} edge of the ${side} photo, so that edge can't be shown in full. Rescan with a little space around the card.`); }
       out.photos.push({ blob: whole ? (turn ? await toJpeg(bmp) : rec.blob) : await toJpeg(full), what: whole ? `${side} (your photo, as taken)` : `${side}, your photo cropped around the card (no edits)` });
       if (!slab) out.corners = (out.corners || []).concat({ blob: await toJpeg(cornersFrom(bmp, quad, side === 'front' ? 'Front' : 'Back')), what: `${side} corners, cut from your photo` });
-      if (side === 'front' && studio) out.studio = await toJpeg(studioCompose(warpFull(bmp, quad, 0), slab));
+      if (side === 'front' && studio) { const sc = studioCompose(warpFull(bmp, quad, 0), slab); if (typeof shopStamp === 'function') shopStamp(sc); out.studio = await toJpeg(sc); }
     }
     out.photos = out.photos.concat(out.corners || []); for (const ph of out.photos) ph.blob = await ebaySize(ph.blob); if (out.studio) out.studio = await ebaySize(out.studio); return out;
   })().catch(e => { PHOTO_CACHE.delete(key); throw e; });
@@ -5658,7 +5664,7 @@ function ebayListing(c, o) {
     if (c.cert) descriptors.push({ name: '27503', additionalInfo: String(c.cert).slice(0, 30) });
   } else { condition = 'USED_VERY_GOOD'; descriptors = [{ name: '40001', values: [EB_RAW[c.condition] || '400010'] }]; }
   const yr = String(c.year || ''); const y4 = (yr.match(/\d{4}/) || [''])[0];
-  const A = { 'Sport': [c.sport], 'Player/Athlete': [c.player], 'Manufacturer': [c.brand], 'Set': [c.set || c.brand], 'Season': [yr], 'Year Manufactured': [y4], 'Card Number': [c.number], 'Parallel/Variety': [c.parallel && c.parallel !== 'Base' ? c.parallel : ''], 'Team': [c.team], 'League': [typeof isCollegeTeam === 'function' && isCollegeTeam(c.team) ? 'NCAA' : ''], 'Card Name': [c.player], 'Type': ['Sports Trading Card'],
+  const A = { 'Sport': [c.sport], 'Player/Athlete': [c.player], 'Manufacturer': [c.brand], 'Set': [c.set || c.brand], 'Season': [/^\d{4}$/.test(yr) && ['Basketball', 'Hockey'].includes(c.sport) ? `${yr}-${String(+yr + 1).slice(2)}` : yr], 'Year Manufactured': [y4], 'Card Number': [c.number], 'Parallel/Variety': [c.parallel && c.parallel !== 'Base' ? c.parallel : ''], 'Team': [c.team], 'League': [typeof isCollegeTeam === 'function' && isCollegeTeam(c.team) ? 'NCAA' : c.team ? ({ Basketball: 'NBA', Football: 'NFL', Baseball: 'MLB', Hockey: 'NHL' })[c.sport] || '' : ''], 'Vintage': [y4 ? (+y4 < 1980 ? 'Yes' : 'No') : ''], 'Original/Licensed Reprint': ['Original'], 'Card Size': ['Standard'], 'Language': ['English'], 'Customized': ['No'], 'Card Name': [c.player], 'Type': ['Sports Trading Card'],
     'Autographed': [c.auto ? 'Yes' : 'No'], 'Features': [[c.rookie && 'Rookie', c.serial && 'Serial Numbered', c.patch && 'Patch'].filter(Boolean).join(', ')], 'Print Run': [c.serial ? String(c.serial).replace(/^.*\//, '') : ''],
     'Graded': [c.graded ? 'Yes' : 'No'], 'Professional Grader': [c.graded ? c.gradeCo : ''], 'Grade': [c.graded ? String(c.grade) : ''], 'Certification Number': [c.graded ? c.cert : ''] };
   const aspects = {}; for (const [k, v] of Object.entries(A)) { const vals = v.filter(x => x !== undefined && x !== null && String(x).trim()); if (vals.length) aspects[k] = vals.map(String); }
@@ -5723,6 +5729,8 @@ const EBSIM = {
     s.listings[b.offer.sku] = { sku: b.offer.sku, listingId: id, offerId: 'O' + id, price: b.offer.pricingSummary.price.value, bestOffer: b.offer.listingPolicies.bestOfferTerms || null, title: b.inventoryItem.product.title, images: b.inventoryItem.product.imageUrls.length, status: 'PUBLISHED' };
     s.watchers[id] = Math.floor(Math.random() * 4); await saveSettings(); return { offerId: 'O' + id, listingId: id, url: '#sim-listing-' + id }; },
   async reprice(b) { const s = this._s(); const l = s.listings[b.sku]; if (!l) throw new Error('No eBay listing for ' + b.sku); l.price = r2s(b.price); if (l.bestOffer) { l.bestOffer.autoAcceptPrice.value = r2s(b.accept); l.bestOffer.autoDeclinePrice.value = r2s(b.decline); } await saveSettings(); return { ok: true }; },
+  async revise(b) { const s = this._s(); const l = s.listings[b.sku]; if (!l) throw new Error('No eBay listing for ' + b.sku); if (b.title) l.title = String(b.title).slice(0, 80); if (b.aspects) l.aspects = { ...(l.aspects || {}), ...b.aspects }; await saveSettings(); return { ok: true }; },
+  async orderFees() { const s = this._s(); return { orders: s.orders.map(o => ({ orderId: o.orderId, fees: r2(num(o.fee) + 0.3), adFees: r2(num(o.total) * 0.02) })) }; },
   async end(b) { const s = this._s(); if (s.listings[b.sku]) s.listings[b.sku].status = 'ENDED'; await saveSettings(); return { ok: true }; },
   async eligible() { const s = this._s(); return { listingIds: Object.values(s.listings).filter(l => l.status === 'PUBLISHED' && (s.watchers[l.listingId] || 0) > 0).map(l => l.listingId) }; },
   async sendOffer(b) { const s = this._s(); const n = s.watchers[b.listingId] || 0; s.watchers[b.listingId] = 0; await saveSettings(); return { sent: n }; },
@@ -5814,10 +5822,13 @@ async function postListing(c, o, step = () => {}) {
   const cfg = ebCfg(); const L = ebayListing(c, o); if (L.errs.length) throw new Error(L.errs[0]);
   { const sp = shipPolicyFor(L.inventoryItem.packageWeightAndSize.weight.value, num(L.offer.pricingSummary.price ? L.offer.pricingSummary.price.value : L.offer.pricingSummary.auctionStartPrice.value)); if (sp) L.offer.listingPolicies = { ...(L.offer.listingPolicies || {}), fulfillmentPolicyId: sp }; } // checked before any photo uploads
   const P = await listingPhotos(c, { studio: !!o.studio });
-  const blobs = [...(o.studio && P.studio ? [P.studio] : []), ...P.photos.map(x => x.blob)].slice(0, 24);
+  const keep = typeof photoRuleKeep === 'function' ? photoRuleKeep(c, o) : () => true;
+  const blobs = [...(o.studio && P.studio ? [P.studio] : []), ...P.photos.filter(keep).map(x => x.blob)].slice(0, 24);
   for (let k = 0; k < blobs.length; k++) { step(`Uploading photo ${k + 1} of ${blobs.length}…`); const r = await ebUploadPhoto(blobs[k], `photo-${k + 1}.jpg`); L.inventoryItem.product.imageUrls.push(r.imageUrl); }
   step('Posting…');
-  const r = await ebay('list', { inventoryItem: L.inventoryItem, offer: L.offer });
+  const OPT = ['League', 'Vintage', 'Original/Licensed Reprint', 'Card Size', 'Language', 'Customized', 'Season', 'Features', 'Print Run', 'Card Name', 'Team', 'Parallel/Variety'];
+  let r; for (let tries = 0; ; tries++) { try { r = await ebay('list', { inventoryItem: L.inventoryItem, offer: L.offer }); break; } catch (e) { // an optional detail eBay won't take: leave it off and try again
+    const A = L.inventoryItem.product.aspects; const k = OPT.find(x => A[x] && String(e.message).includes(x)); if (!k || tries >= 4) throw e; delete A[k]; } }
   const was = c.status; const auction = o.format === 'AUCTION';
   c.ebay = { mode: cfg.mode, sku: L.sku, offerId: r.offerId, listingId: r.listingId, url: r.url, price: auction ? num(o.start) : num(o.price), format: auction ? 'AUCTION' : 'FIXED_PRICE', ends: auction && o.ends ? new Date(o.ends).toISOString() : '',
     bestOffer: !auction && o.bestOffer, accept: o.accept, decline: o.decline, listedAt: today(), firstListed: today(), status: 'active', title: o.title };
@@ -5875,7 +5886,7 @@ async function ebSync(loud) {
       const c = S.cards.find(x => live(x) && x.code === l.sku); if (!c) continue;
       const share = num(l.price) * (l.qty || 1) / lineTotal; const q = Math.min(l.qty || 1, c.qty || 1);
       const gross = r2(num(l.price) * q + num(o.shipping) * share), fees = r2(num(o.fee) * share), cost = r2(unitCost(c) * q), net = r2(gross - fees);
-      await logTxn({ id: 't_eb_' + key.replace(/[^\w-]/g, '_'), cardId: c.id, type: 'sell', date: localDay(o.created), qty: q, amount: gross, shipping: 0, fees, net, cost, profit: r2(net - cost), platform: 'eBay', ebayLine: key, note: `${ebModeName()} order ${o.orderId} · shipping label not counted yet` });
+      await logTxn({ id: 't_eb_' + key.replace(/[^\w-]/g, '_'), cardId: c.id, type: 'sell', date: localDay(o.created), qty: q, amount: gross, shipping: 0, fees, net, cost, profit: r2(net - cost), platform: 'eBay', ebayLine: key, buyer: o.buyer || '', at: o.created || '', listedOn: c.ebay ? c.ebay.firstListed || c.ebay.listedAt || '' : '', format: c.ebay ? c.ebay.format || '' : '', note: `${ebModeName()} order ${o.orderId} · shipping label not counted yet` });
       c.qty = (c.qty || 0) - q; if (c.qty <= 0) { c.qty = 0; c.status = 'sold'; c.soldAt = localDay(o.created); }
       if (c.ebay) c.ebay.status = 'sold';
       await save('cards', c, { quiet: true }); n++;
@@ -6070,6 +6081,7 @@ async function setValue(c, v, src) {
   await logTxn({ cardId: c.id, type: 'edit', date: today(), changes: [{ f: 'value', from: String(num(c.value)), to: String(v) }], note: src });
   c.value = v; c.priceHistory = [...(c.priceHistory || []), { date: today(), value: v }]; c.priceUpdated = today(); await save('cards', c, { quiet: true });
 }
+A.marketUseAt = async el => { const c = cardById(el.dataset.id); await setValue(c, num(el.dataset.v), 'Market check (price range)'); closeModal(); onChange('cards'); toast(`Value set to ${money(num(el.dataset.v))}`); };
 A.marketCheck = async el => {
   const c = cardById(el.dataset.id); if (!ebOn()) return toast('Turn on eBay in Settings first');
   openModal(`<div>${mhead('Market check')}<p class="muted" id="mk-wait">Looking up ${esc(cardName(c))} on ${esc(ebModeName())}…</p></div>`, { narrow: true });
@@ -6078,6 +6090,7 @@ A.marketCheck = async el => {
   openModal(`<div>${mhead('Market check')}
     <p class="muted" style="margin:0">Asking prices for Buy It Now listings right now, shipping included. These aren't sold prices.</p>
     <div class="calc"><div><span>Average</span><b>${r.n ? money(r.avg) : '—'}</b></div><div><span>Middle price</span><b>${r.n ? money(r.median) : '—'}</b></div><div><span>Typical range</span><b>${r.n ? money(r.p25) + '–' + money(r.p75) : '—'}</b></div><div><span>Your value</span><b>${money(c.value)}${g !== null ? ` <small class="${cls(g)}">${g >= 0 ? '+' : ''}${Math.round(g * 100)}%</small>` : ''}</b></div></div>
+    ${r.n >= 3 ? `<div class="row" style="gap:6px"><span class="muted">Set my value to:</span>${[['Low', r.p25 || r.low], ['Fair', r.median], ['High', r.p75]].map(([l, v]) => `<button class="btn sm" type="button" data-act="marketUseAt" data-id="${c.id}" data-v="${r2(v)}">${l} ${money(v)}</button>`).join('')}</div><small class="muted">Low sells fastest; for base cards it's usually the right pick.</small>` : ''}
     <small class="muted">${r.n} matching listing${r.n === 1 ? '' : 's'} for "${esc(r.q)}". Lots${c.graded ? ', other graders and other grades' : ' and graded cards'} are left out.</small>
     ${r.items.length ? `<div class="list">${r.items.slice(0, 8).map(x => `<div class="li"><a class="grow" href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a><b class="num">${money(x.total)}</b></div>`).join('')}</div>` : '<div class="empty">No close matches. Try the sold search on eBay.</div>'}
     <div class="sheet-foot"><a class="btn" href="${esc(sold)}" target="_blank" rel="noopener">Sold prices on eBay ↗</a><button class="btn" type="button" data-act="close">Close</button>${r.n >= 3 ? `<button class="btn pri" type="button" data-act="marketUse" data-id="${c.id}">Set value to ${money(r.avg)}</button>` : ''}</div></div>`, { narrow: true });
@@ -6190,7 +6203,14 @@ function lotTitles(cards) {
   const many = stars.length > 3 ? 'Stars' : ''; const lot = `${n} Card Lot`;
   const last = p => p.split(/\s+/).filter(w => !/^(Jr\.?|Sr\.?|II|III|IV)$/i.test(w)).slice(-1)[0] || p;
   /* fill a title from parts in priority order; names shrink to last names, then drop, until it fits 80 */
-  const fit = (order, prio, nameCount) => { for (let k = nameCount; k >= 0; k--) for (const short of [false, true]) {
+  const fit = (order, prio, nameCount) => {
+    /* first try to keep the team, the selling points and "N Card Lot" whole, using fewer names; only then start dropping parts */
+    for (let k = player ? 1 : nameCount; k >= 1; k--) for (const short of [false, true]) { const names = player ? [player] : stars.slice(0, k).map(p => short ? last(p) : p);
+      const P = { names: names.join(' '), team, lot, hooks: hooks.join(' '), years, set: setTxt, sport, many: !player && stars.length > k ? many : '' };
+      let keep = new Set(order); const build = () => order.filter(x => keep.has(x) && P[x]).map(x => P[x]).join(' ').replace(/\s+/g, ' ').trim();
+      for (const x of [...prio].reverse()) { if (build().length <= 80) break; if (['names', 'team', 'lot', 'hooks'].includes(x)) continue; keep.delete(x); }
+      if (build().length <= 80) return build(); }
+    for (let k = nameCount; k >= 0; k--) for (const short of [false, true]) {
       const names = player ? [player] : stars.slice(0, k).map(p => short ? last(p) : p); const P = { names: names.join(' '), team, lot, hooks: hooks.join(' '), years, set: setTxt, sport, many: !player && stars.length > k ? many : '' };
       let keep = new Set(order); const build = () => order.filter(x => keep.has(x) && P[x]).map(x => P[x]).join(' ').replace(/\s+/g, ' ').trim();
       for (const x of [...prio].reverse()) { if (build().length <= 80) break; keep.delete(x); }
@@ -6330,7 +6350,7 @@ async function syncLotLine(o, l, key, lineTotal) {
   for (let i = 0; i < cards.length; i++) {
     const c = cards[i]; const id = 't_eb_' + (key + '_' + c.id).replace(/[^\w-]/g, '_'); if (S.txns.some(t => t.id === id && !t.purged)) continue;
     const cost = r2(unitCost(c) * (c.qty || 1)), net = r2(parts[i] - fparts[i]);
-    await logTxn({ id, cardId: c.id, type: 'sell', date: localDay(o.created), qty: c.qty || 1, amount: parts[i], shipping: 0, fees: fparts[i], net, cost, profit: r2(net - cost), platform: 'eBay', ebayLine: key + ':' + c.id, note: `${ebModeName()} order ${o.orderId} · lot of ${cards.length} · shipping label not counted yet` });
+    await logTxn({ id, cardId: c.id, type: 'sell', date: localDay(o.created), qty: c.qty || 1, amount: parts[i], shipping: 0, fees: fparts[i], net, cost, profit: r2(net - cost), platform: 'eBay', ebayLine: key + ':' + c.id, buyer: o.buyer || '', at: o.created || '', format: 'LOT', note: `${ebModeName()} order ${o.orderId} · lot of ${cards.length} · shipping label not counted yet` });
     c.qty = 0; c.status = 'sold'; c.soldAt = localDay(o.created); if (c.ebay) c.ebay.status = 'sold'; await save('cards', c, { quiet: true }); n++;
   }
   L.status = 'sold'; return n;
@@ -7970,7 +7990,7 @@ function selPaint() {
   let bar = $('#sel-bar'); if (!SELM.on) { if (bar) bar.remove(); return; }
   if (!bar) { bar = document.createElement('div'); bar.id = 'sel-bar'; document.body.appendChild(bar); }
   const n = SELM.ids.size;
-  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massStraighten">Straighten</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="rerdChoose">Reread</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="selPrice">Check prices</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="selListEach">List each on eBay</button>' : ''}${n > 1 ? '<button class="btn sm" type="button" data-act="selLot">Make eBay lot</button>' : ''}${n ? `<button class="btn sm" type="button" data-act="massTrash">Delete ${n}</button>` : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
+  bar.innerHTML = `<span><b>${n}</b> selected</span><button class="btn sm" type="button" data-act="selAll">Select all shown</button>${n ? '<button class="btn sm" type="button" data-act="selNone">Clear</button>' : ''}<span class="spacer"></span>${n >= 2 ? '<button class="btn sm" type="button" data-act="lotPhoto">Lot photo</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="massStraighten">Straighten</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="rerdChoose">Reread</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="selPrice">Check prices</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="selRevise">Revise on eBay</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="selRules">Price rules</button><button class="btn sm" type="button" data-act="selTurn">Turn photos</button>' : ''}${n ? '<button class="btn sm" type="button" data-act="selListEach">List each on eBay</button>' : ''}${n > 1 ? '<button class="btn sm" type="button" data-act="selLot">Make eBay lot</button>' : ''}${n ? `<button class="btn sm" type="button" data-act="massTrash">Delete ${n}</button>` : ''}<button class="btn sm" type="button" data-act="selMode">Done</button><button class="btn sm pri" type="button" data-act="bulkEdit"${n ? '' : ' disabled'}>Edit ${n || ''} card${n === 1 ? '' : 's'}</button>`;
 }
 /* swipe to select: while selecting, drag sideways from a card and keep going across and down; every card from the first to the one under
    your finger is set the same way (ticked, or unticked if the first one was ticked), like Photos. Up/down without the sideways start still scrolls.
@@ -8220,7 +8240,7 @@ A.massReread = async el => {
   show(0, 0); await loadPlayerNames();
   for (let i = 0; i < cards.length && !RR.stop; i++) { const c = cards[i];
     try { const fr = c.front ? await fileGetOrPull(c.front) : null, bk = c.back ? await fileGetOrPull(c.back) : null; const fb = fr && fr.blob, bb = bk && bk.blob; if (!fb && !bb) { RR.fail.push({ c, msg: syncCfg() ? 'its photos aren\'t on this device or in your sync yet. Open Dugout on the device you added it with and tap Sync' : 'its photos aren\'t on this device' }); continue; }
-      const it = { f: { warped: fb || bb }, b: fb && bb ? { warped: bb } : null };
+      const it = { f: { warped: fb || bb }, b: fb && bb ? { warped: bb } : null, selfId: c.id };
       await readOne(it, p => show(i, p), { read: true, serial: !RR.names, namesOnly: RR.field === 'player' });
       const f = it.fields || {}; const diffs = [];
       if (RR.field === 'player') { RR.items.push({ c, read: String(f.player || '').trim(), conf: f.conf, college: !!f.college, diffs: [] }); continue; }
@@ -8428,7 +8448,7 @@ A.selMarket = async () => {
   const rows = await Promise.all(cards.map(async (c, i) => { const m = c.market && c.market.date === today() ? c.market : null; const mp = m ? r2(mkPrice(m)) : 0; const ok = m && m.n >= 3 && mp > 0; const u = c.front ? await fileURL(c.front) : '';
     const diff = ok ? mp - num(c.value) : 0;
     return `<div class="li" style="align-items:center;gap:10px">${ok ? `<input type="checkbox" name="ms_${i}" ${Math.abs(diff) >= 0.5 ? 'checked' : ''} aria-label="Update ${esc(c.code)}">` : '<span style="width:20px"></span>'}${u ? `<img src="${u}" alt="" style="width:40px;border-radius:3px">` : ''}
-      <span class="grow"><b>${esc(cardName(c))}</b><small>${esc(c.code)} · ${esc(cardSet(c))} · cost ${money(unitCost(c))}</small><small>${ok ? `${m.n} matching listings` : m ? `only ${m.n} matching listing${m.n === 1 ? '' : 's'}, not enough to go on` : 'not checked'}</small></span>
+      <span class="grow"><b>${esc(cardName(c))}</b><small>${esc(c.code)} · ${esc(cardSet(c))} · cost ${money(unitCost(c))}</small><small>${ok ? `${m.n} matching listings · range ${rangeText(m)}` : m ? `only ${m.n} matching listing${m.n === 1 ? '' : 's'}, not enough to go on` : 'not checked'}</small></span>
       <span class="num" style="text-align:right">${money(c.value)}${ok ? `<br>→ <b class="${diff > 0 ? 'pos' : diff < 0 ? 'neg' : ''}">${money(mp)}</b>` : ''}</span></div>`; }));
   const can = cards.filter(c => c.market && c.market.date === today() && c.market.n >= 3 && mkPrice(c.market) > 0).length;
   sheet.innerHTML = `<form data-form="msSave">${mhead('Market prices')}
@@ -8444,6 +8464,530 @@ FORMS.msSave = async f => {
   closeModal(); SELM.on = false; SELM.ids.clear(); onChange('cards');
   toast(`Updated ${n} value${n === 1 ? '' : 's'}`, { label: 'Undo', run: async () => { const u = ebCfg().marketUndo; if (!u) return; for (const it of u.items) { const c = cardById(it.id); if (c) await setValue(c, it.value, 'Undo market check'); } ebCfg().marketUndo = null; await saveSettings(); onChange('cards'); toast('Values put back'); } });
 };
+
+/* ---------- 1.17: photo rules, shop stamp, bulk turn, price rules, price range, suggest lots, lot report ---------- */
+
+/* PH4 + PH5: which photos a listing gets, and an optional shop name on the studio photo */
+const photoCfg = () => { S.settings.photo = Object.assign({ cornersFrom: 10, backs: true, stamp: false, shop: '' }, S.settings.photo || {}); return S.settings.photo; };
+function photoRuleKeep(c, o) {
+  const P = photoCfg(); const price = num(o && (o.price || o.start)) || num(c.value);
+  return ph => { const w = ph.what || ''; if (/corners/.test(w)) return !c.graded && price >= num(P.cornersFrom); if (/^back/.test(w)) return P.backs !== false; return true; };
+}
+function shopStamp(cv) {
+  const P = photoCfg(); if (!P.stamp || !String(P.shop || '').trim()) return; const g = cv.getContext('2d'); const N = cv.width; const t = String(P.shop).trim().slice(0, 40);
+  g.save(); g.font = `600 ${Math.round(N * 0.026)}px "Barlow", system-ui, sans-serif`; g.textAlign = 'right'; g.textBaseline = 'bottom';
+  g.fillStyle = 'rgba(40,44,52,.55)'; g.fillText(t, N * 0.965, N * 0.975); g.restore(); // bottom corner of the backdrop, never on the card
+}
+function photoSettingsPanel() {
+  const P = photoCfg();
+  return `<section class="panel" id="photo-settings"><h2>Listing photos</h2><form data-form="photoCfg" class="fgrid">
+    ${field('Corner close-ups for cards worth at least', money_inp('cornersFrom', P.cornersFrom, 'keep0'))}
+    <label class="chk"><input type="checkbox" name="backs" ${P.backs !== false ? 'checked' : ''}> Include the back photo</label>
+    ${field('Shop name', inp('shop', P.shop, 'maxlength="40" placeholder="AJ\'s Cards"'))}
+    <label class="chk"><input type="checkbox" name="stamp" ${P.stamp ? 'checked' : ''}> Put the shop name in the corner of studio photos (on the backdrop, never on the card)</label>
+    <small class="muted wide">Set corner close-ups to $0 to add them to every raw card. Slabs never get them.</small>
+    <div class="row wide"><button class="btn sm pri" type="submit">Save</button></div></form></section>`;
+}
+FORMS.photoCfg = async f => { const fd = new FormData(f); const P = photoCfg(); P.cornersFrom = num(fd.get('cornersFrom')); P.backs = fd.get('backs') === 'on'; P.stamp = fd.get('stamp') === 'on'; P.shop = String(fd.get('shop') || '').trim(); await saveSettings(); toast('Photo settings saved'); };
+{ const vs = V.settings; V.settings = (...a) => Promise.resolve(vs(...a)).then(h => h.replace('<div class="cols">', () => photoSettingsPanel() + '<div class="cols">')); V.settings.after = vs.after; }
+
+/* PH7: turn the photos of many cards at once */
+A.selTurn = () => { const n = SELM.ids.size; if (!n) return toast('Pick some cards first');
+  openModal(`<form data-form="selTurn">${mhead(`Turn photos · ${n} card${n === 1 ? '' : 's'}`)}
+    <div class="fgrid">${field('Which photo', `<select name="side"><option value="back">Backs</option><option value="front">Fronts</option><option value="both">Both</option></select>`)}
+    ${field('Turn', `<select name="deg"><option value="90">A quarter turn right ↻</option><option value="270">A quarter turn left ↺</option><option value="180">Upside down (half turn)</option></select>`)}</div>
+    <small class="muted">The saved photo is turned, and so are the photos used for eBay listings.</small>${mfoot('Turn photos')}</form>`); };
+FORMS.selTurn = async f => {
+  const fd = new FormData(f); const deg = +fd.get('deg'); const sides = fd.get('side') === 'both' ? ['front', 'back'] : [fd.get('side')]; let n = 0;
+  const btn = f.querySelector('[type=submit]'); btn.disabled = true;
+  for (const id of SELM.ids) { const c = cardById(id); if (!c || !live(c)) continue;
+    for (const side of sides) { if (!c[side]) continue; const rec = await fileGetOrPull(c[side]); if (!rec) continue; btn.textContent = `Turning ${++n}…`;
+      const nb = await rotateBlob(rec.blob, deg); const nid = await fileSave(nb, rec.name || side + '.jpg'); c[side] = typeof nid === 'string' ? nid : nid.id || nid;
+      c[side + 'Rot'] = ((+c[side + 'Rot'] || 0) + deg) % 360; }
+    await save('cards', c, { quiet: true }); }
+  urlCache && urlCache.clear && urlCache.clear(); closeModal(); onChange('cards'); toast(`Turned ${n} photo${n === 1 ? '' : 's'}`);
+};
+
+/* PR3: price many cards by simple rules */
+A.selRules = () => { const n = SELM.ids.size; if (!n) return toast('Pick some cards first'); const R = Object.assign({ base: 0.99, rookie: 2.99, parallel: 1.99, numbered: 4.99, auto: '', graded: '' }, S.settings.priceRules || {});
+  const kinds = priceKinds([...SELM.ids].map(cardById).filter(Boolean));
+  openModal(`<form data-form="selRules">${mhead(`Price rules · ${n} card${n === 1 ? '' : 's'}`)}
+    <p class="muted" style="margin:0">Each card gets the first rule that fits it, in this order. Leave a box empty to leave those cards alone.</p>
+    <div class="fgrid">${[['graded', 'Graded slabs'], ['auto', 'Autographs'], ['numbered', 'Serial numbered'], ['rookie', 'Rookies'], ['parallel', 'Parallels'], ['base', 'Base cards']].map(([k, l]) => field(`${l} (${kinds[k] || 0})`, money_inp(k, R[k], 'keep0'))).join('')}</div>
+    <label class="chk"><input type="checkbox" name="blankOnly"> Only cards that don't have a value yet</label>
+    <label class="chk"><input type="checkbox" name="floor" checked> Never below what the card cost me</label>
+    ${mfoot('Set values')}</form>`); };
+function priceKind(c) { return c.graded ? 'graded' : c.auto ? 'auto' : c.serial ? 'numbered' : c.rookie ? 'rookie' : c.parallel && !/^base$/i.test(c.parallel) ? 'parallel' : 'base'; }
+const priceKinds = cs => cs.reduce((a, c) => (a[priceKind(c)] = (a[priceKind(c)] || 0) + 1, a), {});
+FORMS.selRules = async f => {
+  const fd = new FormData(f); const R = {}; for (const k of ['base', 'rookie', 'parallel', 'numbered', 'auto', 'graded']) R[k] = String(fd.get(k) || '').trim();
+  S.settings.priceRules = R; await saveSettings(); const cards = [...SELM.ids].map(cardById).filter(c => c && live(c));
+  const todo = cards.filter(c => R[priceKind(c)] !== '' && (!fd.get('blankOnly') || !num(c.value)));
+  await rememberUndo(todo); let n = 0;
+  for (const c of todo) { let v = num(R[priceKind(c)]); if (fd.get('floor') && v < unitCost(c)) v = charm(unitCost(c) * 1.2); if (r2(v) !== num(c.value)) { await setValue(c, v, 'Price rules'); n++; } }
+  closeModal(); SELM.on = false; SELM.ids.clear(); onChange('cards');
+  toast(`Set ${n} value${n === 1 ? '' : 's'}`, { label: 'Undo', run: async () => { const u = ebCfg().marketUndo; if (!u) return; for (const it of u.items) { const c = cardById(it.id); if (c) await setValue(c, it.value, 'Undo price rules'); } ebCfg().marketUndo = null; await saveSettings(); onChange('cards'); toast('Values put back'); } });
+};
+
+/* PR2: low / fair / high from a market check */
+const priceRange = m => m && m.n ? { low: num(m.p25) || num(m.low), fair: num(m.median) || num(m.avg), high: num(m.p75) || num(m.avg) } : null;
+const rangeText = m => { const r = priceRange(m); return r ? `${money(r.low)} · ${money(r.fair)} · ${money(r.high)}` : ''; };
+
+
+/* LT1/2/3/8: suggest lots from cards that aren't listed */
+const SUG = { list: [] };
+function lotSuggestions(o) {
+  const pool = lotCards().filter(c => !o.maxValue || num(c.value) <= o.maxValue);
+  const groups = []; const add = (kind, key, label, cards, min) => { if (cards.length >= min) groups.push({ kind, key, label, cards }); };
+  const by = f => { const m = new Map(); for (const c of pool) { const k = f(c); if (!k) continue; if (!m.has(k)) m.set(k, []); m.get(k).push(c); } return m; };
+  if (o.kinds.team) for (const [k, L] of by(c => c.team && c.sport ? c.sport + '|' + c.team : '')) add('team', k, `${k.split('|')[1]} team lot`, L, o.min);
+  if (o.kinds.player) for (const [k, L] of by(c => c.player)) add('player', k, `${k} player lot`, L, Math.max(3, Math.min(o.min, 4)));
+  if (o.kinds.rookie) for (const [k, L] of by(c => c.rookie && c.sport && c.year ? String(c.year).slice(0, 4) + ' ' + c.sport : '')) add('rookie', k, `${k} rookie class`, L, Math.max(4, Math.min(o.min, 6)));
+  if (o.kinds.teamset) for (const [k, L] of by(c => c.team && c.set && c.year ? `${String(c.year).slice(0, 4)} ${c.set} ${c.team}` : '')) add('teamset', k, `${k} team set`, L, 4);
+  if (o.kinds.set) for (const [k, L] of by(c => c.set && c.year ? `${String(c.year).slice(0, 4)} ${c.set}` : '')) add('set', k, `${k} set lot`, L, Math.max(8, o.min));
+  for (const g of groups) { let cards = g.cards.slice().sort((a, b) => num(b.value) - num(a.value));
+    if (o.target) { const out = []; let sum = 0; for (const c of cards) { if (sum * 0.85 >= o.target) break; out.push(c); sum += num(c.value) || 0.5; } if (sum * 0.85 >= o.target * 0.8 && out.length >= 2) cards = out; else { g.skip = true; continue; } }
+    g.cards = cards; g.value = r2(cards.reduce((a, c) => a + num(c.value), 0)); g.cost = r2(cards.reduce((a, c) => a + unitCost(c), 0));
+    g.price = o.target || charm(Math.max(g.value * 0.85, cards.length * 0.5, g.cost * 1.15)); g.title = lotTitles(cards)[0]; }
+  const seen = new Set(); return groups.filter(g => { if (g.skip) return false; const k = g.cards.map(c => c.id).sort().join(','); if (seen.has(k)) return false; seen.add(k); return true; }).sort((a, b) => b.cards.length - a.cards.length || b.value - a.value);
+}
+A.suggestLots = () => {
+  if (!ebOn()) return toast('Turn on eBay in Settings first');
+  const o = Object.assign({ maxValue: 5, min: 5, target: 0, kinds: { team: true, player: true, rookie: true, teamset: true, set: false } }, S.settings.lotSug || {});
+  openModal(`<form data-form="sugLots">${mhead('Suggest lots')}
+    <p class="muted" style="margin:0">Groups your in-stock cards that aren't listed yet. A card can show up in more than one idea; once it's in a posted lot it drops out of the others.</p>
+    <div class="fgrid">${field('Only cards worth up to (base cards)', money_inp('maxValue', o.maxValue, 'keep0'))}${field('At least this many cards', inp('min', o.min, 'inputmode="numeric"'))}
+    ${field('Target lot price (optional)', money_inp('target', o.target || ''))}</div>
+    <div class="row">${[['team', 'Team'], ['player', 'Player'], ['rookie', 'Rookie class'], ['teamset', 'Team set'], ['set', 'Whole set']].map(([k, l]) => `<label class="chk"><input type="checkbox" name="k_${k}" ${o.kinds[k] ? 'checked' : ''}> ${l}</label>`).join('')}</div>
+    <div class="row"><button class="btn pri" type="submit">Find lots</button></div><div id="sug-out"></div></form>`);
+  $('#modal-root form[data-form="sugLots"]').requestSubmit();
+};
+FORMS.sugLots = async f => {
+  const fd = new FormData(f); const o = { maxValue: num(fd.get('maxValue')), min: Math.max(2, num(fd.get('min')) || 5), target: num(fd.get('target')), kinds: {} };
+  for (const k of ['team', 'player', 'rookie', 'teamset', 'set']) o.kinds[k] = fd.get('k_' + k) === 'on'; S.settings.lotSug = o; await saveSettings();
+  SUG.list = lotSuggestions(o); const K = { team: 'Team', player: 'Player', rookie: 'Rookie class', teamset: 'Team set', set: 'Set' };
+  $('#sug-out').innerHTML = SUG.list.length ? `<p class="muted">${SUG.list.length} lot idea${SUG.list.length === 1 ? '' : 's'}.</p><div class="list">${SUG.list.slice(0, 40).map((g, i) => `<div class="li" style="align-items:center;flex-wrap:wrap"><div class="grow" style="min-width:0;white-space:normal"><b style="white-space:normal">${esc(g.title)}</b>
+      <small style="white-space:normal;display:block"><span class="pill">${K[g.kind]}</span> ${g.cards.length} cards · value ${money(g.value)} · cost ${money(g.cost)} · price ${money(g.price)}${g.cost ? ` · profit about ${money(g.price * 0.85 - g.cost)}` : ''}</small></div>
+      <button class="btn sm" type="button" data-act="sugSelect" data-i="${i}">Select</button><button class="btn sm pri" type="button" data-act="sugMake" data-i="${i}">Make lot</button></div>`).join('')}</div>`
+    : '<p class="muted">No lots with these settings. Try a higher card value, fewer cards, or more lot types.</p>';
+};
+A.sugSelect = el => { const g = SUG.list[+el.dataset.i]; if (!g) return; closeModal(); location.hash = '#/inv'; setTimeout(() => { SELM.on = true; SELM.ids = new Set(g.cards.map(c => c.id)); selRefresh(); toast(`${g.cards.length} cards selected`); }, 300); };
+A.sugMake = async el => { const g = SUG.list[+el.dataset.i]; if (!g) return; el.disabled = true; el.textContent = 'Checking eBay…';
+  let info; try { info = await lotInfo(); } catch (e) { el.disabled = false; el.textContent = 'Make lot'; return toast(e.message); }
+  openLotForm(g.cards, info); const f = $('#modal-root form[data-form="lotList"]'); if (f) { const p = f.querySelector('[name=price]'); if (p) p.value = g.price; } };
+
+/* LT9: what each lot cost, sold for and made */
+function lotReport() {
+  const lots = Object.values(ebCfg().lots || {}); if (!lots.length) return '';
+  const rows = lots.map(L => { const ids = new Set(L.cardIds || []); const sold = S.txns.filter(t => !t.purged && t.type === 'sell' && ids.has(t.cardId) && /lot/.test(t.note || ''));
+    const cost = (L.cardIds || []).reduce((a, id) => { const c = cardById(id); return a + (c ? unitCost(c) : 0); }, 0);
+    const gross = sold.reduce((a, t) => a + num(t.amount), 0), net = sold.reduce((a, t) => a + num(t.net), 0), profit = sold.reduce((a, t) => a + num(t.profit), 0);
+    const when = sold.length ? sold[0].date : ''; const days = when && L.listedAt ? daysBetween(L.listedAt, when) : null;
+    return { L, n: (L.cardIds || []).length, cost, gross, net, profit, sold: !!sold.length, days }; }).sort((a, b) => (b.L.listedAt || '').localeCompare(a.L.listedAt || ''));
+  const done = rows.filter(r => r.sold); const avgDays = done.filter(r => r.days !== null); const sum = k => done.reduce((a, r) => a + r[k], 0);
+  return `<section class="panel"><h2>Lots</h2><div class="calc"><div><span>Lots sold</span><b>${done.length} of ${rows.length}</b></div><div><span>Lot profit</span><b class="${cls(sum('profit'))}">${money(sum('profit'), 1)}</b></div><div><span>Avg days to sell</span><b>${avgDays.length ? Math.round(avgDays.reduce((a, r) => a + r.days, 0) / avgDays.length) : '—'}</b></div></div>
+    <div class="tablewrap"><table class="t"><thead><tr><th>Lot</th><th class="r">Cards</th><th class="r">Cost</th><th class="r">Sold for</th><th class="r">Profit</th><th class="r">Days</th></tr></thead><tbody>
+    ${rows.slice(0, 30).map(r => `<tr><td><b>${esc(r.L.title || r.L.sku)}</b><br><small class="muted">${r.sold ? 'Sold' : esc(r.L.status || 'Listed')} · ${money(r.L.price)}</small></td><td class="r num">${r.n}</td><td class="r num">${money(r.cost)}</td><td class="r num">${r.sold ? money(r.gross) : '—'}</td><td class="r num ${r.sold ? cls(r.profit) : ''}">${r.sold ? money(r.profit, 1) : '—'}</td><td class="r num">${r.days ?? '—'}</td></tr>`).join('')}</tbody></table></div></section>`;
+}
+{ const vs = V.sales; V.sales = (...a) => { const h = vs(...a); return typeof h === 'string' ? h + lotReport() : h; }; V.sales.after = vs.after; }
+
+/* ---------- 1.17.1–1.17.2: listing health, bulk revise, auto relist, what sells, best time, repeat buyers, tax summary, exact fees ---------- */
+
+/* the listing as Dugout would post it today, for comparing with what's live */
+const liveOpts = c => ({ title: (c.ebay && c.ebay.title) || idealTitle(c), price: (c.ebay && c.ebay.price) || num(c.value), bestOffer: !!(c.ebay && c.ebay.bestOffer), accept: ebCfg().accept, decline: ebCfg().decline, oz: c.graded ? ebCfg().ozSlab : ebCfg().ozRaw, format: (c.ebay && c.ebay.format) || 'FIXED_PRICE', start: (c.ebay && c.ebay.price) || 0, days: 7, ends: new Date(Date.now() + 7 * 864e5) });
+const activeSingles = () => S.cards.filter(live).filter(c => c.ebay && c.ebay.status === 'active' && c.ebay.sku && !c.ebay.lot);
+
+/* SL4: a 0–100 health score per live listing, with what to fix */
+function listingHealth(c) {
+  const title = (c.ebay && c.ebay.title) || idealTitle(c); const ts = titleScore(c, title); const issues = []; let s = 0;
+  s += 40 * ts.score / 100; if (ts.missing.length) issues.push('Title is missing ' + ts.missing.join(', ').toLowerCase()); if (ts.junk) issues.push('Title has filler words');
+  const need = [['player', 'player'], ['year', 'year'], ['set', 'set'], ['number', 'card #'], ['team', 'team'], ['sport', 'sport']]; const miss = need.filter(([k]) => !c[k] && !(k === 'set' && c.brand));
+  s += 25 * (need.length - miss.length) / need.length; if (miss.length) issues.push('Item specifics missing: ' + miss.map(x => x[1]).join(', '));
+  s += c.front ? 10 : 0; s += c.back ? 5 : 0; if (!c.back) issues.push('No back photo');
+  const m = c.market && daysSince(c.market.date) <= 30 && c.market.n >= 3 ? c.market : null; const price = num(c.ebay && c.ebay.price);
+  if (m) { const hi = num(m.p75) || num(m.avg); if (price <= hi) s += 20; else if (price <= hi * 1.25) { s += 10; issues.push(`Priced above most listings (fair ${money(num(m.median) || num(m.avg))})`); } else issues.push(`Priced well above the market (fair ${money(num(m.median) || num(m.avg))})`); }
+  else { s += 12; issues.push('No recent market check'); }
+  const age = daysSince((c.ebay && (c.ebay.firstListed || c.ebay.listedAt)) || today()); if (age >= 60) { s -= 5; issues.push(`Up ${age} days; relisting shows it as new`); }
+  return { score: Math.max(0, Math.min(100, Math.round(s))), issues, title, better: titleScore(c, idealTitle(c)).score > ts.score + 4 ? idealTitle(c) : '' };
+}
+function healthPanel() {
+  const L = activeSingles(); if (!L.length) return '';
+  const H = L.map(c => ({ c, h: listingHealth(c) })).sort((a, b) => a.h.score - b.h.score); const avg = Math.round(H.reduce((a, x) => a + x.h.score, 0) / H.length);
+  const fixT = H.filter(x => x.h.better).length;
+  return `<section class="panel" id="health"><h2>Listing health <span class="pill ${avg >= 80 ? 'st-in_stock' : avg >= 60 ? 'acc-pill' : 'neg-pill'}" style="margin-left:8px">${avg} avg</span></h2>
+    <p class="muted" style="margin:0">Title, item specifics, photos and price for each live listing. Weakest first.</p>
+    <div class="row">${fixT ? `<button class="btn sm" type="button" data-act="fixTitles">Improve ${fixT} title${fixT === 1 ? '' : 's'}</button>` : ''}<button class="btn sm" type="button" data-act="fixSpecifics">Update item specifics on all ${L.length}</button></div>
+    <div class="list">${H.slice(0, 12).map(({ c, h }) => `<div class="li" style="align-items:flex-start"><span class="pill ${h.score >= 80 ? 'st-in_stock' : h.score >= 60 ? 'acc-pill' : 'neg-pill'}" style="min-width:42px;text-align:center">${h.score}</span>
+      <a class="grow" href="#/card/${c.id}" style="min-width:0;white-space:normal"><b>${esc(h.title)}</b>${h.issues.length ? `<small style="white-space:normal">${h.issues.map(esc).join(' · ')}</small>` : '<small>Looks good</small>'}</a></div>`).join('')}</div>
+    ${H.length > 12 ? `<small class="muted">${H.length - 12} more. Select cards and use Revise on eBay to fix many at once.</small>` : ''}</section>`;
+}
+{ const ve = V.ebay; V.ebay = (...a) => { const h = ve(...a); return typeof h === 'string' && ebOn() ? h.replace('<section class="board">', () => healthPanel() + '<section class="board">') : h; }; V.ebay.after = ve.after; }
+async function reviseRun(el, cards, job) {
+  if (ebIsLive() && el.dataset.sure !== '1') { el.dataset.sure = '1'; el.textContent = `Tap again to change ${cards.length} live listing${cards.length === 1 ? '' : 's'}`; return null; }
+  el.disabled = true; let ok = 0; const errs = [];
+  for (const [i, c] of cards.entries()) { el.textContent = `Updating ${i + 1} of ${cards.length}…`; try { await job(c); ok++; } catch (e) { errs.push(`${c.code}: ${e.message}`); } }
+  onChange('cards'); toast(`Updated ${ok} listing${ok === 1 ? '' : 's'}${errs.length ? `, ${errs.length} failed` : ''}`); if (errs.length) openModal(`<div>${mhead('Some listings didn\'t update')}<div class="warn">${errs.slice(0, 10).map(esc).join('<br>')}</div><div class="sheet-foot"><button class="btn pri" data-act="close" type="button">OK</button></div></div>`);
+  return ok;
+}
+async function reviseTitle(c, title) { await ebay('revise', { sku: c.ebay.sku, title }); const old = c.ebay.title; c.ebay.title = title; await save('cards', c, { quiet: true }); await logTxn({ cardId: c.id, type: 'edit', date: today(), changes: [{ f: 'eBay title', from: old || '', to: title }], note: ebModeName() }); }
+async function reviseSpecifics(c) { const L = ebayListing(c, liveOpts(c)); await ebay('revise', { sku: c.ebay.sku, aspects: L.inventoryItem.product.aspects }); }
+A.fixTitles = el => reviseRun(el, activeSingles().filter(c => listingHealth(c).better), c => reviseTitle(c, idealTitle(c)));
+A.fixSpecifics = el => reviseRun(el, activeSingles(), reviseSpecifics);
+
+/* EB5: change many live listings from the Select bar */
+A.selRevise = () => {
+  const cards = [...SELM.ids].map(cardById).filter(c => c && live(c) && c.ebay && c.ebay.status === 'active' && c.ebay.sku && !c.ebay.lot);
+  if (!cards.length) return toast('None of the selected cards are live on eBay as single listings');
+  openModal(`<form data-form="selRevise">${mhead(`Revise ${cards.length} live listing${cards.length === 1 ? '' : 's'}`)}
+    <div class="eb-mode ${ebCfg().mode}">${ebIsLive() ? '<b>LIVE eBay:</b> these change your real listings.' : 'Not live eBay: nothing real changes.'}</div>
+    ${field('Title', `<select name="title"><option value="keep">Keep the titles</option><option value="ideal">Use Dugout's best title for each card</option></select>`)}
+    <div class="fgrid">${field('Price', `<select name="price"><option value="keep">Keep the prices</option><option value="pct">Change by a percent</option><option value="value">Set to each card's value</option><option value="fair">Set to the market's fair price (where checked)</option></select>`)}${field('Percent (−10 lowers by 10%)', inp('pct', '-10', 'inputmode="decimal"'))}</div>
+    <label class="chk"><input type="checkbox" name="specs" checked> Update item specifics from the card details</label>
+    <label class="chk"><input type="checkbox" name="floor" checked> Never price below what the card cost me</label>
+    ${mfoot('Revise listings')}</form>`);
+  $('#modal-root form[data-form="selRevise"]')._cards = cards;
+};
+FORMS.selRevise = async f => {
+  const fd = new FormData(f); const cards = f._cards || []; const btn = f.querySelector('[type=submit]'); const pm = fd.get('price'), pct = num(fd.get('pct'));
+  const ok = await reviseRun(btn, cards, async c => {
+    if (fd.get('title') === 'ideal') { const t = idealTitle(c); if (t !== c.ebay.title) await reviseTitle(c, t); }
+    if (fd.get('specs')) await reviseSpecifics(c);
+    if (pm !== 'keep') { let p = pm === 'pct' ? num(c.ebay.price) * (1 + pct / 100) : pm === 'value' ? num(c.value) : c.market && c.market.n >= 3 ? num(c.market.median) || num(c.market.avg) : 0;
+      if (fd.get('floor') && p < unitCost(c) * 1.15) p = unitCost(c) * 1.15; p = pm === 'pct' ? r2(p) : charm(p); if (p > 0 && r2(p) !== r2(c.ebay.price) && c.ebay.format !== 'AUCTION') await ebReprice(c, p); }
+  });
+  if (ok !== null) { closeModal(); SELM.on = false; SELM.ids.clear(); onChange('cards'); }
+};
+
+/* EB4: relist on its own: listings up too long, and auctions that ended without a sale (only right after a good sales sync) */
+const autoRelistCfg = () => { const c = opsCfg(); c.autoRelist = Object.assign({ on: false, auctions: true, max: 10, last: '' }, c.autoRelist || {}); return c.autoRelist; };
+const endedAuctions = () => S.cards.filter(live).filter(c => c.ebay && c.ebay.status === 'active' && c.ebay.format === 'AUCTION' && c.ebay.ends && Date.parse(c.ebay.ends) < Date.now() - 3 * 3600e3 && c.status === 'listed');
+async function autoRelistRun() {
+  const R = autoRelistCfg(); if (!R.on || R.last === today() || !ebOn()) return; R.last = today(); await saveSettings();
+  const L = [...(R.auctions ? endedAuctions() : []), ...refreshable()].slice(0, num(R.max) || 10); if (!L.length) return; let ok = 0;
+  for (const c of L) { try { await relistCard(c); ok++; } catch (e) { const cfg = ebCfg(); (cfg.failed = cfg.failed || []).unshift({ id: 'f_' + uid(), op: 'relist', at: nowISO(), error: String(e.message).slice(0, 300), what: 'Auto relist ' + c.code + ' ' + cardName(c), cardId: c.id, retry: null }); } }
+  await saveSettings(); onChange('cards'); if (ok) toast(`Auto relist: ${ok} listing${ok === 1 ? '' : 's'} posted again as new`);
+}
+{ const es = ebSync; ebSync = async (...a) => { const r = await es(...a); setTimeout(() => autoRelistRun().catch(() => {}), 1500); return r; }; }
+function autoRelistPanel() { const R = autoRelistCfg();
+  return `<section class="panel" id="auto-relist"><h2>Auto relist</h2><form data-form="autoRelist" class="fgrid">
+    <label class="chk wide"><input type="checkbox" name="on" ${R.on ? 'checked' : ''}> Relist on its own once a day, right after Dugout syncs your sales</label>
+    <label class="chk wide"><input type="checkbox" name="auctions" ${R.auctions ? 'checked' : ''}> Auctions that ended without a sale</label>
+    ${field(`Buy It Now listings up at least (days)`, inp('days', opsCfg().refreshDays, 'inputmode="numeric"'))}${field('At most per day', inp('max', R.max, 'inputmode="numeric"'))}
+    <small class="muted wide">Relisting ends the listing and posts it again, so it shows as new in search. Watchers on the old listing are lost. Last run: ${R.last ? fmtDate(R.last) : 'never'}.</small>
+    <div class="row wide"><button class="btn sm pri" type="submit">Save</button></div></form></section>`; }
+FORMS.autoRelist = async f => { const fd = new FormData(f); const R = autoRelistCfg(); R.on = fd.get('on') === 'on'; R.auctions = fd.get('auctions') === 'on'; R.max = Math.max(1, Math.min(50, num(fd.get('max')) || 10)); opsCfg().refreshDays = Math.max(14, num(fd.get('days')) || 60); R.last = ''; await saveSettings(); toast(R.on ? 'Auto relist is on' : 'Auto relist is off'); };
+{ const vs = V.settings; V.settings = (...a) => Promise.resolve(vs(...a)).then(h => ebOn() ? h.replace('<div class="cols">', () => autoRelistPanel() + '<div class="cols">') : h); V.settings.after = vs.after; }
+
+/* MN2: the fees eBay actually took (final value + ad fees), split across the order's cards */
+async function pullExactFees(loud) {
+  try { const r = await ebay('orderFees', { since: new Date(Date.now() - 90 * 864e5).toISOString() }); let n = 0;
+    for (const o of r.orders || []) { const tx = S.txns.filter(t => !t.purged && t.type === 'sell' && String(t.ebayLine || '').startsWith(o.orderId + ':')); if (!tx.length) continue;
+      const total = r2(num(o.fees) + num(o.adFees)); const gross = tx.reduce((a, t) => a + num(t.amount), 0) || 1; let left = total;
+      tx.forEach((t, i) => { const share = i === tx.length - 1 ? r2(left) : r2(total * num(t.amount) / gross); left -= share; if (r2(num(t.fees)) === share && t.feesExact) return;
+        t.fees = share; t.adFees = r2(num(o.adFees) * num(t.amount) / gross); t.feesExact = true; t.net = r2(num(t.amount) - num(t.fees) - num(t.shipping) - num(t.supplies)); t.profit = r2(t.net - num(t.cost)); n++; });
+      for (const t of tx) await save('txns', t, { quiet: true }); }
+    if (n) onChange('txns'); if (loud) toast(n ? `Exact fees on ${n} sale${n === 1 ? '' : 's'}` : 'Fees already match eBay'); return n;
+  } catch (e) { if (loud) toast(/scope|permission|insufficient|403/i.test(e.message) ? 'Sign in to eBay again in Settings so Dugout can read your fees.' : /Unknown|not found|404/i.test(e.message) ? 'Update your eBay relay (worker.js) to pull exact fees.' : e.message); return 0; }
+}
+A.pullFees = () => pullExactFees(true);
+{ const ve = V.ebay; V.ebay = (...a) => { const h = ve(...a); return typeof h === 'string' && ebOn() ? h.replace('<button class="btn" type="button" data-act="pullLabels">Pull label costs from eBay</button>', m => m + '<button class="btn" type="button" data-act="pullFees">Pull exact fees</button>') : h; }; V.ebay.after = ve.after; }
+
+/* SL10: buyers who came back. Buyer names are saved with each eBay sale from now on; older ones can be loaded */
+A.loadBuyers = async el => { el.disabled = true; el.textContent = 'Loading…';
+  try { const r = await ebay('orders', { since: new Date(Date.now() - 180 * 864e5).toISOString() }); let n = 0;
+    for (const o of r.orders || []) for (const t of S.txns.filter(t => !t.purged && t.type === 'sell' && String(t.ebayLine || '').startsWith(o.orderId + ':'))) { if (t.buyer && t.at) continue; t.buyer = t.buyer || o.buyer || ''; t.at = t.at || o.created || ''; await save('txns', t, { quiet: true }); n++; }
+    toast(`Added buyers to ${n} sale${n === 1 ? '' : 's'}`); route(); } catch (e) { el.disabled = false; el.textContent = 'Load buyers for past sales'; toast(e.message); } };
+function repeatBuyers() {
+  const m = new Map(); for (const t of S.txns.filter(t => !t.purged && t.type === 'sell' && t.buyer)) { const r = m.get(t.buyer) || { buyer: t.buyer, orders: new Set(), spent: 0, last: '', cards: [] }; r.orders.add(String(t.ebayLine || t.id).split(':')[0]); r.spent += num(t.amount); if (t.date > r.last) r.last = t.date; const c = cardById(t.cardId); if (c) r.cards.push(c); m.set(t.buyer, r); }
+  return [...m.values()].map(r => ({ ...r, n: r.orders.size })).sort((a, b) => b.n - a.n || b.spent - a.spent);
+}
+
+/* SL6 + SL7: what sells and when, from your own sales */
+function insightsPanel() {
+  const T = S.txns.filter(t => !t.purged && t.type === 'sell' && live(cardById(t.cardId))); if (T.length < 3) return `<section class="panel"><h2>What sells</h2><p class="muted" style="margin:0">After a few more sales, this shows what sells fastest and when your buyers buy.</p></section>`;
+  const listedOn = t => { const c = cardById(t.cardId); return t.listedOn || (c && c.ebay && (c.ebay.firstListed || c.ebay.listedAt)) || (c && c.listedAt) || ''; };
+  const days = t => { const d = listedOn(t); return d && d <= t.date ? daysBetween(d, t.date) : null; };
+  const band = a => a < 2 ? 'Under $2' : a < 5 ? '$2–5' : a < 10 ? '$5–10' : a < 25 ? '$10–25' : '$25+';
+  const kind = t => { const c = cardById(t.cardId) || {}; return t.format === 'LOT' || /lot of/.test(t.note || '') ? 'Lots' : (t.format || (c.ebay && c.ebay.format)) === 'AUCTION' ? 'Auctions' : t.platform === 'eBay' ? 'Buy It Now' : t.platform || 'Other'; };
+  const grp = (key, stockKey) => { const g = new Map(); for (const t of T) { const k = key(t); if (!k) continue; const r = g.get(k) || { k, n: 0, profit: 0, d: [] }; r.n += num(t.qty) || 1; r.profit += num(t.profit); const d = days(t); if (d !== null) r.d.push(d); g.set(k, r); }
+    const stock = new Map(); if (stockKey) for (const c of S.cards.filter(live).filter(c => ACTIVE.includes(c.status))) { const k = stockKey(c); if (k) stock.set(k, (stock.get(k) || 0) + (+c.qty || 1)); }
+    return [...g.values()].map(r => ({ ...r, avgD: r.d.length ? Math.round(r.d.reduce((a, b) => a + b, 0) / r.d.length) : null, left: stock.get(r.k) || 0 })).sort((a, b) => b.n - a.n); };
+  const table = (title, rows) => rows.length ? `<details ${title === 'By sport' ? 'open' : ''}><summary><b>${title}</b></summary><div class="tablewrap"><table class="t"><thead><tr><th></th><th class="r">Sold</th><th class="r">Still have</th><th class="r">Sell-through</th><th class="r">Days to sell</th><th class="r">Avg profit</th></tr></thead><tbody>
+    ${rows.slice(0, 10).map(r => `<tr><td>${esc(r.k)}</td><td class="r num">${r.n}</td><td class="r num">${r.left}</td><td class="r num">${r.n + r.left ? Math.round(r.n / (r.n + r.left) * 100) + '%' : '—'}</td><td class="r num">${r.avgD ?? '—'}</td><td class="r num ${cls(r.profit)}">${money(r.profit / r.n, 1)}</td></tr>`).join('')}</tbody></table></div></details>` : '';
+  const cOf = t => cardById(t.cardId) || {};
+  const W = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']; const wd = d => new Date(d + 'T12:00').getDay();
+  const byDay = W.map(() => 0); T.forEach(t => byDay[t.at ? new Date(t.at).getDay() : wd(t.date)]++);
+  const hrs = T.filter(t => t.at).map(t => new Date(t.at).getHours()); const byHr = [...Array(24)].map((_, h) => hrs.filter(x => x === h).length);
+  const lst = W.map(() => []); T.forEach(t => { const d = days(t); const l = listedOn(t); if (d !== null && l) lst[wd(l)].push(d); });
+  const maxD = Math.max(...byDay, 1); const topDays = byDay.map((n, i) => [W[i], n]).sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => x[0]);
+  const bestList = lst.map((L, i) => [W[i], L.length >= 2 ? L.reduce((a, b) => a + b, 0) / L.length : null]).filter(x => x[1] !== null).sort((a, b) => a[1] - b[1])[0];
+  const hrBlocks = [[6, 12, 'Morning'], [12, 17, 'Afternoon'], [17, 21, 'Evening'], [21, 24, 'Late night'], [0, 6, 'Overnight']].map(([a, b, l]) => [l, byHr.slice(a, b).reduce((x, y) => x + y, 0)]).sort((a, b) => b[1] - a[1]);
+  const RB = repeatBuyers(); const rep = RB.filter(r => r.n >= 2); const withBuyer = T.filter(t => t.buyer).length;
+  return `<section class="panel" id="insights"><h2>What sells</h2>
+    ${table('By sport', grp(t => cOf(t).sport, c => c.sport))}${table('By price', grp(t => band(num(t.amount) / (num(t.qty) || 1)), c => band(num(c.value))))}${table('By listing type', grp(kind))}
+    ${table('Rookies vs others', grp(t => cOf(t).rookie ? 'Rookies' : 'Not rookies', c => c.rookie ? 'Rookies' : 'Not rookies'))}${table('By team (top 10)', grp(t => cOf(t).team, c => c.team))}</section>
+  <section class="panel" id="best-time"><h2>Best time to list</h2>
+    <p style="margin:0">Most of your sales come on <b>${topDays.join(' and ')}</b>${hrs.length >= 5 ? `, mostly in the <b>${hrBlocks[0][0].toLowerCase()}</b>` : ''}.${bestList ? ` Cards listed on a <b>${bestList[0]}</b> sold fastest (about ${Math.round(bestList[1])} days).` : ''}</p>
+    <div class="bars" style="display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:center;margin-top:8px">${byDay.map((n, i) => `<span class="muted">${W[i].slice(0, 3)}</span><span style="height:10px;border-radius:5px;background:var(--acc);width:${Math.max(2, n / maxD * 100)}%"></span><span class="num">${n}</span>`).join('')}</div>
+    ${hrs.length < 5 ? '<small class="muted">Sale times are saved from now on, so the hour of day fills in as you sell more.</small>' : ''}</section>
+  <section class="panel" id="repeat"><h2>Repeat buyers ${rep.length ? `<span class="pill acc-pill" style="margin-left:8px">${rep.length}</span>` : ''}</h2>
+    ${rep.length ? `<div class="list">${rep.slice(0, 15).map(r => `<div class="li"><div class="grow"><b>${esc(r.buyer)}</b><small>${r.n} orders · ${money(r.spent)} · last ${fmtDate(r.last)} · likes ${esc(uniq(r.cards.map(c => c.team || c.player).filter(Boolean)).slice(0, 3).join(', '))}</small></div><a class="btn sm" href="https://www.ebay.com/usr/${encodeURIComponent(r.buyer)}" target="_blank" rel="noopener">Profile ↗</a></div>`).join('')}</div>
+      <small class="muted">To reach them, send an offer on something they'd like from the listing's watchers, or message them from the order on eBay.</small>` : `<p class="muted" style="margin:0">${withBuyer ? 'No one has bought twice yet.' : 'Buyer names are saved with each eBay sale from now on.'}</p>`}
+    ${ebOn() && T.some(t => t.ebayLine && !t.buyer) ? '<div class="row"><button class="btn sm" type="button" data-act="loadBuyers">Load buyers for past sales</button></div>' : ''}</section>`;
+}
+
+/* MN3: the year on one screen, beside the tax export */
+function taxPanel(y) {
+  const d = boardData(y); const T = d.T; const s = k => T.reduce((a, t) => a + num(t[k]), 0); const cats = {}; for (const x of d.exp) cats[x.cat || 'Other'] = (cats[x.cat || 'Other'] || 0) + num(x.amount);
+  const buys = S.txns.filter(t => !t.purged && t.type === 'buy' && t.date.startsWith(y)).reduce((a, t) => a + num(t.amount), 0); const exp = d.exp.reduce((a, x) => a + num(x.amount), 0);
+  const eb = T.filter(t => t.platform === 'eBay'); const ebGross = eb.reduce((a, t) => a + num(t.amount), 0);
+  const row = (l, v, k = '') => `<div class="li"><span class="grow">${l}</span><b class="num ${k}">${money(v, k ? 1 : 0)}</b></div>`;
+  return `<section class="panel" id="tax-summary"><h2>Tax summary · ${esc(y)}</h2><div class="list">
+    ${row(`Sales (${T.length})`, s('amount'))}${row('Selling fees', -s('fees'))}${row('Shipping you paid', -s('shipping'))}${s('supplies') ? row('Supplies used on sales', -s('supplies')) : ''}${row('Cost of cards sold', -s('cost'))}${row('Profit on sales', s('profit'), cls(s('profit')))}
+    ${Object.entries(cats).map(([k, v]) => row(esc(k) + (k === 'Mileage' ? ' (IRS rate)' : ''), -v)).join('')}${row('Net profit', d.net, cls(d.net))}</div>
+    <div class="calc"><div><span>Cards bought this year</span><b>${money(buys)}</b></div><div><span>eBay gross (compare with any 1099-K)</span><b>${money(ebGross)}</b></div></div>
+    <small class="muted">Cards you still hold count as inventory, not expenses, until they sell. This is a summary for you and your tax preparer, not tax advice. The full export with receipts is under Receipts → Export for taxes.</small></section>`;
+}
+{ const vs = V.sales; V.sales = (...a) => { const h = vs(...a); if (typeof h !== 'string') return h; const y = SF.year || String(new Date().getFullYear()); return h + insightsPanel() + taxPanel(y); }; V.sales.after = vs.after; }
+
+/* ---------- 1.17.3 scanning: learns from your fixes (SC2), name strip per set (SC3), serial zoom (SC7), parallel hint (SC6), live camera (SC5) ---------- */
+
+/* SC2: what Dugout has learned. Kept on this device.
+   names:   a printed name it misread → the name you put in        ("TARYN CHRISTION" → Christian McCaffrey)
+   regions: per set, the strip of the front where the name sits  ("2025 bowman" → y 0.86–0.94, stretched) */
+let LEARN = { names: {}, regions: {} };
+getMeta('learn').then(m => { if (m) LEARN = Object.assign({ names: {}, regions: {} }, m); }).catch(() => {});
+const saveLearn = () => setMeta('learn', LEARN);
+const setKeyOf = f => [String(f.year || '').slice(0, 4), nkey(f.set || f.brand || '')].join('|');
+const numKey = n => String(n || '').replace(/^#\s*/, '').replace(/(^|[^0-9])0+(?=\d)/g, '$1').toLowerCase();
+/* your own checklist: year + set + card # → player, from cards you've confirmed (a real player name, or one you typed in) */
+let CL = { at: 0, n: -1, map: new Map(), rev: new Map() };
+function checklist() {
+  if (CL.n === S.cards.length && Date.now() - CL.at < 60e3) return CL; const map = new Map(), rev = new Map(); const fixed = new Set(S.txns.filter(t => t.type === 'edit' && (t.changes || []).some(x => x.f === 'player' || x.f === 'number')).map(t => t.cardId));
+  for (const c of S.cards) { if (!live(c) || !c.player || !c.year || !(c.set || c.brand)) continue; const ok = fixed.has(c.id) || c.learnOK; if (!ok) continue; // only what you confirmed or corrected, never Dugout's own guesses
+    if (c.number) map.set(setKeyOf(c) + '|' + numKey(c.number), { id: c.id, player: c.player, team: c.team || '', rookie: !!c.rookie, sport: c.sport || '' });
+    if (c.number) rev.set(setKeyOf(c) + '|' + nkey(c.player), { id: c.id, n: c.number }); }
+  CL = { at: Date.now(), n: S.cards.length, map, rev }; return CL;
+}
+/* after a read: use what was learned when the read is unsure */
+function applyLearned(it) {
+  const f = it.fields; if (!f) return; const L = checklist();
+  if (f.number) { const hit = L.map.get(setKeyOf(f) + '|' + numKey(f.number)); if (hit && hit.id !== it.selfId && (f.conf !== 'high' || !f.player) && nkey(hit.player) !== nkey(f.player || '')) { f.player = hit.player; f.conf = 'high'; f.learned = 'checklist'; if (!f.team) f.team = hit.team; if (!f.sport) f.sport = hit.sport; if (hit.rookie) f.rookie = true; } }
+  if (f.conf !== 'high' && it.rawName) { const nm = LEARN.names[nkey(it.rawName)]; if (nm && nm !== f.player) { f.player = nm; f.conf = 'medium'; f.learned = 'name'; } }
+  if (!f.number && f.player) { const n = L.rev.get(setKeyOf(f) + '|' + nkey(f.player)); if (n && n.id !== it.selfId) { f.number = n.n; f.numberFrom = 'learned'; } }
+}
+/* you corrected a name: remember the misread, and (in the background) find where this set prints its names */
+async function learnFix(readName, rightName, f, front) {
+  if (!rightName) return; let changed = false;
+  if (readName && nkey(readName) !== nkey(rightName) && nkey(readName).length >= 5) { LEARN.names[nkey(readName)] = rightName; changed = true; }
+  const k = setKeyOf(f || {}); if (changed) await saveLearn();
+  if (front && k !== '|' && !(LEARN.regions[k] && LEARN.regions[k].hits >= 2)) learnQueue.push({ k, name: rightName, front });
+  if (!learnBusy) learnDrain();
+}
+const learnQueue = []; let learnBusy = false;
+async function learnDrain() { learnBusy = true; try { while (learnQueue.length) { const j = learnQueue.shift(); if (LEARN.regions[j.k] && LEARN.regions[j.k].hits >= 2) continue; const r = await findNameRegion(j.front, j.name); if (r) { const old = LEARN.regions[j.k]; LEARN.regions[j.k] = old && Math.abs(old.y0 - r.y0) < 0.04 && old.mode === r.mode ? { ...old, hits: old.hits + 1 } : { ...r, hits: 1 }; await saveLearn(); } } } finally { learnBusy = false; } }
+/* try the usual name strips until one reads the name you typed */
+const NAME_STRIPS = [[0.85, 0.95], [0.80, 0.90], [0.88, 0.98], [0.75, 0.86], [0.02, 0.12], [0.08, 0.20], [0.65, 0.78]];
+async function findNameRegion(blob, name) {
+  const last = nkey(splitName(name).last || name); if (last.length < 3) return null;
+  const hit = t => String(t || '').toUpperCase().replace(/[^A-Z' -]/g, ' ').split(/\s+/).some(w => w.length >= 3 && lev(nkey(w), last, 2) <= (last.length >= 6 ? 2 : 1));
+  for (const [y0, y1] of NAME_STRIPS) for (const mode of [false, 'stretch', true]) {
+    try { const t = (await readImageText(await zoomPart(blob, 0.03, y0, 0.97, y1, 0, 2000, mode), null, '7', { raw: true })).text; if (hit(t)) return { y0, y1, mode }; } catch (e) {} }
+  return null;
+}
+/* SC3: read the learned strip first */
+async function learnedStripText(it, bt) {
+  const f = parseCardBack(bt || '', ''); const r = LEARN.regions[setKeyOf(f)]; if (!r) return '';
+  try { return (await readImageText(await zoomPart(it.f.warped, 0.03, r.y0, 0.97, r.y1, 0, 2000, r.mode), null, '7', { raw: true })).text; } catch (e) { return ''; }
+}
+
+/* SC7: a serial stamp is small; when the whole front doesn't show one, look at the top and bottom enlarged */
+async function serialZoom(blob) {
+  for (const [y0, y1] of [[0.66, 1], [0, 0.34]]) for (const mode of [false, 'stretch']) {
+    try { const t = (await readImageText(await zoomPart(blob, 0, y0, 1, y1, 0, 2000, mode), null, '11', { raw: true })).text; const s = serialFrom(t); if (s) return s; } catch (e) {} }
+  return '';
+}
+
+/* SC6: a hint, never filled in for you. Base cards in a batch mostly share one border look; a card whose border is a different colour,
+   or shines in many colours (refractor, prizm), is flagged so you can check the parallel */
+async function borderLook(blob) {
+  const bmp = await createImageBitmap(blob); const W = 120, H = 168; const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(bmp, 0, 0, W, H); bmp.close && bmp.close();
+  const d = g.getImageData(0, 0, W, H).data; const hb = new Array(12).fill(0); let n = 0, sat = 0, hs = 0, hc = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const edge = x < W * 0.08 || x > W * 0.92 || y < H * 0.06 || y > H * 0.94; if (!edge) continue; const i = (y * W + x) * 4; const r = d[i] / 255, gg = d[i + 1] / 255, b = d[i + 2] / 255;
+    const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b); n++; if (mx - mn < 0.18 || mx < 0.2) continue; sat++; let h = mx === r ? ((gg - b) / (mx - mn)) % 6 : mx === gg ? (b - r) / (mx - mn) + 2 : (r - gg) / (mx - mn) + 4; h = (h * 60 + 360) % 360; hb[Math.floor(h / 30)]++; hs += Math.sin(h * Math.PI / 180); hc += Math.cos(h * Math.PI / 180); }
+  const satF = sat / n; const spread = hb.filter(v => v > sat * 0.06).length; const hue = (Math.atan2(hs, hc) * 180 / Math.PI + 360) % 360;
+  return { satF, spread, hue, shiny: satF > 0.25 && spread >= 6 };
+}
+const hueName = h => h < 15 || h >= 345 ? 'Red' : h < 45 ? 'Orange' : h < 70 ? 'Gold' : h < 165 ? 'Green' : h < 200 ? 'Teal' : h < 255 ? 'Blue' : h < 290 ? 'Purple' : 'Pink';
+async function parallelHints(items) {
+  const looks = []; for (const it of items) { try { looks.push(await borderLook(it.f.warped)); } catch (e) { looks.push(null); } }
+  const colored = looks.filter(l => l && l.satF > 0.35); const names = colored.map(l => hueName(l.hue)); const cnt = {}; names.forEach(x => cnt[x] = (cnt[x] || 0) + 1);
+  const common = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]; const baseHue = common && common[1] >= Math.max(2, items.length * 0.5) ? common[0] : '';
+  items.forEach((it, i) => { const l = looks[i]; if (!l || (it.fields && it.fields.parallel && !/^base$/i.test(it.fields.parallel))) return;
+    if (l.shiny) it.parHint = 'Shines in many colours: maybe a Refractor or Prizm';
+    else if (l.satF > 0.45 && items.length >= 3 && hueName(l.hue) !== baseHue && colored.length < items.length * 0.6) it.parHint = `${hueName(l.hue)} border, unlike the others: maybe a ${hueName(l.hue)} parallel`; });
+}
+
+/* hooks into the reader */
+{ const ro = readOne; readOne = async (it, pr, o) => {
+    const before = it.fields; await ro(it, pr, o);
+    try { const c = parseCardBack(it.text || '', it.ftext || ''); it.rawName = (c.cands || [])[0] || ''; it.readPlayer = it.fields.player; applyLearned(it);
+      if (o.serial && !it.fields.serial) it.fields.serial = await serialZoom(it.f.warped); } catch (e) { console.warn(e); } }; }
+/* bulk add: hints after reading, and learning from what you change before saving */
+{ const rb = renderBatchReview; renderBatchReview = (...a) => { const r = rb(...a); try { for (const [i, it] of BS.items.entries()) { const fs = $(`[data-bi="${i}"]`); if (!fs) continue;
+      if (it.fields && it.fields.learned) { const lab = fs.querySelector('[data-k="player"]'); if (lab && lab.closest('label')) lab.closest('label').firstChild.textContent = it.fields.learned === 'checklist' ? 'Player ✓ From your cards' : 'Player · Learned from a fix'; }
+      if (it.fields && it.fields.numberFrom === 'learned') { const n = fs.querySelector('[data-k="number"]'); if (n && n.closest('label')) n.closest('label').firstChild.textContent = 'Card # · From your past cards'; }
+      if (it.parHint) { const p = fs.querySelector('[data-k="parallel"]'); if (p) p.insertAdjacentHTML('afterend', `<small class="muted" style="display:block">${esc(it.parHint)}</small>`); } } } catch (e) {} return r; }; }
+{ const bg = FORMS.batchGo; FORMS.batchGo = async f => { const r = await bg(f); try { if (BS.items && BS.items.length && $('#modal-root form[data-form="batchSave"]')) { await parallelHints(BS.items); if (BS.items.some(it => it.parHint)) renderBatchReview(); } } catch (e) {} return r; }; }
+{ const bs = FORMS.batchSave; FORMS.batchSave = async f => {
+    const fixes = []; try { for (const fs of $$('[data-bi]', f)) { const it = BS.items[+fs.dataset.bi]; const inp = fs.querySelector('[data-k="player"]'); if (!it || !inp) continue; const v = inp.value.trim();
+      if (v && it.readPlayer !== undefined && nkey(v) !== nkey(it.readPlayer || '')) fixes.push({ read: it.rawName || it.readPlayer, right: v, f: { ...it.fields, player: v }, front: it.f.warped }); } } catch (e) {}
+    const t0 = nowISO(); const items = BS.items.slice(); const good = new Set(items.map((it, i) => (it.fields && it.fields.conf === 'high') || fixes.some(x => x.front === it.f.warped) ? i : -1).filter(i => i >= 0));
+    const r = await bs(f);
+    try { const made = S.cards.filter(c => live(c) && (c.createdAt || '') >= t0).sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
+      if (made.length === items.length) for (const [i, c] of made.entries()) if (good.has(i) && !c.learnOK) { c.learnOK = true; await save('cards', c, { quiet: true }); } } catch (e) {}
+    for (const x of fixes) learnFix(x.read, x.right, x.f, x.front).catch(() => {}); CL.n = -1; return r; }; }
+/* Reread names: what you fixed there is learned too */
+{ const rn = FORMS.rrNamesSave; FORMS.rrNamesSave = async f => {
+    const fd = new FormData(f); const fixes = (RR.field === 'player' ? RR.items : []).map((x, j) => ({ x, v: String(fd.get('rn_' + j) || '').trim() })).filter(({ x, v }) => v && nkey(v) !== nkey(x.read || ''));
+    const r = await rn(f); for (const { x, v } of fixes) { const rec = x.c.front ? await fileGet(x.c.front) : null; learnFix(x.read, v, x.c, rec && rec.blob).catch(() => {}); } CL.n = -1; return r; }; }
+/* Settings: see and clear what was learned */
+{ const vs = V.settings; V.settings = (...a) => Promise.resolve(vs(...a)).then(h => h.replace('<div class="cols">', () => `<section class="panel" id="learned"><h2>What Dugout has learned</h2>
+  <div class="calc"><div><span>Your checklist (year, set, card #)</span><b>${checklist().map.size}</b></div><div><span>Misreads it fixes</span><b>${Object.keys(LEARN.names).length}</b></div><div><span>Sets where it knows the name spot</span><b>${Object.keys(LEARN.regions).length}</b></div></div>
+  <small class="muted">Built from cards you've confirmed and names you've corrected, on this device only.</small><div class="row"><button class="btn sm ghost" type="button" data-act="learnReset">Forget the misreads and name spots</button></div></section><div class="cols">`)); V.settings.after = vs.after; }
+A.learnReset = async el => { if (el.dataset.sure !== '1') { el.dataset.sure = '1'; el.textContent = 'Tap again to forget them'; return; } LEARN = { names: {}, regions: {} }; await saveLearn(); toast('Forgotten'); route(); };
+
+/* ---------- SC5: live camera scan. Hold each card over a plain dark surface; it takes the photo itself when the card is still and sharp ---------- */
+const CAM = { stream: null, timer: 0, files: [], prev: null, still: 0, armed: true, backs: true, busy: false };
+A.camScan = async () => {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return toast('This browser can\'t open the camera here. Open Dugout from your home screen or in Safari.');
+  CAM.files = []; CAM.prev = null; CAM.still = 0; CAM.armed = true; CAM.backs = S.settings.camBacks !== false;
+  openModal(`<div>${mhead('Scan with the camera')}
+    <div class="scanbox" style="position:relative;aspect-ratio:3/4;max-height:62vh;background:#000;border-radius:10px;overflow:hidden"><video id="cam-v" playsinline muted style="width:100%;height:100%;object-fit:cover"></video>
+      <div id="cam-flash" style="position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s"></div>
+      <div style="position:absolute;left:12%;right:12%;top:8%;bottom:8%;border:2px dashed rgba(255,255,255,.55);border-radius:10px;pointer-events:none"></div></div>
+    <p id="cam-msg" style="margin:6px 0 0;font-weight:600">Starting the camera…</p>
+    <div class="row" style="align-items:center"><label class="chk"><input type="checkbox" id="cam-backs" ${CAM.backs ? 'checked' : ''}> Front, then back of each card</label><span class="spacer"></span><b id="cam-n" class="num">0 photos</b></div>
+    <div id="cam-th" style="display:flex;gap:4px;overflow-x:auto"></div>
+    <div class="sheet-foot"><button class="btn" type="button" data-act="camStop">Cancel</button><button class="btn" type="button" data-act="camSnap">Take photo now</button><button class="btn pri" type="button" data-act="camDone">Done</button></div></div>`);
+  $('#cam-backs').addEventListener('change', e => { CAM.backs = e.target.checked; S.settings.camBacks = CAM.backs; saveSettings(); camMsg(); });
+  try { CAM.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false });
+    const v = $('#cam-v'); v.srcObject = CAM.stream; await v.play(); camMsg(); CAM.timer = setInterval(camTick, 450); }
+  catch (e) { $('#cam-msg').textContent = /denied|NotAllowed/i.test(e.name + e.message) ? 'Camera access was blocked. Allow the camera for this site in Settings, then try again.' : 'Couldn\'t open the camera: ' + e.message; }
+};
+function camMsg(t) { const m = $('#cam-msg'); if (!m) return; const n = CAM.files.length; const card = CAM.backs ? Math.floor(n / 2) + 1 : n + 1; const side = CAM.backs ? (n % 2 ? 'back' : 'front') : 'front';
+  m.textContent = t || `Hold the ${side} of card ${card} inside the frame. Keep it still.`; const c = $('#cam-n'); if (c) c.textContent = `${n} photo${n === 1 ? '' : 's'}`; }
+function camStopStream() { clearInterval(CAM.timer); CAM.timer = 0; if (CAM.stream) CAM.stream.getTracks().forEach(t => t.stop()); CAM.stream = null; }
+/* each tick: a small grey copy of the frame. Still = barely changed since the last tick; sharp = strong local contrast; a card = the middle differs from the edges */
+function camTick() {
+  const v = $('#cam-v'); if (!v || !v.videoWidth) { if (!$('#cam-v')) camStopStream(); return; } if (CAM.busy) return;
+  const W = 96, H = 128; const cv = CAM.cv || (CAM.cv = document.createElement('canvas')); cv.width = W; cv.height = H; const g = cv.getContext('2d', { willReadFrequently: true });
+  const vw = v.videoWidth, vh = v.videoHeight, k = Math.min(vw / 3, vh / 4); g.drawImage(v, (vw - 3 * k) / 2, (vh - 4 * k) / 2, 3 * k, 4 * k, 0, 0, W, H);
+  const d = g.getImageData(0, 0, W, H).data; const y = new Float32Array(W * H); for (let i = 0; i < W * H; i++) y[i] = d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11;
+  let diff = 0; if (CAM.prev) { for (let i = 0; i < y.length; i++) diff += Math.abs(y[i] - CAM.prev[i]); diff /= y.length; } CAM.prev = y;
+  let lap = 0; for (let r = 1; r < H - 1; r++) for (let c = 1; c < W - 1; c++) { const i = r * W + c; const l = 4 * y[i] - y[i - 1] - y[i + 1] - y[i - W] - y[i + W]; lap += l * l; } lap /= (W - 2) * (H - 2);
+  let mid = 0, nm = 0, rim = 0, nr = 0; for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { const inMid = c > W * 0.25 && c < W * 0.75 && r > H * 0.2 && r < H * 0.8; const onRim = c < W * 0.06 || c > W * 0.94 || r < H * 0.04 || r > H * 0.96; if (inMid) { mid += y[r * W + c]; nm++; } else if (onRim) { rim += y[r * W + c]; nr++; } }
+  const card = Math.abs(mid / nm - rim / nr) > 18 || lap > 120;
+  if (!CAM.armed) { if (diff > 14) { CAM.armed = true; camMsg(); } return; } // wait for the card to be swapped before the next photo
+  if (diff < 3.2 && lap > 40 && card) { CAM.still++; if (CAM.still >= 2) { camMsg('Hold still…'); } if (CAM.still >= 3) camCapture(); } else { CAM.still = 0; if (CAM.prev && !card) camMsg(); }
+}
+async function camCapture() {
+  const v = $('#cam-v'); if (!v || CAM.busy) return; CAM.busy = true; CAM.still = 0; CAM.armed = false;
+  try { const cv = document.createElement('canvas'); cv.width = v.videoWidth; cv.height = v.videoHeight; cv.getContext('2d').drawImage(v, 0, 0);
+    const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.92)); const n = CAM.files.length + 1; CAM.files.push(new File([blob], `camera-${String(n).padStart(3, '0')}.jpg`, { type: 'image/jpeg' }));
+    const f = $('#cam-flash'); if (f) { f.style.opacity = '.8'; setTimeout(() => { f.style.opacity = '0'; }, 120); } if (navigator.vibrate) navigator.vibrate(30);
+    const th = $('#cam-th'); if (th) th.insertAdjacentHTML('beforeend', `<img src="${URL.createObjectURL(blob)}" alt="Photo ${n}" style="height:56px;border-radius:4px;flex:none">`);
+    camMsg(CAM.backs ? (n % 2 ? `Got the front. Flip card ${Math.ceil(n / 2)} over.` : `Got card ${n / 2}. Next card.`) : `Got card ${n}. Next card.`); }
+  finally { CAM.busy = false; }
+}
+A.camSnap = () => { CAM.armed = true; camCapture(); };
+A.camStop = () => { camStopStream(); CAM.files = []; closeModal(); };
+A.camDone = () => { camStopStream(); if (!CAM.files.length) return closeModal();
+  BS.camFiles = CAM.files.slice(); BS.camOrder = CAM.backs ? 'alt' : 'fronts'; CAM.files = []; openBatch('photos'); };
+/* the bulk-add form: a camera button, and the camera photos in place of picked files */
+{ const ob = openBatch; openBatch = mode => { ob(mode); const f = $('#modal-root form[data-form="batchGo"]'); if (!f || (mode || BS.mode) !== 'photos') return;
+    const inp = f.querySelector('[name=photos]'); if (!inp) return; const lab = inp.closest('label');
+    if (BS.camFiles && BS.camFiles.length) { inp.required = false; lab.style.display = 'none'; lab.insertAdjacentHTML('afterend', `<div class="calc"><div><span>From the camera</span><b>${BS.camFiles.length} photo${BS.camFiles.length === 1 ? '' : 's'}</b></div></div><div class="row"><button class="btn sm ghost" type="button" data-act="camClear">Pick files instead</button></div>`); const o = f.querySelector('[name=order]'); if (o) o.value = BS.camOrder; }
+    else lab.insertAdjacentHTML('afterend', '<div class="row"><button class="btn" type="button" data-act="camScan">📷 Scan with the camera instead</button><small class="muted">Hold each card up; it takes the photo when the card is still.</small></div>'); }; }
+A.camClear = () => { BS.camFiles = null; openBatch('photos'); };
+{ const bg = FORMS.batchGo; FORMS.batchGo = async f => {
+    if (BS.camFiles && BS.camFiles.length && (new FormData(f).get('mode') || 'scanner') === 'photos') { const files = BS.camFiles; BS.camFiles = null; const inp = f.querySelector('[name=photos]');
+      try { const dt = new DataTransfer(); files.forEach(x => dt.items.add(x)); inp.files = dt.files; } catch (e) { BS.camFallback = files; } }
+    return bg(f); }; }
+{ const po = photoOrder; photoOrder = files => { if (BS.camFallback) { const x = BS.camFallback; BS.camFallback = null; return x; } return po(files); }; }
+
+/* ---------- version, what's new, update banner ---------- */
+const APP_VERSION = '1.17.3';
+const WHATS_NEW = {
+  '1.17.3': [
+    ['Scan with the camera', 'Bulk add → Photos → Scan with the camera. Hold each card up; it takes the photo when the card is still and sharp, front then back.'],
+    ['Learns from your fixes', 'Names you correct are remembered, along with year + set + card # → player from cards you\'ve confirmed. The next copy reads right.'],
+    ['Name spot per set', 'When you fix a name, Dugout finds where that set prints names and reads that spot first next time.'],
+    ['Serial numbers', 'When the front doesn\'t show a serial at first, the top and bottom are read again enlarged.'],
+    ['Parallel hints', 'In bulk add, a card that shines in many colours or has a different border from the others gets a "maybe a parallel" note.'],
+    ['See what it learned', 'Settings → What Dugout has learned.'],
+  ],
+  '1.17.2': [
+    ['Revise on eBay', 'Select cards → Revise on eBay: better titles, item specifics, and prices up or down by a percent, on many live listings at once.'],
+    ['Auto relist', 'Settings → Auto relist: auctions that ended unsold and Buy It Now listings up too long are posted again as new, once a day.'],
+    ['Exact fees', 'eBay page → Pull exact fees: the final value and ad fees eBay really took, on each sale. Needs the new relay (worker.js).'],
+  ],
+  '1.17.1': [
+    ['Listing health', 'eBay page: a 0–100 score for each live listing, with what to fix, and one tap to improve titles and item specifics.'],
+    ['More item specifics', 'New listings fill Season (2024-25), League, Vintage, Card Size, Language and more, so buyers\' filters find them.'],
+    ['What sells', 'Sales tab: sell-through and days to sell by sport, price, listing type, rookies and team.'],
+    ['Best time to list', 'Sales tab: the days and hours your cards sell, and which listing day sells fastest.'],
+    ['Repeat buyers', 'Sales tab: buyers who came back, what they like, and a link to their eBay profile.'],
+    ['Tax summary', 'Sales tab: the year on one screen: sales, fees, shipping, cost of cards sold, expenses, net.'],
+  ],
+  '1.17.0': [
+    ['Update banner', 'When a newer Dugout is on your site, a banner offers to load it. No more closing the app over and over.'],
+    ['Suggest lots', 'Cards tab → ⧉ Suggest lots groups your unlisted cards into team, player, rookie class, set and team-set lots, each at a target price.'],
+    ['Lot profit report', 'Sales tab: what each lot cost, sold for and made.'],
+    ['Bulk price by rules', 'Select cards → Price rules: base, rookies, numbered, autos, each with its own price.'],
+    ['Price range', 'Market checks now show low, fair and high, not only the average.'],
+    ['Photo rules and shop stamp', 'Settings → Photos: which photos each listing gets by value, and an optional shop name on studio photos.'],
+    ['Turn photos in bulk', 'Select cards → Turn photos to rotate fronts or backs on many cards at once.'],
+    ['"Not sure" first', 'After a bulk scan, the cards that need checking are at the top.'],
+    ['Sync status', 'Settings → Sync health shows photos missing on this device, with a button to download them.'],
+  ],
+};
+const verNum = v => String(v || '0').split('.').map(n => +n || 0);
+const verNewer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+function whatsNew(all, since) {
+  const vs = Object.keys(WHATS_NEW).sort((a, b) => verNewer(a, b) ? -1 : 1); const show = all ? vs : since ? vs.filter(v => verNewer(v, since)) : vs.slice(0, 1);
+  openModal(`<div>${mhead("What's new")}${show.map(v => `<h3 style="margin:.4rem 0">Dugout ${esc(v)}</h3><div class="list">${WHATS_NEW[v].map(([t, d]) => `<div class="li"><div class="grow"><b>${esc(t)}</b><small>${esc(d)}</small></div></div>`).join('')}</div>`).join('')}
+    <div class="sheet-foot"><button class="btn pri" data-act="close" type="button">Got it</button></div></div>`);
+}
+A.whatsNew = () => whatsNew(true);
+/* look for a newer copy of this page on the site (GitHub Pages caches up to 10 minutes; the query string skips that) */
+let updSeen = '';
+async function checkUpdate() {
+  if (!/^https?:/.test(location.protocol) || window.DUGOUT_TEST_NOUPDATE) return;
+  try { const r = await fetch(location.pathname + '?check=' + Date.now(), { cache: 'no-store' }); if (!r.ok) return; const t = await r.text();
+    const m = t.match(/const APP_VERSION = '([\d.]+)'/); if (!m || !verNewer(m[1], APP_VERSION) || updSeen === m[1]) return; updSeen = m[1];
+    let b = $('#upd-banner'); if (!b) { b = document.createElement('div'); b.id = 'upd-banner'; document.body.appendChild(b); }
+    b.innerHTML = `<span>Dugout ${esc(m[1])} is ready</span><button class="btn sm pri" type="button" data-act="updNow" data-v="${esc(m[1])}">Update now</button><button class="btn sm ghost" type="button" data-act="updLater" aria-label="Later">Later</button>`;
+  } catch (e) {}
+}
+A.updNow = el => { const u = new URL(location.href); u.search = '?v=' + el.dataset.v; location.replace(u.toString()); };
+A.updLater = () => { const b = $('#upd-banner'); if (b) b.remove(); };
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
+setTimeout(checkUpdate, 4000); setInterval(checkUpdate, 30 * 60 * 1000);
+/* first launch on a new version: say what changed */
+setTimeout(async () => { try { if (!S.settings) return; const seen = S.settings.seenVersion; if (seen === APP_VERSION) return;
+  const first = !seen && !S.cards.length; S.settings.seenVersion = APP_VERSION; await idb.put('meta', S.settings);
+  if (!first && WHATS_NEW[APP_VERSION]) whatsNew(false, seen); if (/[?&]v=/.test(location.search)) history.replaceState(null, '', location.pathname + location.hash); } catch (e) {} }, 1500);
+/* Settings: version line */
+{ const vs = V.settings; V.settings = (...a) => Promise.resolve(vs(...a)).then(h => h.replace('<div class="cols">', () => `<section class="panel"><h2>Dugout ${esc(APP_VERSION)}</h2><div class="row"><button class="btn sm" type="button" data-act="whatsNew">What's new</button><button class="btn sm" type="button" data-act="updCheck">Check for update</button></div></section><div class="cols">`)); V.settings.after = vs.after; }
+A.updCheck = async () => { updSeen = ''; await checkUpdate(); if (!$('#upd-banner')) toast(`You're on the newest version (${APP_VERSION})`); };
+/* Sync status: photos this device doesn't have */
+async function missingPhotos() { const have = await fileIds(); const want = new Set(); for (const c of S.cards) if (live(c)) for (const k of ['front', 'back']) if (c[k] && !have.has(c[k])) want.add(c[k]); return [...want]; }
+{ const sp = syncHealthPanel; syncHealthPanel = async () => { const h = await sp(); if (!h) return h; const miss = await missingPhotos();
+  return h.replace('<div class="row"><button class="btn sm" type="button" data-act="syncNow">', `<div class="calc"><div><span>Photos missing on this device</span><b class="${miss.length ? 'neg' : 'pos'}">${miss.length || 'None'}</b></div></div>${miss.length ? `<small class="muted">Usually cards added on another device whose photos haven't downloaded yet.</small>` : ''}<div class="row">${miss.length ? `<button class="btn sm pri" type="button" data-act="pullMissing">Download ${miss.length} photo${miss.length === 1 ? '' : 's'}</button>` : ''}<button class="btn sm" type="button" data-act="syncNow">`); }; }
+A.pullMissing = async el => { const miss = await missingPhotos(); let ok = 0; el.disabled = true; pullTried.clear();
+  for (const [i, id] of miss.entries()) { el.textContent = `Downloading ${i + 1} of ${miss.length}…`; if (await fileGetOrPull(id)) ok++; }
+  toast(ok === miss.length ? `Downloaded ${ok} photo${ok === 1 ? '' : 's'}` : `Downloaded ${ok} of ${miss.length}. The rest aren't in your sync yet: sync on the device that has them.`); route(); };
 
 /* Demo cards so every screen can be tried before real data goes in. All records carry demo:true. */
 async function loadDemo() {
