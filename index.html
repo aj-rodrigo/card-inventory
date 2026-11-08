@@ -6129,6 +6129,8 @@ function marketPanel() {
 }
 
 /* ---------- studio group photo for a lot: every card, as photographed, on the same backdrop ---------- */
+const LOT_BIG = 12; /* over this many cards, a lot gets group photos only */
+const lotPages = n => { const per = Math.max(25, Math.ceil(n / 12)); return { per, pages: Math.ceil(n / per) }; }; // fronts + backs fit in eBay's 24 photos
 async function studioGrid(blobs) {
   const N = STUDIO, cv = document.createElement('canvas'); cv.width = cv.height = N; const g = cv.getContext('2d');
   let gr = g.createLinearGradient(0, 0, 0, N); gr.addColorStop(0, '#d9dbde'); gr.addColorStop(0.55, '#e9eaec'); gr.addColorStop(1, '#d4d6d9'); g.fillStyle = gr; g.fillRect(0, 0, N, N);
@@ -6143,6 +6145,7 @@ async function studioGrid(blobs) {
     g.save(); g.filter = `blur(${Math.max(4, Math.round(w * 0.04))}px)`; g.fillStyle = 'rgba(30,34,40,.3)'; roundRect(g, dx + w * 0.02, dy + w * 0.03, dw, dh, rad); g.fill(); g.restore();
     g.drawImage(im, dx, dy, dw, dh); // as photographed, corners and all
   });
+  for (const im of imgs) if (im.close) im.close(); // a 100-card lot is a lot of memory on a phone
   return cv;
 }
 
@@ -6231,7 +6234,7 @@ function openLotForm(cards, info) {
     ${lc.desc ? field(lc.desc.name || 'Card condition', `<select name="desc">${lc.desc.values.map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('')}</select>`) : ''}
     ${req.map(a => field(a.name + ' (eBay requires this)', a.mode === 'SELECTION_ONLY' && a.values.length ? `<select name="asp:${esc(a.name)}">${a.values.map(v => `<option${(auto.aspects[a.name] || [])[0] === v ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>` : `<input name="asp:${esc(a.name)}" value="${esc((auto.aspects[a.name] || []).join(', '))}" required>`)).join('')}</div>
     <label class="chk"><input type="checkbox" name="bestOffer" checked> Accept offers, auto-accept at ${cfg.accept}% and auto-decline under ${cfg.decline}%</label>
-    <small class="muted">Photos: one group photo of all ${cards.length} cards exactly as photographed, then each card's front${cards.some(c => c.back) ? ' and back' : ''} from your full-size originals, straightened with the edges and corners showing (eBay allows 24). Cost of these cards: ${money(cost)}.</small>
+    <small class="muted">${cards.length > LOT_BIG ? `Photos: group photos only, since that's too many cards for one photo each. ${(p => p.pages > 1 ? `${p.pages} photos of the fronts (up to ${p.per} cards each)` : `1 photo of all ${cards.length} fronts`)(lotPages(cards.length))}${cards.some(c => c.back) ? (p => p.pages > 1 ? `, then ${Math.ceil(cards.filter(c => c.back).length / p.per)} of the backs` : ', then 1 of the backs')(lotPages(cards.length)) : ''}.` : `Photos: one group photo of all ${cards.length} cards exactly as photographed, then each card's front${cards.some(c => c.back) ? ' and back' : ''} from your full-size originals, straightened with the edges and corners showing (eBay allows 24).`} Cost of these cards: ${money(cost)}.</small>
     <div class="list">${cards.map(c => `<div class="li"><span class="code">${esc(c.code)}</span><span class="grow">${esc(cardName(c))}</span><span class="num muted">${money(c.value)}</span></div>`).join('')}</div>
     ${mfoot('Post lot')}</form>`);
   { const f = $('#modal-root form[data-form="lotList"]'); if (f) f._titles = auto.titles; }
@@ -6254,12 +6257,20 @@ FORMS.lotList = async f => {
     const sku = 'LOT-' + Date.now().toString(36).toUpperCase();
     const desc = `<p><b>${esc(title)}</b></p><p>${cards.length} cards, all pictured:</p><ul>${cards.map(c => `<li>${esc(cardFull(c))}</li>`).join('')}</ul>`;
     const urls = []; const up = async b => { if (urls.length >= 24) return; const r = await ebUploadPhoto(b, `lot-${urls.length + 1}.jpg`); urls.push(r.imageUrl); };
+    if (cards.length > LOT_BIG) { /* a big lot: group photos only, fronts then backs, a page of cards per photo so every card is still visible (eBay allows 24 photos) */
+      const pages = lotPages(cards.length); let pg = 0;
+      for (const side of ['front', 'back']) { const have = cards.filter(c => c[side]); if (!have.length) continue;
+        for (let i = 0; i < have.length; i += pages.per) { pg++; btn.textContent = `Making ${side} photo ${Math.ceil((i + 1) / pages.per)} of ${Math.ceil(have.length / pages.per)}…`;
+          const blobs = []; for (const c of have.slice(i, i + pages.per)) { const rec = await fileGetOrPull(c[side]); if (rec) blobs.push(rec.blob); }
+          const grid = await studioGrid(blobs); if (grid) { btn.textContent = `Uploading photo ${urls.length + 1}…`; await up(await canvasBlob(grid)); grid.width = grid.height = 0; } } }
+    } else {
     const fronts = []; for (const c of cards) { const rec = await fileGetOrPull(c.front); if (rec) fronts.push(rec.blob); }
     const grid = await studioGrid(fronts); if (grid) await up(await canvasBlob(grid));
     btn.textContent = 'Uploading photos…';
     const sides = []; for (const c of cards) { try { const P = await listingPhotos(c, { studio: false }); sides.push(P.photos.filter(x => !/corners/.test(x.what))); } catch (e) { sides.push([]); } }
     for (const ph of sides) if (ph[0]) await up(ph[0].blob); // every front first, straightened with edges showing
     for (const ph of sides) if (ph[1]) await up(ph[1].blob); // then backs, while there's room
+    }
     const inventoryItem = { availability: { shipToLocationAvailability: { quantity: 1 } }, condition: lc.condition, ...(lc.descriptors ? { conditionDescriptors: lc.descriptors } : {}),
       packageWeightAndSize: { packageType: 'PACKAGE_THICK_ENVELOPE', weight: { value: r2(oz), unit: 'OUNCE' }, dimensions: { length: 9, width: 6, height: Math.min(4, 0.5 + cards.length * 0.12), unit: 'INCH' } },
       product: { title, description: desc, aspects, imageUrls: urls } };
